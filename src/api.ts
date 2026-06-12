@@ -14,6 +14,7 @@ import type {
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 const apiRoot = `${configuredBase}/api/v1`;
+const authRefreshPath = "/auth/refresh";
 
 export class ApiError extends Error {
   status: number;
@@ -27,12 +28,12 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  options: { retryOnUnauthorized?: boolean } = {}
+): Promise<T> {
   const headers = new Headers(init.headers);
-
-  if (token) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
 
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -40,7 +41,8 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
 
   const response = await fetch(`${apiRoot}${path}`, {
     ...init,
-    headers
+    headers,
+    credentials: "include"
   });
 
   if (response.status === 204) {
@@ -51,6 +53,15 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string):
   const payload = contentType.includes("application/json") ? await response.json() : await response.text();
 
   if (!response.ok) {
+    if (response.status === 401 && options.retryOnUnauthorized !== false && !path.startsWith("/auth/")) {
+      try {
+        await request<AuthResponse>(authRefreshPath, { method: "POST" }, { retryOnUnauthorized: false });
+        return request<T>(path, init, { retryOnUnauthorized: false });
+      } catch {
+        // Keep the original unauthorized error for the caller.
+      }
+    }
+
     const code = typeof payload === "object" && payload?.error?.code ? payload.error.code : undefined;
     const message =
       typeof payload === "object" && payload?.error?.message
@@ -83,16 +94,15 @@ export const api = {
     });
   },
 
-  logout(token: string) {
-    return request<void>("/auth/logout", { method: "POST" }, token);
+  logout() {
+    return request<void>("/auth/logout", { method: "POST" });
   },
 
-  listCalls(token: string) {
-    return request<CallResponse[]>("/calls", {}, token);
+  listCalls() {
+    return request<CallResponse[]>("/calls");
   },
 
   createCall(
-    token: string,
     input: {
       title: string;
       audio: File;
@@ -106,31 +116,30 @@ export const api = {
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
     if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
 
-    return request<CallResponse>("/calls", { method: "POST", body }, token);
+    return request<CallResponse>("/calls", { method: "POST", body });
   },
 
-  listCompanies(token: string) {
-    return request<CompanyResponse[]>("/companies", {}, token);
+  listCompanies() {
+    return request<CompanyResponse[]>("/companies");
   },
 
-  listDepartments(token: string, companyId: string) {
-    return request<DepartmentResponse[]>(`/companies/${companyId}/departments`, {}, token);
+  listDepartments(companyId: string) {
+    return request<DepartmentResponse[]>(`/companies/${companyId}/departments`);
   },
 
-  getTranscription(token: string, callId: string) {
-    return request<TranscriptionResponse>(`/calls/${callId}/transcription`, {}, token);
+  getTranscription(callId: string) {
+    return request<TranscriptionResponse>(`/calls/${callId}/transcription`);
   },
 
-  getAnalysis(token: string, callId: string) {
-    return request<AnalysisResponse>(`/calls/${callId}/analysis`, {}, token);
+  getAnalysis(callId: string) {
+    return request<AnalysisResponse>(`/calls/${callId}/analysis`);
   },
 
-  analyzeCall(token: string, callId: string) {
-    return request<AnalysisResponse>(`/calls/${callId}/analysis`, { method: "POST" }, token);
+  analyzeCall(callId: string) {
+    return request<AnalysisResponse>(`/calls/${callId}/analysis`, { method: "POST" });
   },
 
   listInstructions(
-    token: string,
     scope: InstructionScope,
     companyUuid?: string,
     departmentUuid?: string
@@ -138,11 +147,10 @@ export const api = {
     const params = new URLSearchParams({ scope });
     if (companyUuid) params.set("company_uuid", companyUuid);
     if (departmentUuid) params.set("department_uuid", departmentUuid);
-    return request<AnalysisInstruction[]>(`/instructions?${params.toString()}`, {}, token);
+    return request<AnalysisInstruction[]>(`/instructions?${params.toString()}`);
   },
 
   createInstruction(
-    token: string,
     input: {
       title: string;
       file: File;
@@ -157,6 +165,6 @@ export const api = {
     body.append("scope", input.scope);
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
     if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
-    return request<AnalysisInstruction>("/instructions", { method: "POST", body }, token);
+    return request<AnalysisInstruction>("/instructions", { method: "POST", body });
   }
 };

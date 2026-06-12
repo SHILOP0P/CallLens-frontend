@@ -15,8 +15,6 @@ export interface UserResponse {
 }
 
 export interface AuthResponse {
-  access_token: string;
-  refresh_token: string;
   user: UserResponse;
 }
 
@@ -109,7 +107,5 @@ export interface AnalysisInstruction {
 }
 
 export interface SessionState {
-  accessToken: string;
-  refreshToken?: string;
   user: UserResponse;
 }

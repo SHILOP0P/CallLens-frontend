@@ -196,8 +196,8 @@ function App() {
 
       try {
         const [loadedCalls, loadedCompanies] = await Promise.all([
-          api.listCalls(session.accessToken),
-          api.listCompanies(session.accessToken)
+          api.listCalls(),
+          api.listCompanies()
         ]);
 
         if (cancelled) return;
@@ -205,20 +205,20 @@ function App() {
         const loadedDepartments = (
           await Promise.all(
             loadedCompanies.map((company) =>
-              api.listDepartments(session.accessToken, company.id).catch(() => [])
+              api.listDepartments(company.id).catch(() => [])
             )
           )
         ).flat();
 
         const loadedInstructions = (
           await Promise.all([
-            api.listInstructions(session.accessToken, "personal").catch(() => []),
+            api.listInstructions("personal").catch(() => []),
             ...loadedCompanies.map((company) =>
-              api.listInstructions(session.accessToken, "company", company.id).catch(() => [])
+              api.listInstructions("company", company.id).catch(() => [])
             ),
             ...loadedDepartments.map((department) =>
               api
-                .listInstructions(session.accessToken, "department", department.company_uuid, department.id)
+                .listInstructions("department", department.company_uuid, department.id)
                 .catch(() => [])
             )
           ])
@@ -257,7 +257,7 @@ function App() {
 
     const callId = selectedCall.id;
     api
-      .getTranscription(session.accessToken, callId)
+      .getTranscription(callId)
       .then((transcription) =>
         setTranscriptions((current) => ({
           ...current,
@@ -267,7 +267,7 @@ function App() {
       .catch(() => undefined);
 
     api
-      .getAnalysis(session.accessToken, callId)
+      .getAnalysis(callId)
       .then((analysis) =>
         setAnalyses((current) => ({
           ...current,
@@ -292,7 +292,7 @@ function App() {
 
   async function logout() {
     if (session) {
-      await api.logout(session.accessToken).catch(() => undefined);
+      await api.logout().catch(() => undefined);
     }
     persistSession(null);
     setSession(null);
@@ -593,8 +593,6 @@ function AuthDialog({
             });
 
       onAuth({
-        accessToken: response.access_token,
-        refreshToken: response.refresh_token,
         user: response.user
       });
     } catch (submitError) {
@@ -1048,7 +1046,7 @@ function UploadPage({
 
     setBusy(true);
     try {
-      const created = await api.createCall(session.accessToken, payload);
+      const created = await api.createCall(payload);
       onUploaded(created);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Не удалось загрузить звонок");
@@ -1247,7 +1245,7 @@ function AnalysisPage({
     setError("");
     setBusy(true);
     try {
-      const result = await api.analyzeCall(session.accessToken, selectedCall.id);
+      const result = await api.analyzeCall(selectedCall.id);
       onAnalysisReady(selectedCall.id, result);
     } catch (runError) {
       setError(runError instanceof Error ? runError.message : "Не удалось запустить анализ");
@@ -1391,7 +1389,7 @@ function InstructionsPage({
 
     setBusy(true);
     try {
-      const created = await api.createInstruction(session.accessToken, {
+      const created = await api.createInstruction({
         title,
         file,
         scope,
