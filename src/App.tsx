@@ -113,6 +113,61 @@ const statusMeta: Record<
 
 const normalTimelineSteps: CallStatus[] = ["new", "processing", "transcribed", "analyzed"];
 
+type AnalysisQuestion = {
+  question?: string;
+  managerAnswer?: string;
+  answerStatus?: string;
+  evidenceQuotes: string[];
+};
+
+type AnalysisDetails = {
+  summary: string;
+  topics: string[];
+  nextSteps: string[];
+  dialogueTone: {
+    overall?: string;
+    manager?: string;
+    client?: string;
+    evidenceQuotes: string[];
+  };
+  clientQuestions: AnalysisQuestion[];
+  questionCoverage: {
+    status?: string;
+    summary?: string;
+    unansweredQuestions: string[];
+  };
+  managerQuality: {
+    strengths: string[];
+    issues: string[];
+    recommendations: string[];
+  };
+  callOutcome?: string;
+  customerObjections: string[];
+  risks: string[];
+  confidence?: string;
+};
+
+const answerStatusLabels: Record<string, string> = {
+  answered: "Ответ дан",
+  partially_answered: "Частично отвечено",
+  not_answered: "Нет ответа",
+  unclear: "Неясно"
+};
+
+const coverageStatusLabels: Record<string, string> = {
+  answered: "Все вопросы закрыты",
+  partially_answered: "Часть вопросов закрыта",
+  not_answered: "Вопросы не закрыты",
+  no_questions: "Вопросов не было",
+  unclear: "Неясно"
+};
+
+const confidenceLabels: Record<string, string> = {
+  low: "Низкая",
+  medium: "Средняя",
+  high: "Высокая"
+};
+
 function isCallStatus(value: unknown): value is CallStatus {
   return typeof value === "string" && value in statusMeta;
 }
@@ -889,6 +944,10 @@ function OverviewPage({
   onNavigate: (page: AppPage) => void;
 }) {
   const analyzedCount = calls.filter((call) => call.status === "analyzed").length;
+  const processingCount = calls.filter((call) => call.status === "processing").length;
+  const transcribedCount = calls.filter(
+    (call) => call.status === "transcribed" || call.status === "analyzed"
+  ).length;
 
   return (
     <section className="overview-layout">
@@ -914,15 +973,15 @@ function OverviewPage({
           <>
             <MetricSkeleton title="Всего звонков" />
             <MetricSkeleton title="Проанализировано" />
-            <MetricSkeleton title="Компании" />
-            <MetricSkeleton title="Отделы" />
+            <MetricSkeleton title="В обработке" />
+            <MetricSkeleton title="Расшифровано" />
           </>
         ) : (
           <>
             <Metric title="Всего звонков" value={calls.length.toString()} />
             <Metric title="Проанализировано" value={analyzedCount.toString()} />
-            <Metric title="Компании" value={companies.length.toString()} />
-            <Metric title="Отделы" value={departments.length.toString()} />
+            <Metric title="В обработке" value={processingCount.toString()} />
+            <Metric title="Расшифровано" value={transcribedCount.toString()} />
           </>
         )}
       </div>
@@ -1145,7 +1204,7 @@ function CallDetailPanel({
         </span>
         <div>
           <h3>Следующий шаг</h3>
-          <p>{analysis?.result_text ?? "После анализа здесь появится рекомендация по звонку."}</p>
+          <p>{analysisNextStep(analysis)}</p>
         </div>
         <button className="ghost-button">
           Выполнить действие
@@ -1460,9 +1519,6 @@ function AnalysisPage({
   const availableInstructions = selectedCall
     ? availableInstructionsForCall(instructions, selectedCall)
     : [];
-  const summary = analysisSummary(analysis);
-  const topics = analysisTopics(analysis);
-  const nextStep = analysisNextStep(analysis);
 
   useEffect(() => {
     setShowFullAnalysis(false);
@@ -1518,7 +1574,7 @@ function AnalysisPage({
         <div className="panel-heading large">
           <div>
             <h1>{selectedCall?.title ?? "Выберите звонок"}</h1>
-            <p>Сводка, темы и следующий шаг по выбранному звонку.</p>
+            <p>Сводка, темы, вопросы клиента, качество менеджера и следующие шаги по выбранному звонку.</p>
           </div>
           <button className="primary-button" onClick={runAnalysis} disabled={!selectedCall || busy}>
             <WandSparkles size={18} />
@@ -1540,21 +1596,7 @@ function AnalysisPage({
             ) : (
               <div className="analysis-user-summary">
                 <div className={`analysis-full-text expandable-content ${showFullAnalysis ? "expanded" : "collapsed"}`}>
-                  <p>{summary}</p>
-                  <div>
-                    <strong>Ключевые темы</strong>
-                    <div className="topic-list">
-                      {topics.length > 0 ? (
-                        topics.map((topic) => <span key={topic}>{topic}</span>)
-                      ) : (
-                        <span>Появятся после анализа</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <strong>Следующий шаг</strong>
-                    <p>{nextStep}</p>
-                  </div>
+                  <AnalysisStructuredView analysis={analysis} />
                 </div>
                 <button className="text-link" type="button" onClick={() => setShowFullAnalysis((current) => !current)}>
                   {showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
@@ -2097,20 +2139,35 @@ function TranscriptPreview({
     return <TextBlockSkeleton rows={4} />;
   }
 
+  const segments = transcriptionSegments(transcription);
+
+  if (segments.length > 0) {
+    return (
+      <div className={`transcript-preview segmented expandable-content ${expanded ? "expanded" : "collapsed"}`}>
+        {segments.map((segment, index) => (
+          <div className="transcript-segment" key={`${segment.start_seconds ?? index}-${segment.text}`}>
+            <div className="segment-meta">
+              <span>{formatSegmentTimeRange(segment.start_seconds, segment.end_seconds)}</span>
+              <strong>{speakerLabel(segment.speaker)}</strong>
+            </div>
+            <p>{segment.text}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (!transcription?.text) {
     return <p className="muted">Расшифровка появится после обработки звонка.</p>;
   }
 
   return (
-    <div className={`transcript-preview expandable-content ${expanded ? "expanded" : "collapsed"}`}>
+    <div className={`transcript-preview fallback expandable-content ${expanded ? "expanded" : "collapsed"}`}>
       {transcription.text
         .split("\n")
         .filter((line) => line.trim().length > 0)
         .map((line, index) => (
-          <p key={`${line}-${index}`}>
-            <span>00:00:{String(index * 6).padStart(2, "0")}</span>
-            {line}
-          </p>
+          <p key={`${line}-${index}`}>{line}</p>
         ))}
     </div>
   );
@@ -2133,29 +2190,168 @@ function AnalysisPreview({
     return <p className="muted">Запустите анализ после готовой расшифровки.</p>;
   }
 
-  const topics = analysisTopics(analysis);
-
   return (
     <div className={`analysis-preview expandable-content ${expanded ? "expanded" : "collapsed"}`}>
-      <div className="analysis-preview-summary">
-        <Sparkles size={16} />
-        <p>{analysisSummary(analysis)}</p>
-      </div>
-      <p>
-        <Clock3 size={16} />
-        Провайдер
-        <strong>{analysis.provider}</strong>
-      </p>
-      <p>
-        <FileText size={16} />
-        Ключевые темы
-        <strong>{topics.length > 0 ? topics.length.toString() : "—"}</strong>
-      </p>
-      <p>
-        <WandSparkles size={16} />
-        Следующий шаг
-        <strong>{isAnalysisDone(analysis) ? "Готов" : analysis.status}</strong>
-      </p>
+      <AnalysisStructuredView analysis={analysis} />
+    </div>
+  );
+}
+
+function AnalysisStructuredView({ analysis }: { analysis?: AnalysisResponse }) {
+  if (!analysis) {
+    return <p className="muted">Запустите анализ после готовой расшифровки.</p>;
+  }
+
+  const details = analysisDetails(analysis);
+
+  return (
+    <div className="analysis-structured">
+      <AnalysisSection title="Резюме">
+        <p>{details.summary}</p>
+      </AnalysisSection>
+
+      <AnalysisSection title="Ключевые темы">
+        <div className="topic-list">
+          {details.topics.length > 0 ? (
+            details.topics.map((topic) => <span key={topic}>{topic}</span>)
+          ) : (
+            <span>Темы не указаны</span>
+          )}
+        </div>
+      </AnalysisSection>
+
+      <AnalysisSection title="Тон диалога">
+        <div className="analysis-kv-grid">
+          <AnalysisKeyValue label="Общий тон" value={details.dialogueTone.overall} />
+          <AnalysisKeyValue label="Менеджер" value={details.dialogueTone.manager} />
+          <AnalysisKeyValue label="Клиент" value={details.dialogueTone.client} />
+        </div>
+        <EvidenceQuotes quotes={details.dialogueTone.evidenceQuotes} />
+      </AnalysisSection>
+
+      <AnalysisSection title="Вопросы клиента и ответы менеджера">
+        <AnalysisQuestionList questions={details.clientQuestions} />
+      </AnalysisSection>
+
+      <AnalysisSection title="Полнота ответов менеджера">
+        <div className="analysis-kv-grid">
+          <AnalysisKeyValue
+            label="Статус"
+            value={enumLabel(details.questionCoverage.status, coverageStatusLabels)}
+          />
+          <AnalysisKeyValue label="Итог" value={details.questionCoverage.summary} />
+        </div>
+        <AnalysisStringList
+          items={details.questionCoverage.unansweredQuestions}
+          emptyLabel="Незакрытые вопросы не указаны"
+        />
+      </AnalysisSection>
+
+      <AnalysisSection title="Качество менеджера">
+        <div className="analysis-columns">
+          <div>
+            <strong>Сильные стороны</strong>
+            <AnalysisStringList items={details.managerQuality.strengths} emptyLabel="Не указаны" />
+          </div>
+          <div>
+            <strong>Проблемы</strong>
+            <AnalysisStringList items={details.managerQuality.issues} emptyLabel="Не указаны" />
+          </div>
+          <div>
+            <strong>Рекомендации</strong>
+            <AnalysisStringList items={details.managerQuality.recommendations} emptyLabel="Не указаны" />
+          </div>
+        </div>
+      </AnalysisSection>
+
+      <AnalysisSection title="Итог, риски и следующие шаги">
+        <div className="analysis-kv-grid">
+          <AnalysisKeyValue label="Итог звонка" value={details.callOutcome} />
+          <AnalysisKeyValue label="Уверенность" value={enumLabel(details.confidence, confidenceLabels)} />
+        </div>
+        <div className="analysis-columns">
+          <div>
+            <strong>Возражения клиента</strong>
+            <AnalysisStringList items={details.customerObjections} emptyLabel="Не указаны" />
+          </div>
+          <div>
+            <strong>Риски</strong>
+            <AnalysisStringList items={details.risks} emptyLabel="Не указаны" />
+          </div>
+          <div>
+            <strong>Следующие шаги</strong>
+            <AnalysisStringList items={details.nextSteps} emptyLabel="Не указаны" />
+          </div>
+        </div>
+      </AnalysisSection>
+    </div>
+  );
+}
+
+function AnalysisSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="analysis-section">
+      <strong>{title}</strong>
+      {children}
+    </section>
+  );
+}
+
+function AnalysisKeyValue({ label, value }: { label: string; value?: string }) {
+  return (
+    <div className="analysis-kv">
+      <span>{label}</span>
+      <p>{value && value.trim() ? value : "Не указано"}</p>
+    </div>
+  );
+}
+
+function AnalysisStringList({ items, emptyLabel }: { items: string[]; emptyLabel: string }) {
+  if (items.length === 0) {
+    return <p className="analysis-empty">{emptyLabel}</p>;
+  }
+
+  return (
+    <ul className="analysis-list">
+      {items.map((item, index) => (
+        <li key={`${item}-${index}`}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function EvidenceQuotes({ quotes }: { quotes: string[] }) {
+  if (quotes.length === 0) return null;
+
+  return (
+    <div className="evidence-quotes">
+      <span>Цитаты</span>
+      {quotes.map((quote, index) => (
+        <blockquote key={`${quote}-${index}`}>{quote}</blockquote>
+      ))}
+    </div>
+  );
+}
+
+function AnalysisQuestionList({ questions }: { questions: AnalysisQuestion[] }) {
+  if (questions.length === 0) {
+    return <p className="analysis-empty">Вопросы клиента не указаны.</p>;
+  }
+
+  return (
+    <div className="analysis-question-list">
+      {questions.map((question, index) => (
+        <div className="analysis-question" key={`${question.question ?? "question"}-${index}`}>
+          <div className="analysis-question-heading">
+            <strong>{question.question || "Вопрос не указан"}</strong>
+            <span>{enumLabel(question.answerStatus, answerStatusLabels) || "Статус не указан"}</span>
+          </div>
+          <p>
+            <b>Ответ менеджера:</b> {question.managerAnswer || "Не указан"}
+          </p>
+          <EvidenceQuotes quotes={question.evidenceQuotes} />
+        </div>
+      ))}
     </div>
   );
 }
@@ -2397,35 +2593,173 @@ function instructionContextLabel(
   return `Отдел · ${company} · ${department}`;
 }
 
+function transcriptionSegments(transcription?: TranscriptionResponse) {
+  const segments = transcription?.segments;
+  if (!Array.isArray(segments)) return [];
+
+  return segments.filter((segment) => segment.text.trim().length > 0);
+}
+
+function speakerLabel(speaker: string) {
+  const trimmed = speaker.trim();
+  if (!trimmed) return "Спикер не указан";
+
+  const match = /^speaker_(\d+)$/i.exec(trimmed);
+  if (!match) return trimmed;
+
+  return `Спикер ${Number(match[1]) + 1}`;
+}
+
+function formatSegmentTimeRange(start?: number | null, end?: number | null) {
+  const formattedStart = formatTimestamp(start);
+  const formattedEnd = formatTimestamp(end);
+
+  if (formattedStart && formattedEnd) return `${formattedStart} - ${formattedEnd}`;
+  if (formattedStart) return formattedStart;
+  if (formattedEnd) return formattedEnd;
+  return "Таймкод не указан";
+}
+
+function formatTimestamp(seconds?: number | null) {
+  if (typeof seconds !== "number" || !Number.isFinite(seconds)) return "";
+
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60)
+    .toString()
+    .padStart(2, "0");
+  const rest = (safeSeconds % 60).toString().padStart(2, "0");
+
+  if (hours > 0) return `${hours}:${minutes}:${rest}`;
+  return `${minutes}:${rest}`;
+}
+
 function analysisRecord(analysis?: AnalysisResponse) {
   const result = analysis?.result_json;
-  if (!result || Array.isArray(result) || typeof result !== "object") {
+  if (!isPlainRecord(result)) {
     return {};
   }
 
-  return result as Record<string, unknown>;
+  return result;
 }
 
 function analysisSummary(analysis?: AnalysisResponse) {
   const record = analysisRecord(analysis);
-  const summary = record.summary;
-  if (typeof summary === "string" && summary.trim()) return summary;
+  const summary = stringValue(record.summary);
+  if (summary) return summary;
   return analysis?.result_text ?? "Анализ появится здесь после обработки звонка.";
 }
 
 function analysisTopics(analysis?: AnalysisResponse) {
-  const topics = analysisRecord(analysis).topics;
-  if (!Array.isArray(topics)) return [];
-
-  return topics.filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0);
+  return stringList(analysisRecord(analysis).topics);
 }
 
 function analysisNextStep(analysis?: AnalysisResponse) {
   const record = analysisRecord(analysis);
-  const nextStep = record.next_step;
-  if (typeof nextStep === "string" && nextStep.trim()) return nextStep;
+  const nextStep = stringValue(record.next_step);
+  if (nextStep) return nextStep;
+
+  const nextSteps = stringList(record.next_steps);
+  if (nextSteps.length > 0) return nextSteps[0];
 
   return "После анализа здесь появится рекомендуемое действие.";
+}
+
+function analysisDetails(analysis?: AnalysisResponse): AnalysisDetails {
+  const record = analysisRecord(analysis);
+  const dialogueTone = recordField(record, "dialogue_tone");
+  const questionCoverage = recordField(record, "question_coverage");
+  const managerQuality = recordField(record, "manager_quality");
+  const nextSteps = stringList(record.next_steps);
+  const legacyNextStep = stringValue(record.next_step);
+
+  return {
+    summary: analysisSummary(analysis),
+    topics: analysisTopics(analysis),
+    nextSteps: nextSteps.length > 0 ? nextSteps : legacyNextStep ? [legacyNextStep] : [],
+    dialogueTone: {
+      overall: stringValue(dialogueTone?.overall),
+      manager: stringValue(dialogueTone?.manager),
+      client: stringValue(dialogueTone?.client),
+      evidenceQuotes: stringList(dialogueTone?.evidence_quotes)
+    },
+    clientQuestions: questionList(record.client_questions),
+    questionCoverage: {
+      status: stringValue(questionCoverage?.status),
+      summary: stringValue(questionCoverage?.summary),
+      unansweredQuestions: stringList(questionCoverage?.unanswered_questions)
+    },
+    managerQuality: {
+      strengths: stringList(managerQuality?.strengths),
+      issues: stringList(managerQuality?.issues),
+      recommendations: stringList(managerQuality?.recommendations)
+    },
+    callOutcome: stringValue(record.call_outcome),
+    customerObjections: stringList(record.customer_objections),
+    risks: stringList(record.risks),
+    confidence: stringValue(record.confidence)
+  };
+}
+
+function questionList(value: unknown): AnalysisQuestion[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!isPlainRecord(item)) return [];
+
+    const question: AnalysisQuestion = {
+      question: stringValue(item.question),
+      managerAnswer: stringValue(item.manager_answer),
+      answerStatus: stringValue(item.answer_status),
+      evidenceQuotes: stringList(item.evidence_quotes)
+    };
+
+    if (
+      !question.question &&
+      !question.managerAnswer &&
+      !question.answerStatus &&
+      question.evidenceQuotes.length === 0
+    ) {
+      return [];
+    }
+
+    return [question];
+  });
+}
+
+function recordField(record: Record<string, unknown>, key: string) {
+  const value = record[key];
+  return isPlainRecord(value) ? value : undefined;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function stringValue(value: unknown) {
+  if (typeof value !== "string") return undefined;
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function stringList(value: unknown) {
+  if (typeof value === "string") {
+    const item = stringValue(value);
+    return item ? [item] : [];
+  }
+
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    const text = stringValue(item);
+    return text ? [text] : [];
+  });
+}
+
+function enumLabel(value: string | undefined, labels: Record<string, string>) {
+  if (!value) return undefined;
+  return labels[value] ?? value;
 }
 
 export default App;

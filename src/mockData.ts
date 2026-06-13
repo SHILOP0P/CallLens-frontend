@@ -110,6 +110,32 @@ export const demoTranscriptions: Record<string, TranscriptionResponse> = {
     status: "transcribed",
     text:
       "Иван: Добрый день! Мы получили ваше коммерческое предложение и хотели бы обсудить несколько моментов.\nКлиент: Добрый день! Конечно, давайте обсудим. Что именно вас заинтересовало?\nИван: Нас интересуют условия поставки и возможность интеграции с нашей системой.\nКлиент: По поставке мы предлагаем срок 3-5 рабочих дней. Интеграция возможна через наш API.",
+    segments: [
+      {
+        speaker: "speaker_0",
+        start_seconds: 0,
+        end_seconds: 6.2,
+        text: "Добрый день! Мы получили ваше коммерческое предложение и хотели бы обсудить несколько моментов."
+      },
+      {
+        speaker: "speaker_1",
+        start_seconds: 6.2,
+        end_seconds: 12.8,
+        text: "Добрый день! Конечно, давайте обсудим. Что именно вас заинтересовало?"
+      },
+      {
+        speaker: "speaker_0",
+        start_seconds: 12.8,
+        end_seconds: 19.4,
+        text: "Нас интересуют условия поставки и возможность интеграции с нашей системой."
+      },
+      {
+        speaker: "speaker_1",
+        start_seconds: 19.4,
+        end_seconds: 27,
+        text: "По поставке мы предлагаем срок 3-5 рабочих дней. Интеграция возможна через наш API."
+      }
+    ],
     language: "ru",
     provider: "mock",
     error_message: null,
@@ -122,6 +148,7 @@ export const demoTranscriptions: Record<string, TranscriptionResponse> = {
     status: "transcribed",
     text:
       "Менеджер провел презентацию продукта, клиент уточнил сроки запуска и попросил прислать расчет по двум тарифам.",
+    segments: [],
     language: "ru",
     provider: "mock",
     error_message: null,
@@ -139,9 +166,47 @@ export const demoAnalyses: Record<string, AnalysisResponse> = {
     model: null,
     result_json: {
       summary: "Клиент обсуждает договор, сроки поставки, интеграцию и оплату.",
-      score: "Хорошо",
+      score: 82,
       topics: ["договор", "интеграция", "оплата", "сроки"],
-      next_step: "Отправить коммерческое предложение клиенту"
+      next_step: "Отправить коммерческое предложение клиенту",
+      dialogue_tone: {
+        overall: "Деловой и спокойный",
+        manager: "Отвечал предметно, без давления",
+        client: "Заинтересован, уточняет детали внедрения",
+        evidence_quotes: [
+          "Нас интересуют условия поставки и возможность интеграции с нашей системой.",
+          "Интеграция возможна через наш API."
+        ]
+      },
+      client_questions: [
+        {
+          question: "Какие сроки поставки?",
+          manager_answer: "Срок поставки 3-5 рабочих дней.",
+          answer_status: "answered",
+          evidence_quotes: ["По поставке мы предлагаем срок 3-5 рабочих дней."]
+        },
+        {
+          question: "Возможна ли интеграция с нашей системой?",
+          manager_answer: "Да, интеграция возможна через API.",
+          answer_status: "answered",
+          evidence_quotes: ["Интеграция возможна через наш API."]
+        }
+      ],
+      question_coverage: {
+        status: "answered",
+        summary: "Менеджер ответил на оба вопроса клиента.",
+        unanswered_questions: []
+      },
+      manager_quality: {
+        strengths: ["Дал конкретные сроки", "Сразу обозначил технический вариант интеграции"],
+        issues: ["Не уточнил требования клиента к API"],
+        recommendations: ["После звонка отправить КП и техническое описание API"]
+      },
+      call_outcome: "Клиент получил ответы по срокам и интеграции, интерес к продолжению сохранен.",
+      customer_objections: [],
+      risks: ["Не обсуждены условия оплаты и формат интеграционной поддержки"],
+      next_steps: ["Отправить коммерческое предложение", "Приложить описание API", "Уточнить условия оплаты"],
+      confidence: "high"
     },
     result_text: "Клиент заинтересован. Следующий шаг: отправить КП и уточнить условия оплаты.",
     error_message: null,

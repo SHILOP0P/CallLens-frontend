@@ -59,11 +59,19 @@ export interface TranscriptionResponse {
   call_uuid: string;
   status: "processing" | "transcribed" | "failed" | string;
   text?: string | null;
+  segments?: TranscriptionSegmentResponse[];
   language?: string | null;
   provider: string;
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TranscriptionSegmentResponse {
+  speaker: string;
+  start_seconds?: number | null;
+  end_seconds?: number | null;
+  text: string;
 }
 
 export interface AnalysisResponse {
