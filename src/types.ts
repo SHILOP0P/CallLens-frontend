@@ -47,6 +47,13 @@ export interface CallResponse {
   created_at: string;
 }
 
+export interface CallStatusEvent {
+  call_id: string;
+  status: CallStatus;
+  terminal: boolean;
+  timestamp: string;
+}
+
 export interface TranscriptionResponse {
   id: string;
   call_uuid: string;

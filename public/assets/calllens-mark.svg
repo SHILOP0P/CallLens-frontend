@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CallLens">
+  <rect width="64" height="64" rx="14" fill="#17120f"/>
+  <g fill="#ff5a2f">
+    <rect x="17" y="26" width="6" height="18" rx="3"/>
+    <rect x="27" y="16" width="6" height="34" rx="3"/>
+    <rect x="37" y="8" width="6" height="48" rx="3"/>
+    <rect x="47" y="26" width="6" height="18" rx="3"/>
+  </g>
+</svg>

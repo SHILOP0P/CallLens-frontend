@@ -29,7 +29,7 @@ import {
   WandSparkles,
   X
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "./api";
 import type {
   AnalysisInstruction,
@@ -37,6 +37,7 @@ import type {
   AppPage,
   CallResponse,
   CallStatus,
+  CallStatusEvent,
   CompanyResponse,
   DepartmentResponse,
   InstructionScope,
@@ -110,6 +111,55 @@ const statusMeta: Record<
   failed: { label: "Ошибка", chip: "Ошибка", description: "Нужно проверить файл" }
 };
 
+const normalTimelineSteps: CallStatus[] = ["new", "processing", "transcribed", "analyzed"];
+
+function isCallStatus(value: unknown): value is CallStatus {
+  return typeof value === "string" && value in statusMeta;
+}
+
+function timelineFromStatus(status: CallStatus) {
+  if (status === "failed") return [status];
+
+  const currentIndex = normalTimelineSteps.indexOf(status);
+  if (currentIndex === -1) return ["new"] as CallStatus[];
+
+  return normalTimelineSteps.slice(0, currentIndex + 1);
+}
+
+function nextTimelineStatuses(previous: CallStatus[], status: CallStatus) {
+  if (status === "failed") {
+    const completedSteps = previous.filter((step) => step !== "failed" && step !== "analyzed");
+    return [...completedSteps, "failed"] as CallStatus[];
+  }
+
+  return timelineFromStatus(status);
+}
+
+function parseCallStatusEvent(event: Event): CallStatusEvent | null {
+  if (!(event instanceof MessageEvent) || typeof event.data !== "string") return null;
+
+  try {
+    const payload = JSON.parse(event.data) as Partial<CallStatusEvent>;
+    if (
+      typeof payload.call_id !== "string" ||
+      !isCallStatus(payload.status) ||
+      typeof payload.terminal !== "boolean" ||
+      typeof payload.timestamp !== "string"
+    ) {
+      return null;
+    }
+
+    return {
+      call_id: payload.call_id,
+      status: payload.status,
+      terminal: payload.terminal,
+      timestamp: payload.timestamp
+    };
+  } catch {
+    return null;
+  }
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("ru-RU", {
     day: "2-digit",
@@ -155,7 +205,7 @@ function isAnalysisDone(analysis?: AnalysisResponse) {
 function App() {
   const [session, setSession] = useState<SessionState | null>(() => readStoredSession());
   const [showPublicLanding, setShowPublicLanding] = useState(() => !session);
-  const [workspaceReady, setWorkspaceReady] = useState(() => !session);
+  const [workspaceReady, setWorkspaceReady] = useState(true);
   const [page, setPage] = useState<AppPage>(() => pageFromPath(window.location.pathname));
   const [calls, setCalls] = useState<CallResponse[]>([]);
   const [companies, setCompanies] = useState<CompanyResponse[]>([]);
@@ -163,8 +213,10 @@ function App() {
   const [instructions, setInstructions] = useState<AnalysisInstruction[]>([]);
   const [transcriptions, setTranscriptions] = useState<Record<string, TranscriptionResponse>>({});
   const [analyses, setAnalyses] = useState<Record<string, AnalysisResponse>>({});
+  const [callTimelines, setCallTimelines] = useState<Record<string, CallStatus[]>>({});
   const [selectedCallId, setSelectedCallId] = useState<string>("");
-  const [loadingWorkspace, setLoadingWorkspace] = useState(false);
+  const [loadingWorkspace, setLoadingWorkspace] = useState(() => Boolean(session));
+  const [loadingCallDetails, setLoadingCallDetails] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     const onPopState = () => setPage(pageFromPath(window.location.pathname));
@@ -188,10 +240,11 @@ function App() {
       if (!session) {
         clearWorkspaceState();
         setWorkspaceReady(true);
+        setLoadingWorkspace(false);
         return;
       }
 
-      setWorkspaceReady(false);
+      setWorkspaceReady(true);
       setLoadingWorkspace(true);
 
       try {
@@ -227,6 +280,12 @@ function App() {
         if (cancelled) return;
 
         setCalls(loadedCalls);
+        setCallTimelines(
+          loadedCalls.reduce<Record<string, CallStatus[]>>((timelines, call) => {
+            timelines[call.id] = timelineFromStatus(call.status);
+            return timelines;
+          }, {})
+        );
         setCompanies(loadedCompanies);
         setDepartments(loadedDepartments);
         setInstructions(loadedInstructions);
@@ -251,31 +310,98 @@ function App() {
     () => calls.find((call) => call.id === selectedCallId) ?? calls[0],
     [calls, selectedCallId]
   );
+  const selectedCallDetailsLoading = selectedCall ? Boolean(loadingCallDetails[selectedCall.id]) : false;
+  const selectedCallTimeline = selectedCall ? callTimelines[selectedCall.id] : undefined;
+
+  useEffect(() => {
+    if (!session || !selectedCall) return;
+
+    let cancelled = false;
+    const callId = selectedCall.id;
+
+    setLoadingCallDetails((current) => ({
+      ...current,
+      [callId]: true
+    }));
+
+    Promise.allSettled([
+      api.getTranscription(callId),
+      api.getAnalysis(callId)
+    ])
+      .then(([transcriptionResult, analysisResult]) => {
+        if (cancelled) return;
+
+        if (transcriptionResult.status === "fulfilled") {
+          setTranscriptions((current) => ({
+            ...current,
+            [callId]: transcriptionResult.value
+          }));
+        }
+
+        if (analysisResult.status === "fulfilled") {
+          setAnalyses((current) => ({
+            ...current,
+            [callId]: analysisResult.value
+          }));
+        }
+      })
+      .finally(() => {
+        if (cancelled) return;
+
+        setLoadingCallDetails((current) => ({
+          ...current,
+          [callId]: false
+        }));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedCall?.id, selectedCall?.status, session]);
 
   useEffect(() => {
     if (!session || !selectedCall) return;
 
     const callId = selectedCall.id;
-    api
-      .getTranscription(callId)
-      .then((transcription) =>
-        setTranscriptions((current) => ({
-          ...current,
-          [callId]: transcription
-        }))
-      )
-      .catch(() => undefined);
+    const source = new EventSource(api.callEventsUrl(callId), { withCredentials: true });
+    let closed = false;
 
-    api
-      .getAnalysis(callId)
-      .then((analysis) =>
-        setAnalyses((current) => ({
-          ...current,
-          [callId]: analysis
-        }))
-      )
-      .catch(() => undefined);
-  }, [selectedCall?.id, session]);
+    function closeStream() {
+      if (closed) return;
+      closed = true;
+      source.close();
+    }
+
+    source.addEventListener("status", (event) => {
+      const statusEvent = parseCallStatusEvent(event);
+      if (!statusEvent || statusEvent.call_id !== callId) return;
+
+      setCalls((current) =>
+        current.map((call) =>
+          call.id === callId && call.status !== statusEvent.status
+            ? { ...call, status: statusEvent.status }
+            : call
+        )
+      );
+      setCallTimelines((current) => ({
+        ...current,
+        [callId]: nextTimelineStatuses(
+          current[callId] ?? timelineFromStatus(statusEvent.status),
+          statusEvent.status
+        )
+      }));
+
+      if (statusEvent.terminal) closeStream();
+    });
+
+    source.addEventListener("error", (event) => {
+      if (event instanceof MessageEvent && typeof event.data === "string") {
+        closeStream();
+      }
+    });
+
+    return closeStream;
+  }, [session, selectedCall?.id]);
 
   function navigate(nextPage: AppPage) {
     setShowPublicLanding(false);
@@ -286,7 +412,8 @@ function App() {
   function applySession(nextSession: SessionState) {
     persistSession(nextSession);
     setSession(nextSession);
-    setWorkspaceReady(false);
+    setWorkspaceReady(true);
+    setLoadingWorkspace(true);
     navigate("overview");
   }
 
@@ -324,6 +451,8 @@ function App() {
     setInstructions([]);
     setTranscriptions({});
     setAnalyses({});
+    setCallTimelines({});
+    setLoadingCallDetails({});
     setSelectedCallId("");
   }
 
@@ -369,7 +498,9 @@ function App() {
           companies={companies}
           departments={departments}
           loading={loadingWorkspace}
+          loadingDetails={selectedCallDetailsLoading}
           selectedCall={selectedCall}
+          selectedCallTimeline={selectedCallTimeline}
           transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
           analysis={selectedCall ? analyses[selectedCall.id] : undefined}
           onNavigate={navigate}
@@ -383,11 +514,13 @@ function App() {
           departments={departments}
           selectedCall={selectedCall}
           selectedCallId={selectedCallId}
+          selectedCallTimeline={selectedCallTimeline}
           transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
           analysis={selectedCall ? analyses[selectedCall.id] : undefined}
           onSelectCall={setSelectedCallId}
           onNavigate={navigate}
           loading={loadingWorkspace}
+          loadingDetails={selectedCallDetailsLoading}
         />
       )}
 
@@ -397,9 +530,14 @@ function App() {
           companies={companies}
           departments={departments}
           instructions={instructions}
+          loading={loadingWorkspace}
           onNavigate={navigate}
           onUploaded={(call) => {
             setCalls((current) => [call, ...current]);
+            setCallTimelines((current) => ({
+              ...current,
+              [call.id]: timelineFromStatus(call.status)
+            }));
             setSelectedCallId(call.id);
             navigate("calls");
           }}
@@ -412,10 +550,13 @@ function App() {
           calls={calls}
           selectedCall={selectedCall}
           selectedCallId={selectedCallId}
+          selectedCallTimeline={selectedCallTimeline}
           analyses={analyses}
           instructions={instructions}
           companies={companies}
           departments={departments}
+          loading={loadingWorkspace}
+          loadingDetails={selectedCallDetailsLoading}
           onSelectCall={setSelectedCallId}
           onAnalysisReady={(callId, analysis) =>
             setAnalyses((current) => ({
@@ -433,6 +574,7 @@ function App() {
           instructions={instructions}
           companies={companies}
           departments={departments}
+          loading={loadingWorkspace}
           onInstructionCreated={(instruction) =>
             setInstructions((current) => [instruction, ...current])
           }
@@ -728,18 +870,22 @@ function OverviewPage({
   companies,
   departments,
   selectedCall,
+  selectedCallTimeline,
   transcription,
   analysis,
   loading,
+  loadingDetails,
   onNavigate
 }: {
   calls: CallResponse[];
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
   selectedCall?: CallResponse;
+  selectedCallTimeline?: CallStatus[];
   transcription?: TranscriptionResponse;
   analysis?: AnalysisResponse;
   loading: boolean;
+  loadingDetails: boolean;
   onNavigate: (page: AppPage) => void;
 }) {
   const analyzedCount = calls.filter((call) => call.status === "analyzed").length;
@@ -764,10 +910,21 @@ function OverviewPage({
         </div>
       </div>
       <div className="metrics-row">
-        <Metric title="Всего звонков" value={loading ? "..." : calls.length.toString()} />
-        <Metric title="Проанализировано" value={analyzedCount.toString()} />
-        <Metric title="Компании" value={companies.length.toString()} />
-        <Metric title="Отделы" value={departments.length.toString()} />
+        {loading ? (
+          <>
+            <MetricSkeleton title="Всего звонков" />
+            <MetricSkeleton title="Проанализировано" />
+            <MetricSkeleton title="Компании" />
+            <MetricSkeleton title="Отделы" />
+          </>
+        ) : (
+          <>
+            <Metric title="Всего звонков" value={calls.length.toString()} />
+            <Metric title="Проанализировано" value={analyzedCount.toString()} />
+            <Metric title="Компании" value={companies.length.toString()} />
+            <Metric title="Отделы" value={departments.length.toString()} />
+          </>
+        )}
       </div>
       <div className="overview-preview glass">
         <CallDetailPanel
@@ -776,6 +933,9 @@ function OverviewPage({
           departments={departments}
           transcription={transcription}
           analysis={analysis}
+          timelineStatuses={selectedCallTimeline}
+          loading={loading}
+          loadingDetails={loadingDetails}
           onNavigate={onNavigate}
         />
       </div>
@@ -789,9 +949,11 @@ function CallsPage({
   departments,
   selectedCall,
   selectedCallId,
+  selectedCallTimeline,
   transcription,
   analysis,
   loading,
+  loadingDetails,
   onSelectCall,
   onNavigate
 }: {
@@ -800,9 +962,11 @@ function CallsPage({
   departments: DepartmentResponse[];
   selectedCall?: CallResponse;
   selectedCallId: string;
+  selectedCallTimeline?: CallStatus[];
   transcription?: TranscriptionResponse;
   analysis?: AnalysisResponse;
   loading: boolean;
+  loadingDetails: boolean;
   onSelectCall: (callId: string) => void;
   onNavigate: (page: AppPage) => void;
 }) {
@@ -837,7 +1001,7 @@ function CallsPage({
         </div>
         <p className="muted-title">Недавние звонки</p>
         <div className="call-list">
-          {loading && <div className="empty-state">Загружаю звонки...</div>}
+          {loading && <CallListSkeleton count={4} />}
           {!loading &&
             filteredCalls.map((call) => (
               <button
@@ -875,6 +1039,9 @@ function CallsPage({
           departments={departments}
           transcription={transcription}
           analysis={analysis}
+          timelineStatuses={selectedCallTimeline}
+          loading={loading}
+          loadingDetails={loadingDetails}
           onNavigate={onNavigate}
         />
       </section>
@@ -888,6 +1055,9 @@ function CallDetailPanel({
   departments,
   transcription,
   analysis,
+  timelineStatuses,
+  loading,
+  loadingDetails,
   onNavigate
 }: {
   call?: CallResponse;
@@ -895,8 +1065,23 @@ function CallDetailPanel({
   departments: DepartmentResponse[];
   transcription?: TranscriptionResponse;
   analysis?: AnalysisResponse;
+  timelineStatuses?: CallStatus[];
+  loading?: boolean;
+  loadingDetails?: boolean;
   onNavigate: (page: AppPage) => void;
 }) {
+  const [showFullTranscript, setShowFullTranscript] = useState(false);
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+
+  useEffect(() => {
+    setShowFullTranscript(false);
+    setShowFullAnalysis(false);
+  }, [call?.id]);
+
+  if (loading && !call) {
+    return <CallDetailSkeleton />;
+  }
+
   if (!call) {
     return (
       <div className="empty-panel">
@@ -935,22 +1120,23 @@ function CallDetailPanel({
         <StatusChip status={call.status} />
         <MoreVertical size={19} />
       </div>
-      <StatusTimeline current={call.status} />
+      <StatusTimeline current={call.status} statuses={timelineStatuses} />
       <div className="detail-grid">
         <InfoCard
           title="Расшифровка"
           status={transcription?.status === "transcribed" ? "Готово" : "Ожидает"}
-          action="Открыть полную расшифровку"
+          action={showFullTranscript ? "Свернуть расшифровку" : "Открыть полную расшифровку"}
+          onAction={() => setShowFullTranscript((current) => !current)}
         >
-          <TranscriptPreview transcription={transcription} />
+          <TranscriptPreview transcription={transcription} expanded={showFullTranscript} loading={loadingDetails} />
         </InfoCard>
         <InfoCard
           title="AI-анализ"
           status={isAnalysisDone(analysis) ? "Анализ готов" : "Ожидает"}
-          action="Посмотреть анализ"
-          onAction={() => onNavigate("analysis")}
+          action={showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
+          onAction={() => setShowFullAnalysis((current) => !current)}
         >
-          <AnalysisPreview analysis={analysis} />
+          <AnalysisPreview analysis={analysis} expanded={showFullAnalysis} loading={loadingDetails} />
         </InfoCard>
       </div>
       <div className="next-step">
@@ -975,6 +1161,7 @@ function UploadPage({
   companies,
   departments,
   instructions,
+  loading,
   onNavigate,
   onUploaded
 }: {
@@ -982,6 +1169,7 @@ function UploadPage({
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
   instructions: AnalysisInstruction[];
+  loading: boolean;
   onNavigate: (page: AppPage) => void;
   onUploaded: (call: CallResponse) => void;
 }) {
@@ -992,6 +1180,7 @@ function UploadPage({
   const [departmentId, setDepartmentId] = useState(
     departments.find((department) => department.company_uuid === companies[0]?.id)?.id ?? ""
   );
+  const [selectedInstructionIds, setSelectedInstructionIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1001,6 +1190,10 @@ function UploadPage({
     scope,
     companyId,
     departmentId
+  );
+  const availableInstructionKey = availableInstructions.map((instruction) => instruction.id).join("|");
+  const selectedInstructions = availableInstructions.filter((instruction) =>
+    selectedInstructionIds.includes(instruction.id)
   );
 
   useEffect(() => {
@@ -1012,6 +1205,24 @@ function UploadPage({
       setDepartmentId(availableDepartments[0].id);
     }
   }, [availableDepartments, departmentId, scope]);
+
+  useEffect(() => {
+    setSelectedInstructionIds((current) => {
+      const availableIds = availableInstructions.map((instruction) => instruction.id);
+      const available = new Set(availableIds);
+      const preserved = current.filter((id) => available.has(id));
+
+      return preserved.length > 0 ? preserved : availableIds;
+    });
+  }, [availableInstructionKey]);
+
+  function toggleInstruction(instructionId: string) {
+    setSelectedInstructionIds((current) =>
+      current.includes(instructionId)
+        ? current.filter((id) => id !== instructionId)
+        : [...current, instructionId]
+    );
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1084,22 +1295,18 @@ function UploadPage({
             <span>{title.length} / 255</span>
           </div>
         </label>
-        <label>
-          Аудиофайл
-          <div className="file-picker">
-            <FileAudio size={24} />
-            <label className="ghost-button file-button">
-              Выбрать аудиофайл
-              <input
-                type="file"
-                accept=".mp3,.wav,.m4a,.ogg,audio/*"
-                onChange={(event) => setAudio(event.target.files?.[0] ?? null)}
-              />
-            </label>
-            <span>{audio ? audio.name : "Файл не выбран"}</span>
-          </div>
+        <div>
+          <span className="field-title">Аудиофайл</span>
+          <FileDropZone
+            file={audio}
+            icon={<FileAudio size={24} />}
+            accept=".mp3,.wav,.m4a,.ogg,audio/*"
+            buttonLabel="Выбрать аудиофайл"
+            emptyLabel="Перетащите аудиофайл сюда"
+            onFile={setAudio}
+          />
           <small>Поддерживаются: MP3, WAV, M4A, OGG. Максимальный размер: 100 МБ.</small>
-        </label>
+        </div>
         <div>
           <span className="field-title">Куда добавить звонок?</span>
           <div className="segmented scope">
@@ -1165,7 +1372,7 @@ function UploadPage({
         <div className="instruction-preview">
           <FileText size={21} />
           <div>
-            <strong>Доступные инструкции для выбранного контекста</strong>
+            <strong>Инструкции для выбранного контекста</strong>
             <small>{instructionContextHint(scope)}</small>
           </div>
           <button className="ghost-button small" type="button" onClick={() => onNavigate("instructions")}>
@@ -1173,10 +1380,20 @@ function UploadPage({
             Изменить инструкцию
           </button>
         </div>
-        <InstructionMiniList
+        <InstructionChoiceList
           instructions={availableInstructions}
+          selectedInstructionIds={selectedInstructionIds}
           companies={companies}
           departments={departments}
+          loading={loading}
+          onToggle={toggleInstruction}
+        />
+        <InstructionMiniList
+          title="Выбрано для анализа"
+          instructions={selectedInstructions}
+          companies={companies}
+          departments={departments}
+          emptyText="Инструкции не выбраны."
         />
         {error && <div className="form-error">{error}</div>}
         <div className="form-actions">
@@ -1210,10 +1427,13 @@ function AnalysisPage({
   calls,
   selectedCall,
   selectedCallId,
+  selectedCallTimeline,
   analyses,
   instructions,
   companies,
   departments,
+  loading,
+  loadingDetails,
   onSelectCall,
   onAnalysisReady,
   onNavigate
@@ -1222,16 +1442,20 @@ function AnalysisPage({
   calls: CallResponse[];
   selectedCall?: CallResponse;
   selectedCallId: string;
+  selectedCallTimeline?: CallStatus[];
   analyses: Record<string, AnalysisResponse>;
   instructions: AnalysisInstruction[];
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  loading: boolean;
+  loadingDetails: boolean;
   onSelectCall: (callId: string) => void;
   onAnalysisReady: (callId: string, analysis: AnalysisResponse) => void;
   onNavigate: (page: AppPage) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const analysis = selectedCall ? analyses[selectedCall.id] : undefined;
   const availableInstructions = selectedCall
     ? availableInstructionsForCall(instructions, selectedCall)
@@ -1239,6 +1463,10 @@ function AnalysisPage({
   const summary = analysisSummary(analysis);
   const topics = analysisTopics(analysis);
   const nextStep = analysisNextStep(analysis);
+
+  useEffect(() => {
+    setShowFullAnalysis(false);
+  }, [selectedCall?.id]);
 
   async function runAnalysis() {
     if (!selectedCall) return;
@@ -1265,21 +1493,25 @@ function AnalysisPage({
           </button>
         </div>
         <div className="call-list compact-list">
-          {calls.map((call) => (
-            <button
-              key={call.id}
-              className={`call-row ${selectedCallId === call.id ? "selected" : ""}`}
-              onClick={() => onSelectCall(call.id)}
-            >
-              <span className="play-dot">
-                <Sparkles size={14} />
-              </span>
-              <span>
-                <strong>{call.title}</strong>
-                <small>{statusMeta[call.status].chip}</small>
-              </span>
-            </button>
-          ))}
+          {loading ? (
+            <CallListSkeleton compact count={4} />
+          ) : (
+            calls.map((call) => (
+              <button
+                key={call.id}
+                className={`call-row ${selectedCallId === call.id ? "selected" : ""}`}
+                onClick={() => onSelectCall(call.id)}
+              >
+                <span className="play-dot">
+                  <Sparkles size={14} />
+                </span>
+                <span>
+                  <strong>{call.title}</strong>
+                  <small>{statusMeta[call.status].chip}</small>
+                </span>
+              </button>
+            ))
+          )}
         </div>
       </aside>
       <section className="analysis-detail glass">
@@ -1294,29 +1526,42 @@ function AnalysisPage({
           </button>
         </div>
         {error && <div className="form-error">{error}</div>}
+        {selectedCall && (
+          <StatusTimeline current={selectedCall.status} statuses={selectedCallTimeline} />
+        )}
         <div className="analysis-content-grid">
           <div className="info-card">
             <div className="card-title">
               <h3>Результат</h3>
               <span className="status-chip ok">{isAnalysisDone(analysis) ? "Готово" : "Нет анализа"}</span>
             </div>
-            <div className="analysis-user-summary">
-              <p>{summary}</p>
-              <div>
-                <strong>Ключевые темы</strong>
-                <div className="topic-list">
-                  {topics.length > 0 ? (
-                    topics.map((topic) => <span key={topic}>{topic}</span>)
-                  ) : (
-                    <span>Появятся после анализа</span>
-                  )}
+            {loadingDetails || (loading && !selectedCall) ? (
+              <AnalysisResultSkeleton />
+            ) : (
+              <div className="analysis-user-summary">
+                <div className={`analysis-full-text expandable-content ${showFullAnalysis ? "expanded" : "collapsed"}`}>
+                  <p>{summary}</p>
+                  <div>
+                    <strong>Ключевые темы</strong>
+                    <div className="topic-list">
+                      {topics.length > 0 ? (
+                        topics.map((topic) => <span key={topic}>{topic}</span>)
+                      ) : (
+                        <span>Появятся после анализа</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <strong>Следующий шаг</strong>
+                    <p>{nextStep}</p>
+                  </div>
                 </div>
+                <button className="text-link" type="button" onClick={() => setShowFullAnalysis((current) => !current)}>
+                  {showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
+                  <ChevronRight size={16} />
+                </button>
               </div>
-              <div>
-                <strong>Следующий шаг</strong>
-                <p>{nextStep}</p>
-              </div>
-            </div>
+            )}
           </div>
           <div className="info-card">
             <div className="card-title">
@@ -1340,12 +1585,14 @@ function InstructionsPage({
   instructions,
   companies,
   departments,
+  loading,
   onInstructionCreated
 }: {
   session: SessionState;
   instructions: AnalysisInstruction[];
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  loading: boolean;
   onInstructionCreated: (instruction: AnalysisInstruction) => void;
 }) {
   const [title, setTitle] = useState("Инструкция анализа продаж");
@@ -1453,21 +1700,17 @@ function InstructionsPage({
             )}
           </div>
         )}
-        <label>
-          Markdown-файл
-          <div className="file-picker">
-            <FileText size={22} />
-            <label className="ghost-button file-button">
-              Выбрать файл
-              <input
-                type="file"
-                accept=".md,text/markdown,text/plain"
-                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-            <span>{file?.name ?? "Файл не выбран"}</span>
-          </div>
-        </label>
+        <div>
+          <span className="field-title">Markdown-файл</span>
+          <FileDropZone
+            file={file}
+            icon={<FileText size={22} />}
+            accept=".md,text/markdown,text/plain"
+            buttonLabel="Выбрать файл"
+            emptyLabel="Перетащите markdown-файл сюда"
+            onFile={setFile}
+          />
+        </div>
         {error && <div className="form-error">{error}</div>}
         <button className="primary-button" disabled={busy}>
           {busy ? "Загружаю..." : "Сохранить инструкцию"}
@@ -1475,7 +1718,9 @@ function InstructionsPage({
       </form>
       <div className="instructions-list glass">
         <h2>Активные инструкции</h2>
-        {instructionSections.length === 0 ? (
+        {loading ? (
+          <InstructionListSkeleton count={4} />
+        ) : instructionSections.length === 0 ? (
           <div className="instruction-empty standalone">Инструкций пока нет.</div>
         ) : (
           instructionSections.map((section) => (
@@ -1629,20 +1874,148 @@ function Metric({ title, value }: { title: string; value: string }) {
   );
 }
 
+function MetricSkeleton({ title }: { title: string }) {
+  return (
+    <div className="metric glass">
+      <span>{title}</span>
+      <span className="skeleton-line skeleton-metric-value" />
+    </div>
+  );
+}
+
+function SkeletonLine({ className = "" }: { className?: string }) {
+  return <span className={`skeleton-line ${className}`} />;
+}
+
+function TextBlockSkeleton({ rows }: { rows: number }) {
+  return (
+    <div className="text-skeleton">
+      {Array.from({ length: rows }).map((_, index) => (
+        <SkeletonLine key={index} className={index === rows - 1 ? "short" : ""} />
+      ))}
+    </div>
+  );
+}
+
+function CallListSkeleton({ compact, count }: { compact?: boolean; count: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, index) => (
+        <div className={`call-row skeleton-row ${compact ? "compact" : ""}`} key={index}>
+          <span className="skeleton-circle" />
+          <span className="skeleton-row-copy">
+            <SkeletonLine />
+            <SkeletonLine className="short" />
+          </span>
+          {!compact && <span className="skeleton-pill" />}
+          {!compact && <span className="skeleton-dot" />}
+        </div>
+      ))}
+    </>
+  );
+}
+
+function CallDetailSkeleton() {
+  return (
+    <>
+      <div className="panel-heading large">
+        <SkeletonLine className="title" />
+        <SkeletonLine className="button" />
+      </div>
+      <div className="selected-call-card skeleton-card">
+        <span className="skeleton-circle large" />
+        <span className="skeleton-row-copy">
+          <SkeletonLine className="short" />
+          <SkeletonLine className="title" />
+          <SkeletonLine />
+        </span>
+        <span className="skeleton-pill" />
+        <span className="skeleton-dot" />
+      </div>
+      <div className="status-timeline skeleton-timeline">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div className="timeline-step" key={index}>
+            <span className="skeleton-circle" />
+            <SkeletonLine className="short" />
+            <SkeletonLine className="tiny" />
+          </div>
+        ))}
+      </div>
+      <div className="detail-grid">
+        <InfoCardSkeleton />
+        <InfoCardSkeleton />
+      </div>
+    </>
+  );
+}
+
+function InfoCardSkeleton() {
+  return (
+    <div className="info-card">
+      <div className="card-title">
+        <SkeletonLine className="title" />
+        <span className="skeleton-pill" />
+      </div>
+      <TextBlockSkeleton rows={5} />
+      <SkeletonLine className="button" />
+    </div>
+  );
+}
+
+function AnalysisResultSkeleton() {
+  return (
+    <div className="analysis-user-summary">
+      <TextBlockSkeleton rows={5} />
+      <div className="topic-list skeleton-topic-list">
+        <span className="skeleton-pill" />
+        <span className="skeleton-pill" />
+        <span className="skeleton-pill" />
+      </div>
+      <TextBlockSkeleton rows={2} />
+    </div>
+  );
+}
+
+function InstructionListSkeleton({ count }: { count: number }) {
+  return (
+    <div className="instruction-mini-list">
+      {Array.from({ length: count }).map((_, index) => (
+        <div className="skeleton-row" key={index}>
+          <span className="skeleton-circle small" />
+          <span className="skeleton-row-copy">
+            <SkeletonLine />
+            <SkeletonLine className="short" />
+          </span>
+          <span className="skeleton-pill" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function StatusChip({ status }: { status: CallStatus }) {
   const className = status === "failed" ? "bad" : status === "processing" ? "warn" : "ok";
   return <span className={`status-chip ${className}`}>{statusMeta[status].chip}</span>;
 }
 
-function StatusTimeline({ current }: { current: CallStatus }) {
-  const steps: CallStatus[] = ["new", "processing", "transcribed", "analyzed", "failed"];
+function StatusTimeline({
+  current,
+  statuses
+}: {
+  current: CallStatus;
+  statuses?: CallStatus[];
+}) {
+  const steps = statuses?.length ? statuses : timelineFromStatus(current);
   const currentIndex = steps.indexOf(current);
 
   return (
-    <div className="status-timeline">
+    <div
+      className="status-timeline"
+      style={{ "--timeline-steps": steps.length } as React.CSSProperties}
+    >
       {steps.map((step, index) => (
         <div
-          className={`timeline-step ${index <= currentIndex && current !== "failed" ? "done" : ""} ${
+          className={`timeline-step ${index < currentIndex ? "done" : ""} ${
             current === step ? "current" : ""
           } ${step === "failed" ? "danger" : ""}`}
           key={step}
@@ -1655,7 +2028,7 @@ function StatusTimeline({ current }: { current: CallStatus }) {
             {step === "failed" && <X size={19} />}
           </span>
           <strong>{statusMeta[step].label}</strong>
-          <small>{step === current ? "сейчас" : "—"}</small>
+          <small>{step === current ? "сейчас" : index < currentIndex ? "готово" : "—"}</small>
         </div>
       ))}
     </div>
@@ -1703,7 +2076,7 @@ function InfoCard({
         <span className="status-chip ok">{status}</span>
       </div>
       {children}
-      <button className="text-link" onClick={onAction}>
+      <button className="text-link" type="button" onClick={onAction}>
         {action}
         <ChevronRight size={16} />
       </button>
@@ -1711,16 +2084,28 @@ function InfoCard({
   );
 }
 
-function TranscriptPreview({ transcription }: { transcription?: TranscriptionResponse }) {
+function TranscriptPreview({
+  transcription,
+  expanded,
+  loading
+}: {
+  transcription?: TranscriptionResponse;
+  expanded: boolean;
+  loading?: boolean;
+}) {
+  if (loading) {
+    return <TextBlockSkeleton rows={4} />;
+  }
+
   if (!transcription?.text) {
     return <p className="muted">Расшифровка появится после обработки звонка.</p>;
   }
 
   return (
-    <div className="transcript-preview">
+    <div className={`transcript-preview expandable-content ${expanded ? "expanded" : "collapsed"}`}>
       {transcription.text
         .split("\n")
-        .slice(0, 4)
+        .filter((line) => line.trim().length > 0)
         .map((line, index) => (
           <p key={`${line}-${index}`}>
             <span>00:00:{String(index * 6).padStart(2, "0")}</span>
@@ -1731,18 +2116,31 @@ function TranscriptPreview({ transcription }: { transcription?: TranscriptionRes
   );
 }
 
-function AnalysisPreview({ analysis }: { analysis?: AnalysisResponse }) {
+function AnalysisPreview({
+  analysis,
+  expanded,
+  loading
+}: {
+  analysis?: AnalysisResponse;
+  expanded: boolean;
+  loading?: boolean;
+}) {
+  if (loading) {
+    return <TextBlockSkeleton rows={4} />;
+  }
+
   if (!analysis) {
     return <p className="muted">Запустите анализ после готовой расшифровки.</p>;
   }
 
+  const topics = analysisTopics(analysis);
+
   return (
-    <div className="analysis-preview">
-      <p>
+    <div className={`analysis-preview expandable-content ${expanded ? "expanded" : "collapsed"}`}>
+      <div className="analysis-preview-summary">
         <Sparkles size={16} />
-        Общая оценка разговора
-        <strong>{isAnalysisDone(analysis) ? "Хорошо" : analysis.status}</strong>
-      </p>
+        <p>{analysisSummary(analysis)}</p>
+      </div>
       <p>
         <Clock3 size={16} />
         Провайдер
@@ -1751,8 +2149,123 @@ function AnalysisPreview({ analysis }: { analysis?: AnalysisResponse }) {
       <p>
         <FileText size={16} />
         Ключевые темы
-        <strong>{Array.isArray((analysis.result_json as Record<string, unknown>)?.topics) ? "5" : "—"}</strong>
+        <strong>{topics.length > 0 ? topics.length.toString() : "—"}</strong>
       </p>
+      <p>
+        <WandSparkles size={16} />
+        Следующий шаг
+        <strong>{isAnalysisDone(analysis) ? "Готов" : analysis.status}</strong>
+      </p>
+    </div>
+  );
+}
+
+function FileDropZone({
+  file,
+  icon,
+  accept,
+  buttonLabel,
+  emptyLabel,
+  onFile
+}: {
+  file: File | null;
+  icon: React.ReactNode;
+  accept: string;
+  buttonLabel: string;
+  emptyLabel: string;
+  onFile: (file: File | null) => void;
+}) {
+  const [dragActive, setDragActive] = useState(false);
+
+  function handleDrag(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(event.type === "dragenter" || event.type === "dragover");
+  }
+
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setDragActive(false);
+
+    const droppedFile = event.dataTransfer.files?.[0];
+    if (droppedFile) {
+      onFile(droppedFile);
+    }
+  }
+
+  return (
+    <label
+      className={`file-dropzone ${dragActive ? "dragging" : ""}`}
+      onDragEnter={handleDrag}
+      onDragOver={handleDrag}
+      onDragLeave={handleDrag}
+      onDrop={handleDrop}
+    >
+      <input
+        type="file"
+        accept={accept}
+        onChange={(event) => onFile(event.target.files?.[0] ?? null)}
+      />
+      <span className="file-dropzone-icon">{icon}</span>
+      <span className="file-dropzone-copy">
+        <strong>{file?.name ?? emptyLabel}</strong>
+        <small>{file ? "Файл готов к загрузке" : "Можно выбрать через проводник или перетащить файл"}</small>
+      </span>
+      <span className="ghost-button file-dropzone-button">{buttonLabel}</span>
+    </label>
+  );
+}
+
+function InstructionChoiceList({
+  instructions,
+  selectedInstructionIds,
+  companies,
+  departments,
+  loading,
+  onToggle
+}: {
+  instructions: AnalysisInstruction[];
+  selectedInstructionIds: string[];
+  companies: CompanyResponse[];
+  departments: DepartmentResponse[];
+  loading?: boolean;
+  onToggle: (instructionId: string) => void;
+}) {
+  if (loading) {
+    return <InstructionListSkeleton count={3} />;
+  }
+
+  if (instructions.length === 0) {
+    return (
+      <div className="instruction-mini-list empty">
+        <FileText size={18} />
+        <span>Инструкций для выбранного контекста пока нет.</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="instruction-choice-list">
+      {instructions.map((instruction) => {
+        const selected = selectedInstructionIds.includes(instruction.id);
+
+        return (
+          <button
+            key={instruction.id}
+            type="button"
+            className={`instruction-choice ${selected ? "selected" : ""}`}
+            aria-pressed={selected}
+            onClick={() => onToggle(instruction.id)}
+          >
+            <span className="choice-check">{selected && <Check size={15} />}</span>
+            <span>
+              <strong>{instruction.title}</strong>
+              <small>{instructionContextLabel(instruction, companies, departments)} · {instruction.original_filename}</small>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -1760,23 +2273,28 @@ function AnalysisPreview({ analysis }: { analysis?: AnalysisResponse }) {
 function InstructionMiniList({
   instructions,
   companies,
-  departments
+  departments,
+  title,
+  emptyText
 }: {
   instructions: AnalysisInstruction[];
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  title?: string;
+  emptyText?: string;
 }) {
   if (instructions.length === 0) {
     return (
       <div className="instruction-mini-list empty">
         <FileText size={18} />
-        <span>Инструкций пока нет.</span>
+        <span>{emptyText ?? "Инструкций пока нет."}</span>
       </div>
     );
   }
 
   return (
     <div className="instruction-mini-list">
+      {title && <strong className="instruction-mini-title">{title}</strong>}
       {instructions.map((instruction) => (
         <div key={instruction.id}>
           <FileText size={18} />

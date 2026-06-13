@@ -139,6 +139,10 @@ export const api = {
     return request<AnalysisResponse>(`/calls/${callId}/analysis`, { method: "POST" });
   },
 
+  callEventsUrl(callId: string) {
+    return `${apiRoot}/calls/${encodeURIComponent(callId)}/events`;
+  },
+
   listInstructions(
     scope: InstructionScope,
     companyUuid?: string,
