@@ -1900,6 +1900,16 @@ label small {
   gap: 24px;
 }
 
+.tariff-section {
+  display: grid;
+  gap: 16px;
+}
+
+.tariff-section h2 {
+  margin: 0;
+  font-size: 24px;
+}
+
 .tariff-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1907,17 +1917,91 @@ label small {
 }
 
 .tariff-card {
+  align-content: start;
   display: grid;
-  gap: 14px;
+  gap: 18px;
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
 }
 
-.tariff-card h2,
+.tariff-card::before {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  z-index: 0;
+  background: var(--tariff-card-gradient, linear-gradient(145deg, rgba(255, 103, 61, 0.22), rgba(255, 255, 255, 0)));
+  filter: blur(16px);
+  opacity: 0.18;
+  transition:
+    opacity 180ms ease,
+    filter 180ms ease,
+    transform 180ms ease;
+  transform: scale(0.98);
+}
+
+.tariff-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 30px 90px rgba(81, 45, 25, 0.2);
+}
+
+.tariff-card:hover::before {
+  opacity: 0.82;
+  filter: blur(18px);
+  transform: scale(1.02);
+}
+
+.tariff-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.tariff-card-head {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+}
+
+.tariff-card h3,
 .tariff-card p {
   margin: 0;
 }
 
-.tariff-card strong {
+.tariff-card h3 {
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.tariff-feature-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tariff-feature-list li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.tariff-feature-list svg {
+  margin-top: 2px;
   color: var(--accent-strong);
+}
+
+.tariff-message {
+  width: fit-content;
+  max-width: 100%;
 }
 
 @media (max-width: 1180px) {

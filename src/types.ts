@@ -2,6 +2,14 @@ export type AppPage = "overview" | "calls" | "upload" | "analysis" | "instructio
 export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
 export type VisibilityScope = "personal" | "company" | "department";
 export type InstructionScope = "personal" | "company" | "department";
+export type PlanType = "personal" | "business";
+export type PlanCode =
+  | "personal_start"
+  | "personal_plus"
+  | "personal_pro"
+  | "business_start"
+  | "business_plus"
+  | "business_pro";
 
 export interface UserResponse {
   id: string;
@@ -119,6 +127,28 @@ export interface AnalysisInstruction {
   created_by_user_uuid: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Plan {
+  id: string;
+  code: PlanCode;
+  type: PlanType;
+  name: string;
+  monthly_minutes_limit: number;
+  active_instruction_limit: number;
+  company_limit: number | null;
+  departments_per_company_limit: number | null;
+  members_per_company_limit: number | null;
+  instructions_per_department_limit: number | null;
+  analysis_level: string;
+  history_retention_days: number;
+  export_enabled: boolean;
+  team_analytics_enabled: boolean;
+  api_access_enabled: boolean;
+}
+
+export interface PlansResponse {
+  plans: Plan[];
 }
 
 export interface SessionState {

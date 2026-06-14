@@ -30,6 +30,7 @@ import {
   X
 } from "lucide-react";
 import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { api, ApiError } from "./api";
 import type {
   AnalysisInstruction,
@@ -41,6 +42,8 @@ import type {
   CompanyResponse,
   DepartmentResponse,
   InstructionScope,
+  Plan,
+  PlanCode,
   SessionState,
   TranscriptionResponse,
   VisibilityScope
@@ -168,6 +171,31 @@ const confidenceLabels: Record<string, string> = {
   high: "Высокая"
 };
 
+const planOrder: PlanCode[] = [
+  "personal_start",
+  "personal_plus",
+  "personal_pro",
+  "business_start",
+  "business_plus",
+  "business_pro"
+];
+
+const analysisLevelLabels: Record<string, string> = {
+  basic: "Базовый",
+  plus: "Plus",
+  pro: "Pro",
+  priority: "Приоритетный"
+};
+
+const planGradients: Record<PlanCode, string> = {
+  personal_start: "linear-gradient(145deg, rgba(96, 165, 250, 0.42), rgba(250, 204, 21, 0.24))",
+  personal_plus: "linear-gradient(145deg, rgba(45, 212, 191, 0.38), rgba(255, 122, 89, 0.28))",
+  personal_pro: "linear-gradient(145deg, rgba(129, 140, 248, 0.4), rgba(236, 72, 153, 0.28))",
+  business_start: "linear-gradient(145deg, rgba(52, 211, 153, 0.38), rgba(14, 165, 233, 0.26))",
+  business_plus: "linear-gradient(145deg, rgba(251, 146, 60, 0.36), rgba(168, 85, 247, 0.28))",
+  business_pro: "linear-gradient(145deg, rgba(244, 63, 94, 0.34), rgba(59, 130, 246, 0.3))"
+};
+
 function isCallStatus(value: unknown): value is CallStatus {
   return typeof value === "string" && value in statusMeta;
 }
@@ -258,9 +286,17 @@ function isAnalysisDone(analysis?: AnalysisResponse) {
 }
 
 function App() {
-  const [session, setSession] = useState<SessionState | null>(() => readStoredSession());
-  const [showPublicLanding, setShowPublicLanding] = useState(() => !session);
-  const [workspaceReady, setWorkspaceReady] = useState(true);
+  const [initialAuth] = useState(() => {
+    const storedSession = readStoredSession();
+    return {
+      session: storedSession,
+      ready: Boolean(storedSession)
+    };
+  });
+  const [session, setSession] = useState<SessionState | null>(initialAuth.session);
+  const [authReady, setAuthReady] = useState(initialAuth.ready);
+  const [showPublicLanding, setShowPublicLanding] = useState(() => !initialAuth.session);
+  const [workspaceReady, setWorkspaceReady] = useState(initialAuth.ready);
   const [page, setPage] = useState<AppPage>(() => pageFromPath(window.location.pathname));
   const [calls, setCalls] = useState<CallResponse[]>([]);
   const [companies, setCompanies] = useState<CompanyResponse[]>([]);
@@ -272,6 +308,45 @@ function App() {
   const [selectedCallId, setSelectedCallId] = useState<string>("");
   const [loadingWorkspace, setLoadingWorkspace] = useState(() => Boolean(session));
   const [loadingCallDetails, setLoadingCallDetails] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (authReady || session) return;
+
+    let cancelled = false;
+
+    async function restoreSession() {
+      try {
+        const response = await api.refreshSession();
+        if (cancelled) return;
+
+        const restoredSession = { user: response.user };
+        persistSession(restoredSession);
+        setSession(restoredSession);
+        setShowPublicLanding(false);
+        setWorkspaceReady(true);
+        setLoadingWorkspace(true);
+
+        if (!window.location.pathname.startsWith("/app")) {
+          window.history.replaceState({}, "", pageRoutes.overview);
+          setPage("overview");
+        }
+      } catch {
+        if (cancelled) return;
+        persistSession(null);
+        clearWorkspaceState();
+        setShowPublicLanding(true);
+        setWorkspaceReady(true);
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
+    }
+
+    restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, session]);
 
   useEffect(() => {
     const onPopState = () => setPage(pageFromPath(window.location.pathname));
@@ -292,6 +367,8 @@ function App() {
     let cancelled = false;
 
     async function loadWorkspace() {
+      if (!authReady) return;
+
       if (!session) {
         clearWorkspaceState();
         setWorkspaceReady(true);
@@ -359,7 +436,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [session]);
+  }, [authReady, session]);
 
   const selectedCall = useMemo(
     () => calls.find((call) => call.id === selectedCallId) ?? calls[0],
@@ -519,6 +596,14 @@ function App() {
     setShowPublicLanding(true);
     window.history.replaceState({}, "", "/");
     setPage("calls");
+  }
+
+  if (!authReady) {
+    return (
+      <main className="landing preflight-screen" aria-label="Проверка сессии">
+        <div className="landing-bg" />
+      </main>
+    );
   }
 
   if (!session || showPublicLanding) {
@@ -1834,28 +1919,207 @@ function InstructionRow({
 }
 
 function TariffsPage() {
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPlans() {
+      try {
+        setLoading(true);
+        setError("");
+        const response = await api.listPlans();
+        if (!cancelled) {
+          setPlans([...response.plans].sort(comparePlans));
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          const endpointHint =
+            loadError instanceof ApiError && loadError.status === 404
+              ? " Endpoint GET /api/v1/plans пока недоступен."
+              : "";
+          setError(`Не удалось загрузить тарифы.${endpointHint}`);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadPlans();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const personalPlans = plans.filter((plan) => plan.type === "personal");
+  const businessPlans = plans.filter((plan) => plan.type === "business");
+
   return (
     <section className="tariffs-layout">
       <div className="tariff-hero glass">
-        <h1>Тарифы MVP</h1>
-        <p>Для проекта пока достаточно простой модели: ручная загрузка, минуты обработки и командный доступ.</p>
+        <h1>Тарифы</h1>
+        <p>Доступные планы загружаются из backend. Реальная оплата в MVP пока не подключена.</p>
       </div>
+      {loading && <TariffSkeleton />}
+      {!loading && error && <div className="form-error tariff-message">{error}</div>}
+      {!loading && !error && plans.length === 0 && (
+        <div className="empty-panel glass">Тарифы пока не настроены.</div>
+      )}
+      {!loading && !error && plans.length > 0 && (
+        <>
+          <TariffSection title="Персональные тарифы" plans={personalPlans} />
+          <TariffSection title="Бизнес-тарифы" plans={businessPlans} business />
+        </>
+      )}
+    </section>
+  );
+}
+
+function comparePlans(left: Plan, right: Plan) {
+  const leftIndex = planOrder.indexOf(left.code);
+  const rightIndex = planOrder.indexOf(right.code);
+  return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+    (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+}
+
+function TariffSection({
+  title,
+  plans,
+  business
+}: {
+  title: string;
+  plans: Plan[];
+  business?: boolean;
+}) {
+  if (plans.length === 0) {
+    return (
+      <section className="tariff-section">
+        <h2>{title}</h2>
+        <div className="empty-panel glass">Тарифы пока не настроены.</div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="tariff-section">
+      <h2>{title}</h2>
       <div className="tariff-grid">
-        {[
-          ["Free", "Для проверки интерфейса", "до 20 минут"],
-          ["Starter", "Для одного руководителя", "история звонков"],
-          ["Pro", "Для команды продаж", "компании и отделы"]
-        ].map(([name, text, feature]) => (
-          <div className="tariff-card glass" key={name}>
-            <h2>{name}</h2>
-            <p>{text}</p>
-            <strong>{feature}</strong>
-            <button className="ghost-button wide">Выбрать</button>
-          </div>
+        {plans.map((plan) => (
+          <TariffCard key={plan.id} plan={plan} business={business} />
         ))}
       </div>
     </section>
   );
+}
+
+function TariffCard({ plan, business }: { plan: Plan; business?: boolean }) {
+  const cardStyle = {
+    "--tariff-card-gradient": planGradients[plan.code]
+  } as CSSProperties;
+  const features = [
+    `Минут в месяц: ${formatMinutesLimit(plan.monthly_minutes_limit)}`,
+    `Активных инструкций: ${formatInstructionLimit(plan.active_instruction_limit)}`,
+    business ? `Компаний: ${formatNullableLimit(plan.company_limit)}` : "",
+    business ? `Отделов на компанию: ${formatNullableLimit(plan.departments_per_company_limit)}` : "",
+    business ? `Сотрудников на компанию: ${formatNullableLimit(plan.members_per_company_limit)}` : "",
+    business ? `Инструкций на отдел: ${formatNullableLimit(plan.instructions_per_department_limit)}` : "",
+    `Уровень анализа: ${analysisLevelLabel(plan.analysis_level)}`,
+    `Хранение истории: ${formatHistoryDays(plan.history_retention_days)}`,
+    `Экспорт отчетов: ${availabilityLabel(plan.export_enabled)}`,
+    business ? `Командная аналитика: ${availabilityLabel(plan.team_analytics_enabled)}` : "",
+    business ? `Доступ к API: ${availabilityLabel(plan.api_access_enabled)}` : ""
+  ].filter(Boolean);
+
+  return (
+    <article className="tariff-card glass" style={cardStyle}>
+      <div className="tariff-card-head">
+        <span className="status-chip warn">{plan.type === "personal" ? "Персональный" : "Бизнес"}</span>
+        <h3>{plan.name}</h3>
+      </div>
+      <ul className="tariff-feature-list">
+        {features.map((feature) => (
+          <li key={feature}>
+            <Check size={16} />
+            <span>{feature}</span>
+          </li>
+        ))}
+      </ul>
+      <button className="ghost-button wide" disabled>
+        Скоро
+      </button>
+    </article>
+  );
+}
+
+function TariffSkeleton() {
+  return (
+    <>
+      <section className="tariff-section">
+        <h2>Персональные тарифы</h2>
+        <div className="tariff-grid">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div className="tariff-card glass skeleton-card" key={index}>
+              <SkeletonLine className="button" />
+              <SkeletonLine className="title" />
+              <TextBlockSkeleton rows={5} />
+              <SkeletonLine className="button" />
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="tariff-section">
+        <h2>Бизнес-тарифы</h2>
+        <div className="tariff-grid">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div className="tariff-card glass skeleton-card" key={index}>
+              <SkeletonLine className="button" />
+              <SkeletonLine className="title" />
+              <TextBlockSkeleton rows={7} />
+              <SkeletonLine className="button" />
+            </div>
+          ))}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function formatMinutesLimit(value: number) {
+  return `${value} минут`;
+}
+
+function formatInstructionLimit(value: number) {
+  return `${value}`;
+}
+
+function formatHistoryDays(value: number) {
+  return `${value} ${pluralizeRu(value, "день", "дня", "дней")}`;
+}
+
+function formatNullableLimit(value: number | null) {
+  return value === null ? "Не применяется" : String(value);
+}
+
+function availabilityLabel(value: boolean) {
+  return value ? "Доступно" : "Недоступно";
+}
+
+function analysisLevelLabel(value: string) {
+  return analysisLevelLabels[value] ?? (value || "Не указано");
+}
+
+function pluralizeRu(value: number, one: string, few: string, many: string) {
+  const lastTwo = Math.abs(value) % 100;
+  const last = Math.abs(value) % 10;
+  if (lastTwo >= 11 && lastTwo <= 14) return many;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
 }
 
 function ProductPreview({ compact }: { compact: boolean }) {
