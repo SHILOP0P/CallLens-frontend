@@ -5,6 +5,9 @@ import type {
   CallResponse,
   CompanyResponse,
   DepartmentResponse,
+  Invitation,
+  InvitationDepartmentRole,
+  InvitationStatus,
   InstructionScope,
   LoginRequest,
   Plan,
@@ -12,6 +15,7 @@ import type {
   PlanType,
   PlansResponse,
   RegisterRequest,
+  Subscription,
   TranscriptionResponse,
   UserResponse
 } from "./types";
@@ -35,12 +39,36 @@ export class ApiError extends Error {
 
 const apiErrorMessages: Record<string, string> = {
   subscription_required: "Требуется активная подписка",
+  subscription_not_found: "Подписка не найдена",
+  invalid_billing_input: "Некорректные данные подписки",
+  failed_to_activate_subscription: "Не удалось активировать подписку",
+  failed_to_cancel_subscription: "Не удалось отменить подписку",
+  failed_to_convert_subscription: "Не удалось обработать данные подписки",
+  failed_to_list_plans: "Не удалось загрузить тарифы",
+  failed_to_convert_plan: "Не удалось обработать тарифы",
   plan_limit_exceeded: "Лимит тарифа исчерпан",
   monthly_minutes_limit_exceeded: "Месячный лимит минут исчерпан",
   instruction_limit_exceeded: "Лимит активных инструкций исчерпан",
   company_limit_exceeded: "Лимит компаний исчерпан",
   department_limit_exceeded: "Лимит отделов исчерпан",
   member_limit_exceeded: "Лимит сотрудников исчерпан",
+  forbidden: "Недостаточно прав",
+  unauthorized: "Необходимо войти в аккаунт",
+  invalid_request_body: "Некорректное тело запроса",
+  company_not_found: "Компания не найдена",
+  department_not_found: "Отдел не найден",
+  user_not_found: "Пользователь не найден",
+  invitation_not_found: "Приглашение не найдено",
+  invalid_invitation_input: "Некорректные данные приглашения",
+  invitation_already_exists: "Такое приглашение уже ожидает ответа",
+  invitation_not_pending: "Это приглашение уже обработано",
+  invitation_expired: "Срок действия приглашения истек",
+  failed_to_create_invitation: "Не удалось создать приглашение",
+  failed_to_list_invitations: "Не удалось загрузить приглашения",
+  failed_to_accept_invitation: "Не удалось принять приглашение",
+  failed_to_decline_invitation: "Не удалось отклонить приглашение",
+  failed_to_cancel_invitation: "Не удалось отменить приглашение",
+  failed_to_convert_invitation: "Не удалось обработать данные приглашения",
   export_access_denied: "Экспорт недоступен на текущем тарифе",
   team_analytics_access_denied: "Командная аналитика недоступна на текущем тарифе",
   api_access_denied: "API-доступ недоступен на текущем тарифе"
@@ -67,9 +95,6 @@ function getApiErrorCode(payload: unknown) {
 
 function getApiErrorMessage(payload: unknown, status: number, path: string, init: RequestInit) {
   const code = getApiErrorCode(payload);
-  if (code === "subscription_required" && init.method === "POST" && path === "/companies") {
-    return "Для создания компании нужна бизнес-подписка";
-  }
 
   if (code && apiErrorMessages[code]) return apiErrorMessages[code];
 
@@ -92,6 +117,12 @@ function booleanOrFallback(value: unknown, fallback = false) {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function analysisLevelOrFallback(value: unknown) {
+  return value === "basic" || value === "plus" || value === "pro" || value === "priority"
+    ? value
+    : "basic";
+}
+
 function normalizePlan(plan: RawPlan): Plan {
   return {
     id: typeof plan.id === "string" ? plan.id : "",
@@ -108,7 +139,7 @@ function normalizePlan(plan: RawPlan): Plan {
     ),
     members_per_company_limit: nullableNumber(plan.members_per_company_limit ?? plan.members_limit),
     instructions_per_department_limit: nullableNumber(plan.instructions_per_department_limit),
-    analysis_level: typeof plan.analysis_level === "string" ? plan.analysis_level : "",
+    analysis_level: analysisLevelOrFallback(plan.analysis_level),
     history_retention_days: numberOrFallback(plan.history_retention_days ?? plan.call_history_days),
     export_enabled: booleanOrFallback(plan.export_enabled ?? plan.export_reports_enabled),
     team_analytics_enabled: booleanOrFallback(plan.team_analytics_enabled),
@@ -233,8 +264,69 @@ export const api = {
     });
   },
 
+  getCompanySubscription(companyId: string) {
+    return request<Subscription>(`/companies/${encodeURIComponent(companyId)}/subscription`);
+  },
+
+  getSubscription() {
+    return request<Subscription>("/subscription");
+  },
+
   listDepartments(companyId: string) {
     return request<DepartmentResponse[]>(`/companies/${companyId}/departments`);
+  },
+
+  createCompanyInvitation(companyId: string, userUuid: string) {
+    return request<Invitation>(`/companies/${encodeURIComponent(companyId)}/invitations`, {
+      method: "POST",
+      body: JSON.stringify({ user_uuid: userUuid, role: "employee" })
+    });
+  },
+
+  createDepartmentInvitation(
+    companyId: string,
+    departmentId: string,
+    userUuid: string,
+    role: InvitationDepartmentRole
+  ) {
+    return request<Invitation>(
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/invitations`,
+      {
+        method: "POST",
+        body: JSON.stringify({ user_uuid: userUuid, role })
+      }
+    );
+  },
+
+  listMyInvitations(status?: InvitationStatus) {
+    const query = status ? `?${new URLSearchParams({ status }).toString()}` : "";
+    return request<Invitation[]>(`/invitations${query}`);
+  },
+
+  acceptInvitation(invitationId: string) {
+    return request<Invitation>(`/invitations/${encodeURIComponent(invitationId)}/accept`, {
+      method: "POST"
+    });
+  },
+
+  declineInvitation(invitationId: string) {
+    return request<Invitation>(`/invitations/${encodeURIComponent(invitationId)}/decline`, {
+      method: "POST"
+    });
+  },
+
+  cancelCompanyInvitation(companyId: string, invitationId: string) {
+    return request<Invitation>(
+      `/companies/${encodeURIComponent(companyId)}/invitations/${encodeURIComponent(invitationId)}/cancel`,
+      { method: "POST" }
+    );
+  },
+
+  cancelDepartmentInvitation(companyId: string, departmentId: string, invitationId: string) {
+    return request<Invitation>(
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/invitations/${encodeURIComponent(invitationId)}/cancel`,
+      { method: "POST" }
+    );
   },
 
   getTranscription(callId: string) {
@@ -269,6 +361,28 @@ export const api = {
     return {
       plans: Array.isArray(response.plans) ? response.plans.map(normalizePlan) : []
     } satisfies PlansResponse;
+  },
+
+  activateCompanySubscription(companyId: string, planCode?: PlanCode) {
+    const body = planCode ? { plan_code: planCode } : {};
+    return request<Subscription>(`/companies/${encodeURIComponent(companyId)}/subscription/activate`, {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  },
+
+  activateSubscription(planCode?: PlanCode) {
+    const body = planCode ? { plan_code: planCode } : {};
+    return request<Subscription>("/subscription/activate", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+  },
+
+  cancelCompanySubscription(companyId: string) {
+    return request<Subscription>(`/companies/${encodeURIComponent(companyId)}/subscription/cancel`, {
+      method: "POST"
+    });
   },
 
   createInstruction(

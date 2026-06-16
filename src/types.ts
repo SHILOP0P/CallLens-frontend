@@ -1,7 +1,21 @@
-export type AppPage = "overview" | "calls" | "upload" | "analysis" | "instructions" | "tariffs";
+export type AppPage =
+  | "overview"
+  | "calls"
+  | "upload"
+  | "analysis"
+  | "instructions"
+  | "invitations"
+  | "companies"
+  | "profile"
+  | "tariffs";
 export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
 export type VisibilityScope = "personal" | "company" | "department";
 export type InstructionScope = "personal" | "company" | "department";
+export type InvitationStatus = "pending" | "accepted" | "declined" | "canceled" | "expired";
+export type CompanyRole = "employee";
+export type DepartmentRole = "employee" | "department_leader";
+export type InvitationCompanyRole = CompanyRole;
+export type InvitationDepartmentRole = DepartmentRole;
 export type PlanType = "personal" | "business";
 export type PlanCode =
   | "personal_start"
@@ -10,6 +24,8 @@ export type PlanCode =
   | "business_start"
   | "business_plus"
   | "business_pro";
+export type AnalysisLevel = "basic" | "plus" | "pro" | "priority";
+export type SubscriptionStatus = "active" | "canceled" | "expired";
 
 export interface UserResponse {
   id: string;
@@ -110,6 +126,21 @@ export interface DepartmentResponse {
   created_at: string;
 }
 
+export interface Invitation {
+  id: string;
+  company_uuid: string;
+  department_uuid: string | null;
+  invited_user_uuid: string;
+  invited_by_user_uuid: string;
+  company_role: CompanyRole;
+  department_role: DepartmentRole | null;
+  status: InvitationStatus;
+  expires_at: string;
+  responded_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AnalysisInstruction {
   id: string;
   scope: InstructionScope;
@@ -140,7 +171,7 @@ export interface Plan {
   departments_per_company_limit: number | null;
   members_per_company_limit: number | null;
   instructions_per_department_limit: number | null;
-  analysis_level: string;
+  analysis_level: AnalysisLevel;
   history_retention_days: number;
   export_enabled: boolean;
   team_analytics_enabled: boolean;
@@ -149,6 +180,18 @@ export interface Plan {
 
 export interface PlansResponse {
   plans: Plan[];
+}
+
+export interface Subscription {
+  id: string;
+  plan: Plan;
+  user_uuid: string | null;
+  company_uuid: string | null;
+  status: SubscriptionStatus;
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SessionState {

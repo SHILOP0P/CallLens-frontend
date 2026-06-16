@@ -4,6 +4,9 @@ import type {
   CallResponse,
   CompanyResponse,
   DepartmentResponse,
+  Invitation,
+  Plan,
+  Subscription,
   TranscriptionResponse,
   UserResponse
 } from "./types";
@@ -41,6 +44,57 @@ export const demoDepartments: DepartmentResponse[] = [
     company_uuid: demoCompanies[0].id,
     name: "Поддержка",
     created_at: "2026-06-12T12:20:00Z"
+  }
+];
+
+export const demoInvitations: Invitation[] = [
+  {
+    id: "00000000-0000-7000-8000-000000000301",
+    company_uuid: demoCompanies[0].id,
+    department_uuid: demoDepartments[0].id,
+    invited_user_uuid: demoUser.id,
+    invited_by_user_uuid: "00000000-0000-7000-8000-000000000099",
+    company_role: "employee",
+    department_role: "employee",
+    status: "pending",
+    expires_at: "2026-06-22T12:00:00Z",
+    responded_at: null,
+    created_at: "2026-06-15T12:00:00Z",
+    updated_at: "2026-06-15T12:00:00Z"
+  }
+];
+
+export const demoBusinessPlans: Plan[] = [
+  {
+    id: "00000000-0000-7000-8000-000000000401",
+    code: "business_start",
+    type: "business",
+    name: "Business Start",
+    monthly_minutes_limit: 1000,
+    active_instruction_limit: 0,
+    company_limit: 1,
+    departments_per_company_limit: 5,
+    members_per_company_limit: 25,
+    instructions_per_department_limit: 5,
+    analysis_level: "plus",
+    history_retention_days: 180,
+    export_enabled: false,
+    team_analytics_enabled: false,
+    api_access_enabled: false
+  }
+];
+
+export const demoSubscriptions: Subscription[] = [
+  {
+    id: "00000000-0000-7000-8000-000000000501",
+    plan: demoBusinessPlans[0],
+    user_uuid: null,
+    company_uuid: demoCompanies[0].id,
+    status: "active",
+    starts_at: "2026-06-15T12:00:00Z",
+    ends_at: null,
+    created_at: "2026-06-15T12:00:00Z",
+    updated_at: "2026-06-15T12:00:00Z"
   }
 ];
 
