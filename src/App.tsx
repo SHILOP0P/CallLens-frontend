@@ -3,7 +3,6 @@ import {
   BriefcaseBusiness,
   Building2,
   Check,
-  ChevronDown,
   ChevronRight,
   CircleAlert,
   CircleUserRound,
@@ -16,6 +15,7 @@ import {
   LockKeyhole,
   LogOut,
   Mic2,
+  Moon,
   MoreVertical,
   Pencil,
   Play,
@@ -31,6 +31,7 @@ import {
   X
 } from "lucide-react";
 import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import type { CSSProperties } from "react";
 import { api, ApiError } from "./api";
 import type {
@@ -56,6 +57,23 @@ import type {
 } from "./types";
 
 const SESSION_KEY = "calllens.session.v1";
+const THEME_KEY = "calllens.theme.v1";
+
+type AppTheme = "light" | "dark";
+type ThemePreference = AppTheme | "system";
+type ThemeToggleEvent = React.MouseEvent<HTMLButtonElement>;
+type ViewTransitionDocument = Document & {
+  startViewTransition?: (callback: () => void) => { finished: Promise<void> };
+};
+
+function getSystemTheme(): AppTheme {
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function readThemePreference(): ThemePreference {
+  const storedTheme = localStorage.getItem(THEME_KEY);
+  return storedTheme === "light" || storedTheme === "dark" ? storedTheme : "system";
+}
 
 const pageRoutes: Record<AppPage, string> = {
   overview: "/app/overview",
@@ -402,6 +420,23 @@ function App() {
   const [selectedCallId, setSelectedCallId] = useState<string>("");
   const [loadingWorkspace, setLoadingWorkspace] = useState(() => Boolean(session));
   const [loadingCallDetails, setLoadingCallDetails] = useState<Record<string, boolean>>({});
+  const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
+  const [systemTheme, setSystemTheme] = useState<AppTheme>(() => getSystemTheme());
+  const activeTheme = themePreference === "system" ? systemTheme : themePreference;
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onChange = () => setSystemTheme(media.matches ? "dark" : "light");
+
+    onChange();
+    media.addEventListener("change", onChange);
+    return () => media.removeEventListener("change", onChange);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = activeTheme;
+    document.documentElement.style.colorScheme = activeTheme;
+  }, [activeTheme]);
 
   useEffect(() => {
     if (authReady || session) return;
@@ -658,6 +693,46 @@ function App() {
     setPage("calls");
   }
 
+  function toggleTheme(event: ThemeToggleEvent) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const originX = rect.left + rect.width / 2;
+    const originY = rect.top + rect.height / 2;
+    const maxX = Math.max(originX, window.innerWidth - originX);
+    const maxY = Math.max(originY, window.innerHeight - originY);
+    const radius = Math.hypot(maxX, maxY);
+    const root = document.documentElement;
+    const transitionDocument = document as ViewTransitionDocument;
+
+    root.style.setProperty("--theme-reveal-x", `${originX}px`);
+    root.style.setProperty("--theme-reveal-y", `${originY}px`);
+    root.style.setProperty("--theme-reveal-radius", `${radius}px`);
+
+    const applyTheme = () => {
+      flushSync(() => {
+        setThemePreference((current) => {
+          const currentTheme = current === "system" ? systemTheme : current;
+          const nextTheme: AppTheme = currentTheme === "dark" ? "light" : "dark";
+          localStorage.setItem(THEME_KEY, nextTheme);
+          return nextTheme;
+        });
+      });
+    };
+
+    if (!transitionDocument.startViewTransition) {
+      applyTheme();
+      return;
+    }
+
+    root.classList.add("theme-reveal-running");
+    const transition = transitionDocument.startViewTransition(applyTheme);
+    transition.finished.finally(() => {
+      root.classList.remove("theme-reveal-running");
+      root.style.removeProperty("--theme-reveal-x");
+      root.style.removeProperty("--theme-reveal-y");
+      root.style.removeProperty("--theme-reveal-radius");
+    });
+  }
+
   function openLanding() {
     setShowPublicLanding(true);
     window.history.pushState({}, "", "/");
@@ -763,8 +838,10 @@ function App() {
     return (
       <Landing
         session={session}
+        theme={activeTheme}
         onAuth={applySession}
         onGetStarted={getStarted}
+        onToggleTheme={toggleTheme}
       />
     );
   }
@@ -781,10 +858,12 @@ function App() {
     <AuthenticatedShell
       activePage={page}
       session={session}
+      theme={activeTheme}
       invitationCount={invitations.filter((invitation) => invitation.status === "pending").length}
       companyCount={companies.length}
       onNavigate={navigate}
       onOpenLanding={openLanding}
+      onToggleTheme={toggleTheme}
       onLogout={logout}
     >
       {page === "overview" && (
@@ -958,17 +1037,30 @@ function Logo({ onClick }: { onClick?: () => void }) {
   );
 }
 
+function SelectControl(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <span className="select-control">
+      <select {...props} />
+    </span>
+  );
+}
+
 function Landing({
   session,
+  theme,
   onAuth,
-  onGetStarted
+  onGetStarted,
+  onToggleTheme
 }: {
   session: SessionState | null;
+  theme: AppTheme;
   onAuth: (session: SessionState) => void;
   onGetStarted: () => void;
+  onToggleTheme: (event: ThemeToggleEvent) => void;
 }) {
   const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
   useRevealOnScroll<HTMLElement>();
+  const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
 
   function handleStart() {
     if (session) {
@@ -991,6 +1083,9 @@ function Landing({
           <a href="#tariffs">Тарифы</a>
         </nav>
         <div className="landing-actions">
+          <button className="icon-button theme-toggle" type="button" onClick={onToggleTheme} aria-label={themeLabel}>
+            <Moon size={19} fill={theme === "dark" ? "currentColor" : "none"} />
+          </button>
           <button className="ghost-button dark" onClick={session ? onGetStarted : () => setShowAuth("login")}>
             {session ? "В кабинет" : "Войти"}
           </button>
@@ -1230,22 +1325,28 @@ function AuthDialog({
 function AuthenticatedShell({
   activePage,
   session,
+  theme,
   invitationCount,
   companyCount,
   children,
   onNavigate,
   onOpenLanding,
+  onToggleTheme,
   onLogout
 }: {
   activePage: AppPage;
   session: SessionState;
+  theme: AppTheme;
   invitationCount: number;
   companyCount: number;
   children: React.ReactNode;
   onNavigate: (page: AppPage) => void;
   onOpenLanding: () => void;
+  onToggleTheme: (event: ThemeToggleEvent) => void;
   onLogout: () => void;
 }) {
+  const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
+
   return (
     <div className="app-shell">
       <header className="app-header">
@@ -1270,6 +1371,9 @@ function AuthenticatedShell({
             <Bell size={19} />
             {invitationCount > 0 && <span className="notification-badge">{invitationCount}</span>}
           </button>
+          <button className="icon-button theme-toggle" type="button" onClick={onToggleTheme} aria-label={themeLabel}>
+            <Moon size={19} fill={theme === "dark" ? "currentColor" : "none"} />
+          </button>
           <div className="avatar">{session.user.full_name[0] ?? "C"}</div>
           <div>
             <strong>
@@ -1277,9 +1381,6 @@ function AuthenticatedShell({
             </strong>
             <span>{session.user.post ?? "Пользователь"}</span>
           </div>
-          <button className="icon-button" onClick={() => onNavigate("profile")} aria-label="Профиль">
-            <ChevronDown size={18} />
-          </button>
           <button className="icon-button logout" onClick={onLogout} aria-label="Выйти">
             <LogOut size={18} />
           </button>
@@ -1848,24 +1949,24 @@ function UploadPage({
           <div className="form-grid two">
             <label>
               Компания
-              <select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              <SelectControl value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
                 {selectableCompanies.map((company) => (
                   <option key={company.id} value={company.id}>
                     {company.name}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             </label>
             {scope === "department" && (
               <label>
                 Отдел
-                <select value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
+                <SelectControl value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
                   {availableDepartments.map((department) => (
                     <option key={department.id} value={department.id}>
                       {department.name}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
             )}
           </div>
@@ -2450,24 +2551,24 @@ function InstructionsPage({
           <div className="form-grid two">
             <label>
               Компания
-              <select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+              <SelectControl value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
                 {selectableCompanies.map((company) => (
                   <option key={company.id} value={company.id}>
                     {company.name}
                   </option>
                 ))}
-              </select>
+              </SelectControl>
             </label>
             {scope === "department" && (
               <label>
                 Отдел
-                <select value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
+                <SelectControl value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
                   {availableDepartments.map((department) => (
                     <option key={department.id} value={department.id}>
                       {department.name}
                     </option>
                   ))}
-                </select>
+                </SelectControl>
               </label>
             )}
           </div>
@@ -2800,35 +2901,35 @@ function InvitationCreatePanel({
       </div>
       <label>
         Компания
-        <select value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+        <SelectControl value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
           {companies.map((company) => (
             <option key={company.id} value={company.id}>
               {company.name}
             </option>
           ))}
-        </select>
+        </SelectControl>
       </label>
       {mode === "department" && (
         <>
           <label>
             Отдел
-            <select value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
+            <SelectControl value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
               {availableDepartments.map((department) => (
                 <option key={department.id} value={department.id}>
                   {department.name}
                 </option>
               ))}
-            </select>
+            </SelectControl>
           </label>
           <label>
             Роль
-            <select
+            <SelectControl
               value={departmentRole}
               onChange={(event) => setDepartmentRole(event.target.value as InvitationDepartmentRole)}
             >
               <option value="employee">Сотрудник</option>
               {canInviteDepartmentLeader && <option value="department_leader">Руководитель отдела</option>}
-            </select>
+            </SelectControl>
           </label>
         </>
       )}
@@ -3317,7 +3418,7 @@ function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Plan[] })
                 : "Можно активировать personal_start, personal_plus или personal_pro."}
           </small>
         </div>
-        <select
+        <SelectControl
           value={selectedPlan}
           onChange={(event) => setSelectedPlan(event.target.value as PlanCode)}
           disabled={busy || personalPlans.length === 0}
@@ -3331,7 +3432,7 @@ function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Plan[] })
               </option>
             ))
           )}
-        </select>
+        </SelectControl>
         <span className={`status-chip ${active ? "ok" : "warn"}`}>
           {active ? "Активна" : subscription?.status === "canceled" ? "Отменена" : "Не активирована"}
         </span>
@@ -3433,7 +3534,7 @@ function CompanySubscriptionPanel({
                 <strong>{company.name}</strong>
                 <small>{company.id}</small>
               </div>
-              <select
+              <SelectControl
                 value={selectedPlan}
                 onChange={(event) =>
                   setSelectedPlans((current) => ({
@@ -3452,7 +3553,7 @@ function CompanySubscriptionPanel({
                     </option>
                   ))
                 )}
-              </select>
+              </SelectControl>
               <span className={`status-chip ${active ? "ok" : "warn"}`}>
                 {active ? "Активна" : subscription?.status === "canceled" ? "Отменена" : "Не активирована"}
               </span>
@@ -3637,8 +3738,8 @@ function ProductPreview({ compact }: { compact: boolean }) {
       <div className="preview-title">Последний звонок</div>
       <div className="preview-overview">
         <div className="preview-selected-call">
-          <span className="play-dot">
-            <Play size={15} fill="currentColor" />
+          <span className="play-large">
+            <Play size={22} fill="currentColor" />
           </span>
           <div>
             <span>Выбранный звонок</span>
@@ -3646,7 +3747,6 @@ function ProductPreview({ compact }: { compact: boolean }) {
             <small>21 мая 2025 · 18:47 · Отдел продаж</small>
           </div>
           <span className="status-chip ok">Анализ готов</span>
-          <MoreVertical size={18} />
         </div>
         <div className="preview-timeline">
           {normalTimelineSteps.map((step) => (
