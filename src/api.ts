@@ -4,6 +4,7 @@ import type {
   AuthResponse,
   CallResponse,
   CompanyResponse,
+  CreateReportRequest,
   DepartmentResponse,
   Invitation,
   InvitationDepartmentRole,
@@ -15,6 +16,8 @@ import type {
   PlanType,
   PlansResponse,
   RegisterRequest,
+  ReportResponse,
+  ReportsResponse,
   Subscription,
   TranscriptionResponse,
   UserResponse
@@ -69,7 +72,19 @@ const apiErrorMessages: Record<string, string> = {
   failed_to_decline_invitation: "Не удалось отклонить приглашение",
   failed_to_cancel_invitation: "Не удалось отменить приглашение",
   failed_to_convert_invitation: "Не удалось обработать данные приглашения",
-  export_access_denied: "Экспорт недоступен на текущем тарифе",
+  call_not_found: "Звонок не найден",
+  analysis_not_found: "Для этого звонка еще нет анализа.",
+  invalid_analysis_status: "Анализ еще не готов. Экспорт станет доступен после завершения анализа.",
+  export_access_denied: "Экспорт отчетов недоступен на текущем тарифе.",
+  unsupported_report_format: "Этот формат экспорта не поддерживается.",
+  report_not_found: "Отчет не найден.",
+  report_file_not_found: "Файл отчета не найден. Создайте экспорт заново.",
+  report_not_ready: "Отчет еще формируется.",
+  report_expired: "Срок хранения отчета истек. Создайте экспорт заново.",
+  failed_to_create_report: "Не удалось создать отчет",
+  failed_to_list_reports: "Не удалось загрузить отчеты",
+  failed_to_download_report: "Не удалось скачать отчет",
+  failed_to_delete_report: "Не удалось удалить отчет",
   team_analytics_access_denied: "Командная аналитика недоступна на текущем тарифе",
   api_access_denied: "API-доступ недоступен на текущем тарифе"
 };
@@ -204,6 +219,32 @@ async function request<T>(
   return payload as T;
 }
 
+async function requestBlob(path: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
+  const response = await fetch(`${apiRoot}${path}`, {
+    credentials: "include"
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("Content-Type") ?? "";
+    const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+    const code = getApiErrorCode(payload);
+    const message = getApiErrorMessage(payload, response.status, path, {});
+
+    if (response.status === 401 && options.retryOnUnauthorized !== false) {
+      try {
+        await refreshSessionRequest();
+        return requestBlob(path, { retryOnUnauthorized: false });
+      } catch {
+        // Keep the original unauthorized error for the caller.
+      }
+    }
+
+    throw new ApiError(response.status, message, code);
+  }
+
+  return response.blob();
+}
+
 export const api = {
   login(input: LoginRequest) {
     return request<AuthResponse>("/auth/login", {
@@ -251,6 +292,10 @@ export const api = {
     if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
 
     return request<CallResponse>("/calls", { method: "POST", body });
+  },
+
+  deleteCall(callId: string) {
+    return request<void>(`/calls/${encodeURIComponent(callId)}`, { method: "DELETE" });
   },
 
   listCompanies() {
@@ -339,6 +384,26 @@ export const api = {
 
   analyzeCall(callId: string) {
     return request<AnalysisResponse>(`/calls/${callId}/analysis`, { method: "POST" });
+  },
+
+  createReport(callId: string, input: CreateReportRequest) {
+    return request<ReportResponse>(`/calls/${encodeURIComponent(callId)}/reports`, {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
+  listReports(callId: string) {
+    return request<ReportsResponse>(`/calls/${encodeURIComponent(callId)}/reports`);
+  },
+
+  downloadReport(report: ReportResponse) {
+    const path = report.download_url ?? `/reports/${encodeURIComponent(report.id)}/download`;
+    return requestBlob(path.startsWith("/api/v1/") ? path.slice("/api/v1".length) : path);
+  },
+
+  deleteReport(reportId: string) {
+    return request<void>(`/reports/${encodeURIComponent(reportId)}`, { method: "DELETE" });
   },
 
   callEventsUrl(callId: string) {

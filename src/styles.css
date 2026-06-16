@@ -258,6 +258,14 @@ a {
   flex-wrap: wrap;
 }
 
+.panel-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .primary-button,
 .ghost-button,
 .text-button,
@@ -302,6 +310,11 @@ a {
   padding: 0 20px;
 }
 
+.danger-button {
+  color: #9b2f21;
+  border-color: rgba(185, 61, 40, 0.28);
+}
+
 .ghost-button.dark {
   color: #fffaf5;
   background: rgba(255, 250, 245, 0.08);
@@ -342,6 +355,10 @@ a {
 
 .icon-button.logout {
   color: #8c5c42;
+}
+
+.icon-button.danger-icon {
+  color: #9b2f21;
 }
 
 .icon-button.close {
@@ -1602,6 +1619,118 @@ select:focus {
   color: var(--muted);
 }
 
+.report-panel {
+  display: grid;
+  gap: 18px;
+  margin: 0 0 22px;
+  padding: 22px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(92, 63, 44, 0.1);
+  border-radius: var(--radius);
+}
+
+.report-panel .card-title {
+  align-items: start;
+  gap: 14px;
+  margin-bottom: 0;
+}
+
+.report-panel h3,
+.report-panel p {
+  margin: 0;
+}
+
+.report-panel p {
+  color: var(--muted);
+}
+
+.report-format-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.report-format-button {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 74px;
+  padding: 12px;
+  color: #261d17;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(92, 63, 44, 0.12);
+  border-radius: var(--radius);
+}
+
+.report-format-button svg {
+  color: var(--accent);
+}
+
+.report-format-button strong,
+.report-format-button small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-format-button small,
+.report-list-title span,
+.report-row small {
+  color: var(--muted);
+}
+
+.report-list {
+  display: grid;
+  gap: 10px;
+}
+
+.report-list-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(92, 63, 44, 0.1);
+  border-radius: var(--radius);
+}
+
+.report-row > svg {
+  color: var(--accent);
+}
+
+.report-row strong,
+.report-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-row .report-error {
+  color: #9b2f21;
+}
+
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.empty-state.compact {
+  min-height: 96px;
+}
+
 .step-icon {
   display: grid;
   place-items: center;
@@ -2812,6 +2941,7 @@ label small {
 
   .benefit-grid,
   .metrics-row,
+  .report-format-grid,
   .tariff-grid,
   .workflow-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -2925,6 +3055,7 @@ label small {
   .workflow-grid,
   .security-section,
   .metrics-row,
+  .report-format-grid,
   .tariff-grid,
   .form-grid.two {
     grid-template-columns: 1fr;
@@ -2958,6 +3089,7 @@ label small {
   .preview-selected-call,
   .preview-next-step,
     .next-step,
+    .report-row,
     .subscription-company,
     .company-meta-grid,
     .company-lock-note,
@@ -2966,6 +3098,10 @@ label small {
   .context-note,
   .instruction-preview {
     grid-template-columns: 1fr;
+  }
+
+  .report-actions {
+    justify-content: flex-start;
   }
 
   .preview-timeline {

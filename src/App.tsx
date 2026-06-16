@@ -8,7 +8,9 @@ import {
   CircleAlert,
   CircleUserRound,
   CloudUpload,
+  Download,
   FileAudio,
+  FileDown,
   FileText,
   Headphones,
   LockKeyhole,
@@ -22,6 +24,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Trash2,
   Upload,
   UsersRound,
   WandSparkles,
@@ -44,6 +47,8 @@ import type {
   InstructionScope,
   Plan,
   PlanCode,
+  ReportFormat,
+  ReportResponse,
   SessionState,
   Subscription,
   TranscriptionResponse,
@@ -314,6 +319,35 @@ function formatDuration(seconds: number) {
     .toString()
     .padStart(2, "0");
   return `${minutes}:${rest}`;
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 Б";
+
+  const units = ["Б", "КБ", "МБ", "ГБ"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  const formatted = value >= 10 || unitIndex === 0 ? Math.round(value).toString() : value.toFixed(1);
+  return `${formatted} ${units[unitIndex]}`;
+}
+
+function reportFormatLabel(format: ReportFormat) {
+  if (format === "pdf") return "PDF";
+  if (format === "docx") return "DOCX";
+  if (format === "md") return "Markdown";
+  return "Excel";
+}
+
+function reportStatusLabel(status: ReportResponse["status"]) {
+  if (status === "ready") return "Готов";
+  if (status === "failed") return "Ошибка";
+  return "Формируется";
 }
 
 function contextLabel(
@@ -689,6 +723,34 @@ function App() {
     setInstructions(loadedInstructions);
   }
 
+  async function deleteCall(callId: string) {
+    await api.deleteCall(callId);
+
+    setCalls((current) => {
+      const nextCalls = current.filter((call) => call.id !== callId);
+      setSelectedCallId((selectedId) =>
+        selectedId === callId ? nextCalls[0]?.id ?? "" : selectedId
+      );
+      return nextCalls;
+    });
+    setTranscriptions((current) => {
+      const { [callId]: _removed, ...rest } = current;
+      return rest;
+    });
+    setAnalyses((current) => {
+      const { [callId]: _removed, ...rest } = current;
+      return rest;
+    });
+    setCallTimelines((current) => {
+      const { [callId]: _removed, ...rest } = current;
+      return rest;
+    });
+    setLoadingCallDetails((current) => {
+      const { [callId]: _removed, ...rest } = current;
+      return rest;
+    });
+  }
+
   if (!authReady) {
     return (
       <main className="landing preflight-screen" aria-label="Проверка сессии">
@@ -752,6 +814,7 @@ function App() {
           analysis={selectedCall ? analyses[selectedCall.id] : undefined}
           onSelectCall={setSelectedCallId}
           onNavigate={navigate}
+          onDeleteCall={deleteCall}
           loading={loadingWorkspace}
           loadingDetails={selectedCallDetailsLoading}
         />
@@ -797,6 +860,7 @@ function App() {
               [callId]: analysis
             }))
           }
+          onDeleteCall={deleteCall}
           onNavigate={navigate}
         />
       )}
@@ -1347,7 +1411,8 @@ function CallsPage({
   loading,
   loadingDetails,
   onSelectCall,
-  onNavigate
+  onNavigate,
+  onDeleteCall
 }: {
   calls: CallResponse[];
   companies: CompanyResponse[];
@@ -1361,6 +1426,7 @@ function CallsPage({
   loadingDetails: boolean;
   onSelectCall: (callId: string) => void;
   onNavigate: (page: AppPage) => void;
+  onDeleteCall?: (callId: string) => Promise<void>;
 }) {
   const [scopeFilter, setScopeFilter] = useState<VisibilityScope | "all">("all");
   const filteredCalls = calls.filter((call) => scopeFilter === "all" || call.visibility_scope === scopeFilter);
@@ -1435,6 +1501,8 @@ function CallsPage({
           loading={loading}
           loadingDetails={loadingDetails}
           onNavigate={onNavigate}
+          onDeleteCall={onDeleteCall}
+          showReports
         />
       </section>
     </section>
@@ -1450,7 +1518,9 @@ function CallDetailPanel({
   timelineStatuses,
   loading,
   loadingDetails,
-  onNavigate
+  onNavigate,
+  onDeleteCall,
+  showReports = false
 }: {
   call?: CallResponse;
   companies: CompanyResponse[];
@@ -1461,13 +1531,18 @@ function CallDetailPanel({
   loading?: boolean;
   loadingDetails?: boolean;
   onNavigate: (page: AppPage) => void;
+  onDeleteCall?: (callId: string) => Promise<void>;
+  showReports?: boolean;
 }) {
   const [showFullTranscript, setShowFullTranscript] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setShowFullTranscript(false);
     setShowFullAnalysis(false);
+    setDeleteError("");
   }, [call?.id]);
 
   if (loading && !call) {
@@ -1488,15 +1563,41 @@ function CallDetailPanel({
     );
   }
 
+  async function deleteSelectedCall() {
+    if (!call || !onDeleteCall || deleting) return;
+
+    const confirmed = window.confirm(`Удалить звонок "${call.title}"? Это действие нельзя отменить.`);
+    if (!confirmed) return;
+
+    setDeleteError("");
+    setDeleting(true);
+    try {
+      await onDeleteCall(call.id);
+    } catch (deleteCallError) {
+      setDeleteError(deleteCallError instanceof Error ? deleteCallError.message : "Не удалось удалить звонок");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
       <div className="panel-heading large">
         <h2>Обзор звонка</h2>
-        <button className="primary-button small" onClick={() => onNavigate("upload")}>
-          <CloudUpload size={16} />
-          Загрузить звонок
-        </button>
+        <div className="panel-actions">
+          <button className="primary-button small" onClick={() => onNavigate("upload")}>
+            <CloudUpload size={16} />
+            Загрузить звонок
+          </button>
+          {onDeleteCall && (
+            <button className="ghost-button small danger-button" onClick={deleteSelectedCall} disabled={deleting}>
+              <Trash2 size={16} />
+              {deleting ? "Удаляю..." : "Удалить"}
+            </button>
+          )}
+        </div>
       </div>
+      {deleteError && <div className="form-error">{deleteError}</div>}
       <div className="selected-call-card">
         <div className="play-large">
           <Play size={22} fill="currentColor" />
@@ -1510,9 +1611,9 @@ function CallDetailPanel({
           </small>
         </div>
         <StatusChip status={call.status} />
-        <MoreVertical size={19} />
       </div>
       <StatusTimeline current={call.status} statuses={timelineStatuses} />
+      {showReports && <ReportExportPanel call={call} analysis={analysis} />}
       <div className="detail-grid">
         <InfoCard
           title="Расшифровка"
@@ -1832,6 +1933,7 @@ function AnalysisPage({
   loadingDetails,
   onSelectCall,
   onAnalysisReady,
+  onDeleteCall,
   onNavigate
 }: {
   session: SessionState;
@@ -1847,10 +1949,13 @@ function AnalysisPage({
   loadingDetails: boolean;
   onSelectCall: (callId: string) => void;
   onAnalysisReady: (callId: string, analysis: AnalysisResponse) => void;
+  onDeleteCall: (callId: string) => Promise<void>;
   onNavigate: (page: AppPage) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const analysis = selectedCall ? analyses[selectedCall.id] : undefined;
   const availableInstructions = selectedCall
@@ -1872,6 +1977,23 @@ function AnalysisPage({
       setError(runError instanceof Error ? runError.message : "Не удалось запустить анализ");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function deleteSelectedCall() {
+    if (!selectedCall || deleting) return;
+
+    const confirmed = window.confirm(`Удалить звонок "${selectedCall.title}"? Это действие нельзя отменить.`);
+    if (!confirmed) return;
+
+    setDeleteError("");
+    setDeleting(true);
+    try {
+      await onDeleteCall(selectedCall.id);
+    } catch (deleteCallError) {
+      setDeleteError(deleteCallError instanceof Error ? deleteCallError.message : "Не удалось удалить звонок");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -1913,15 +2035,23 @@ function AnalysisPage({
             <h1>{selectedCall?.title ?? "Выберите звонок"}</h1>
             <p>Сводка, темы, вопросы клиента, качество менеджера и следующие шаги по выбранному звонку.</p>
           </div>
-          <button className="primary-button" onClick={runAnalysis} disabled={!selectedCall || busy}>
-            <WandSparkles size={18} />
-            {busy ? "Анализирую..." : "Запустить анализ"}
-          </button>
+          <div className="panel-actions">
+            <button className="primary-button" onClick={runAnalysis} disabled={!selectedCall || busy}>
+              <WandSparkles size={18} />
+              {busy ? "Анализирую..." : "Запустить анализ"}
+            </button>
+            <button className="ghost-button danger-button" onClick={deleteSelectedCall} disabled={!selectedCall || deleting}>
+              <Trash2 size={18} />
+              {deleting ? "Удаляю..." : "Удалить"}
+            </button>
+          </div>
         </div>
         {error && <div className="form-error">{error}</div>}
+        {deleteError && <div className="form-error">{deleteError}</div>}
         {selectedCall && (
           <StatusTimeline current={selectedCall.status} statuses={selectedCallTimeline} />
         )}
+        {selectedCall && <ReportExportPanel call={selectedCall} analysis={analysis} />}
         <div className="analysis-content-grid">
           <div className="info-card">
             <div className="card-title">
@@ -1955,6 +2085,213 @@ function AnalysisPage({
           </div>
         </div>
       </section>
+    </section>
+  );
+}
+
+const reportFormats: Array<{ format: ReportFormat; label: string; description: string }> = [
+  { format: "pdf", label: "PDF", description: "Для отправки или печати" },
+  { format: "docx", label: "DOCX", description: "Редактируемый документ" },
+  { format: "md", label: "Markdown", description: "Для заметок и копирования" },
+  { format: "xlsx", label: "Excel", description: "Метаданные, анализ и транскрипция" }
+];
+
+function ReportExportPanel({
+  call,
+  analysis
+}: {
+  call: CallResponse;
+  analysis?: AnalysisResponse;
+}) {
+  const [reports, setReports] = useState<ReportResponse[]>([]);
+  const [loadingReports, setLoadingReports] = useState(false);
+  const [busyFormat, setBusyFormat] = useState<ReportFormat | null>(null);
+  const [busyReportId, setBusyReportId] = useState("");
+  const [error, setError] = useState("");
+  const [exportEnabled, setExportEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadReports() {
+      setLoadingReports(true);
+      setError("");
+      try {
+        const response = await api.listReports(call.id);
+        if (!cancelled) setReports(response.reports);
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить отчеты");
+        }
+      } finally {
+        if (!cancelled) setLoadingReports(false);
+      }
+    }
+
+    loadReports();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [call.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadExportAccess() {
+      setExportEnabled(null);
+      try {
+        const subscription =
+          call.visibility_scope === "personal"
+            ? await api.getSubscription()
+            : call.company_uuid
+              ? await api.getCompanySubscription(call.company_uuid)
+              : null;
+
+        if (!cancelled) setExportEnabled(subscription?.plan.export_enabled ?? false);
+      } catch {
+        if (!cancelled) setExportEnabled(false);
+      }
+    }
+
+    loadExportAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [call.company_uuid, call.id, call.visibility_scope]);
+
+  async function refreshReports() {
+    const response = await api.listReports(call.id);
+    setReports(response.reports);
+  }
+
+  async function createReport(format: ReportFormat) {
+    setError("");
+    setBusyFormat(format);
+    try {
+      const created = await api.createReport(call.id, { format });
+      await refreshReports();
+      if (created.status === "ready") {
+        await downloadReport(created);
+      }
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Не удалось создать отчет");
+    } finally {
+      setBusyFormat(null);
+    }
+  }
+
+  async function downloadReport(report: ReportResponse) {
+    setError("");
+    setBusyReportId(report.id);
+    try {
+      const blob = await api.downloadReport(report);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = report.file_name;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : "Не удалось скачать отчет");
+    } finally {
+      setBusyReportId("");
+    }
+  }
+
+  async function deleteReport(reportId: string) {
+    setError("");
+    setBusyReportId(reportId);
+    try {
+      await api.deleteReport(reportId);
+      setReports((current) => current.filter((report) => report.id !== reportId));
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Не удалось удалить отчет");
+    } finally {
+      setBusyReportId("");
+    }
+  }
+
+  const analysisReady = isAnalysisDone(analysis);
+  const exportBlocked = exportEnabled === false;
+
+  return (
+    <section className="report-panel">
+      <div className="card-title">
+        <div>
+          <h3>Экспорт отчета</h3>
+          <p>Файл строится из готового анализа звонка и доступной транскрипции.</p>
+        </div>
+        <span className={`status-chip ${analysisReady ? "ok" : "warn"}`}>
+          {analysisReady ? "Анализ готов" : "Нужен готовый анализ"}
+        </span>
+      </div>
+      <div className="report-format-grid">
+        {reportFormats.map((item) => (
+          <button
+            className="report-format-button"
+            key={item.format}
+            onClick={() => createReport(item.format)}
+            disabled={!analysisReady || exportBlocked || busyFormat !== null}
+          >
+            <FileDown size={18} />
+            <span>
+              <strong>{item.label}</strong>
+              <small>{busyFormat === item.format ? "Создаю отчет..." : item.description}</small>
+            </span>
+          </button>
+        ))}
+      </div>
+      {exportBlocked && (
+        <div className="form-error">Экспорт отчетов недоступен на текущем тарифе.</div>
+      )}
+      {error && <div className="form-error">{error}</div>}
+      <div className="report-list">
+        <div className="report-list-title">
+          <strong>Готовые и текущие отчеты</strong>
+          {loadingReports && <span>Загружаю...</span>}
+        </div>
+        {!loadingReports && reports.length === 0 && (
+          <div className="empty-state compact">Для этого звонка еще нет экспортированных отчетов.</div>
+        )}
+        {reports.map((report) => (
+          <div className="report-row" key={report.id}>
+            <FileText size={18} />
+            <div>
+              <strong>{report.file_name}</strong>
+              <small>
+                {reportFormatLabel(report.format)} · {formatBytes(report.size_bytes)} · создан{" "}
+                {formatDate(report.created_at)} · хранится до {formatDate(report.expires_at)}
+              </small>
+              {report.error_message && <small className="report-error">{report.error_message}</small>}
+            </div>
+            <span className={`status-chip ${report.status === "ready" ? "ok" : report.status === "failed" ? "bad" : "warn"}`}>
+              {reportStatusLabel(report.status)}
+            </span>
+            <div className="report-actions">
+              <button
+                className="icon-button"
+                aria-label="Скачать отчет"
+                onClick={() => downloadReport(report)}
+                disabled={report.status !== "ready" || busyReportId === report.id}
+              >
+                <Download size={17} />
+              </button>
+              <button
+                className="icon-button danger-icon"
+                aria-label="Удалить отчет"
+                onClick={() => deleteReport(report.id)}
+                disabled={busyReportId === report.id}
+              >
+                <Trash2 size={17} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }

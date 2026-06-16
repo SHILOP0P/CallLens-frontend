@@ -26,6 +26,8 @@ export type PlanCode =
   | "business_pro";
 export type AnalysisLevel = "basic" | "plus" | "pro" | "priority";
 export type SubscriptionStatus = "active" | "canceled" | "expired";
+export type ReportFormat = "pdf" | "docx" | "md" | "xlsx";
+export type ReportStatus = "pending" | "ready" | "failed";
 
 export interface UserResponse {
   id: string;
@@ -109,6 +111,31 @@ export interface AnalysisResponse {
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CreateReportRequest {
+  format: ReportFormat;
+}
+
+export interface ReportResponse {
+  id: string;
+  call_uuid: string;
+  analysis_uuid: string;
+  requested_by_user_uuid: string;
+  format: ReportFormat;
+  status: ReportStatus;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  error_message: string | null;
+  download_url: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+}
+
+export interface ReportsResponse {
+  reports: ReportResponse[];
 }
 
 export interface CompanyResponse {
