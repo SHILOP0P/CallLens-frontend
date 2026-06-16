@@ -14,6 +14,7 @@ export type InstructionScope = "personal" | "company" | "department";
 export type InvitationStatus = "pending" | "accepted" | "declined" | "canceled" | "expired";
 export type CompanyRole = "employee";
 export type DepartmentRole = "employee" | "department_leader";
+export type MembershipStatus = "active" | "suspended" | "left";
 export type InvitationCompanyRole = CompanyRole;
 export type InvitationDepartmentRole = DepartmentRole;
 export type PlanType = "personal" | "business";
@@ -34,7 +35,7 @@ export interface UserResponse {
   email: string;
   full_name: string;
   full_surname: string;
-  nick_name: string;
+  username: string;
   role: string;
   post?: string | null;
   created_at: string;
@@ -49,7 +50,7 @@ export interface RegisterRequest {
   password: string;
   full_name: string;
   full_surname: string;
-  nick_name: string;
+  username?: string;
   post?: string;
 }
 
@@ -150,6 +151,17 @@ export interface DepartmentResponse {
   id: string;
   company_uuid: string;
   name: string;
+  created_at: string;
+}
+
+export interface DepartmentMemberResponse {
+  department_uuid: string;
+  user_uuid: string;
+  full_name?: string;
+  full_surname?: string;
+  username?: string;
+  role: DepartmentRole;
+  status: MembershipStatus;
   created_at: string;
 }
 

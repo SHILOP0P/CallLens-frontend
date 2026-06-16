@@ -16,7 +16,7 @@ export const demoUser: UserResponse = {
   email: "demo@calllens.local",
   full_name: "Иван",
   full_surname: "Петров",
-  nick_name: "ivan",
+  username: "@ivan",
   role: "user",
   post: "Отдел продаж",
   created_at: "2026-06-12T12:00:00Z"

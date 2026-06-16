@@ -2787,10 +2787,85 @@ label small {
   overflow-wrap: anywhere;
 }
 
+.username-editor {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.username-editor .primary-button {
+  justify-self: start;
+}
+
 .company-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 22px;
+}
+
+.company-link {
+  justify-self: start;
+  text-decoration: none;
+}
+
+.company-workspace-layout,
+.department-workspace-layout {
+  display: grid;
+  gap: 24px;
+}
+
+.company-workspace-hero {
+  display: grid;
+  gap: 22px;
+  padding: 28px;
+}
+
+.company-workspace-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.company-workspace-title h1,
+.company-workspace-title p,
+.company-workspace-empty h1,
+.company-workspace-empty p {
+  margin: 0;
+}
+
+.company-workspace-title p,
+.company-workspace-empty p {
+  color: var(--muted);
+}
+
+.company-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(320px, 0.8fr);
+  align-items: start;
+  gap: 24px;
+}
+
+.company-workspace-empty {
+  display: grid;
+  justify-items: start;
+  gap: 16px;
+  padding: 28px;
+}
+
+.create-department-form {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.42);
+  border: 1px solid rgba(92, 63, 44, 0.1);
+  border-radius: var(--radius);
+}
+
+.create-department-form .primary-button {
+  justify-self: start;
 }
 
 .company-meta-grid {
@@ -2814,6 +2889,21 @@ label small {
   background: rgba(255, 255, 255, 0.58);
   border: 1px solid rgba(92, 63, 44, 0.1);
   border-radius: var(--radius);
+}
+
+.department-link {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.department-link:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.76);
+  border-color: rgba(255, 90, 47, 0.24);
 }
 
 .company-mini-card strong,
@@ -2875,6 +2965,33 @@ label small {
   margin: 4px 0 0;
   color: inherit;
   line-height: 1.45;
+}
+
+.department-member-list {
+  display: grid;
+  gap: 12px;
+}
+
+.department-member-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.45fr) minmax(190px, 0.45fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.58);
+  border: 1px solid rgba(92, 63, 44, 0.1);
+  border-radius: var(--radius);
+}
+
+.department-member-row strong,
+.department-member-row small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.department-member-row small {
+  margin-top: 4px;
+  color: var(--muted);
 }
 
 .subscription-panel {
@@ -3209,7 +3326,10 @@ html[data-theme="dark"] :is(
   .instruction-empty,
   .instruction-mini-list.empty,
   .instruction-mini-list > div,
+  .create-department-form,
   .company-card,
+  .company-mini-card,
+  .department-member-row,
   .department-card,
   .invitation-card,
   .instruction-row,
@@ -3408,6 +3528,7 @@ html[data-theme="dark"] .ghost-button {
   .invitations-layout,
   .overview-layout,
   .companies-hero,
+  .company-workspace-grid,
   .profile-grid,
   .company-grid {
     grid-template-columns: 1fr;
@@ -3585,6 +3706,7 @@ html[data-theme="dark"] .ghost-button {
     .subscription-company,
     .company-meta-grid,
     .company-lock-note,
+    .department-member-row,
     .file-picker,
   .file-dropzone,
   .context-note,

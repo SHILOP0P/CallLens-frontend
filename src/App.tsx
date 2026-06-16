@@ -1,4 +1,4 @@
-import {
+﻿import {
   Bell,
   BriefcaseBusiness,
   Building2,
@@ -42,10 +42,12 @@ import type {
   CallStatus,
   CallStatusEvent,
   CompanyResponse,
+  DepartmentMemberResponse,
   DepartmentResponse,
   Invitation,
   InvitationDepartmentRole,
   InstructionScope,
+  MembershipStatus,
   Plan,
   PlanCode,
   ReportFormat,
@@ -53,6 +55,7 @@ import type {
   SessionState,
   Subscription,
   TranscriptionResponse,
+  UserResponse,
   VisibilityScope
 } from "./types";
 
@@ -121,8 +124,19 @@ function readStoredSession(): SessionState | null {
 }
 
 function pageFromPath(pathname: string): AppPage {
+  if (pathname.startsWith("/app/companies/")) return "companies";
   const entry = Object.entries(pageRoutes).find(([, route]) => route === pathname);
   return (entry?.[0] as AppPage | undefined) ?? "calls";
+}
+
+function companyIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/app\/companies\/([^/]+)(?:\/departments\/[^/]+)?$/);
+  return match ? decodeURIComponent(match[1]) : "";
+}
+
+function departmentIdFromPath(pathname: string) {
+  const match = pathname.match(/^\/app\/companies\/[^/]+\/departments\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : "";
 }
 
 function persistSession(session: SessionState | null) {
@@ -409,6 +423,8 @@ function App() {
   const [showPublicLanding, setShowPublicLanding] = useState(() => !initialAuth.session);
   const [workspaceReady, setWorkspaceReady] = useState(initialAuth.ready);
   const [page, setPage] = useState<AppPage>(() => pageFromPath(window.location.pathname));
+  const [selectedCompanyId, setSelectedCompanyId] = useState(() => companyIdFromPath(window.location.pathname));
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState(() => departmentIdFromPath(window.location.pathname));
   const [calls, setCalls] = useState<CallResponse[]>([]);
   const [companies, setCompanies] = useState<CompanyResponse[]>([]);
   const [departments, setDepartments] = useState<DepartmentResponse[]>([]);
@@ -478,7 +494,11 @@ function App() {
   }, [authReady, session]);
 
   useEffect(() => {
-    const onPopState = () => setPage(pageFromPath(window.location.pathname));
+    const onPopState = () => {
+      setPage(pageFromPath(window.location.pathname));
+      setSelectedCompanyId(companyIdFromPath(window.location.pathname));
+      setSelectedDepartmentId(departmentIdFromPath(window.location.pathname));
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -669,7 +689,29 @@ function App() {
   function navigate(nextPage: AppPage) {
     setShowPublicLanding(false);
     setPage(nextPage);
+    setSelectedCompanyId("");
+    setSelectedDepartmentId("");
     window.history.pushState({}, "", pageRoutes[nextPage]);
+  }
+
+  function openCompany(companyId: string) {
+    setShowPublicLanding(false);
+    setPage("companies");
+    setSelectedCompanyId(companyId);
+    setSelectedDepartmentId("");
+    window.history.pushState({}, "", `/app/companies/${encodeURIComponent(companyId)}`);
+  }
+
+  function openDepartment(companyId: string, departmentId: string) {
+    setShowPublicLanding(false);
+    setPage("companies");
+    setSelectedCompanyId(companyId);
+    setSelectedDepartmentId(departmentId);
+    window.history.pushState(
+      {},
+      "",
+      `/app/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`
+    );
   }
 
   function applySession(nextSession: SessionState) {
@@ -678,6 +720,12 @@ function App() {
     setWorkspaceReady(true);
     setLoadingWorkspace(true);
     navigate("overview");
+  }
+
+  function updateSessionUser(user: UserResponse) {
+    const nextSession = { user };
+    persistSession(nextSession);
+    setSession(nextSession);
   }
 
   async function logout() {
@@ -860,7 +908,6 @@ function App() {
       session={session}
       theme={activeTheme}
       invitationCount={invitations.filter((invitation) => invitation.status === "pending").length}
-      companyCount={companies.length}
       onNavigate={navigate}
       onOpenLanding={openLanding}
       onToggleTheme={toggleTheme}
@@ -984,11 +1031,22 @@ function App() {
           session={session}
           companies={companies}
           departments={departments}
+          loading={loadingWorkspace}
+          selectedCompanyId={selectedCompanyId}
+          selectedDepartmentId={selectedDepartmentId}
           onCompanyCreated={async (company) => {
             setCompanies((current) => [company, ...current]);
             await refreshOrganizationContext().catch(() => undefined);
           }}
+          onDepartmentCreated={(department) => setDepartments((current) => [department, ...current])}
           onNavigate={navigate}
+          onOpenCompany={openCompany}
+          onOpenDepartment={openDepartment}
+          onInvitationCreated={(invitation) =>
+            setInvitations((current) =>
+              invitation.invited_user_uuid === session.user.id ? [invitation, ...current] : current
+            )
+          }
         />
       )}
 
@@ -996,6 +1054,7 @@ function App() {
         <ProfilePage
           session={session}
           companies={companies}
+          onUserUpdated={updateSessionUser}
           onCompanyCreated={async (company) => {
             setCompanies((current) => [company, ...current]);
             await refreshOrganizationContext().catch(() => undefined);
@@ -1222,7 +1281,7 @@ function AuthDialog({
   const [password, setPassword] = useState("Qwerty123!");
   const [firstName, setFirstName] = useState("Иван");
   const [lastName, setLastName] = useState("Петров");
-  const [nickName, setNickName] = useState("ivan");
+  const [username, setUsername] = useState("");
   const [post, setPost] = useState("Отдел продаж");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1241,7 +1300,7 @@ function AuthDialog({
               password,
               full_name: firstName,
               full_surname: lastName,
-              nick_name: nickName,
+              ...(username.trim() ? { username: username.trim() } : {}),
               post
             });
 
@@ -1281,8 +1340,12 @@ function AuthDialog({
                 <input value={lastName} onChange={(event) => setLastName(event.target.value)} />
               </label>
               <label>
-                Ник
-                <input value={nickName} onChange={(event) => setNickName(event.target.value)} />
+                Username
+                <input
+                  value={username}
+                  onChange={(event) => setUsername(event.target.value)}
+                  placeholder="@muxa"
+                />
               </label>
               <label>
                 Должность
@@ -1327,7 +1390,6 @@ function AuthenticatedShell({
   session,
   theme,
   invitationCount,
-  companyCount,
   children,
   onNavigate,
   onOpenLanding,
@@ -1338,7 +1400,6 @@ function AuthenticatedShell({
   session: SessionState;
   theme: AppTheme;
   invitationCount: number;
-  companyCount: number;
   children: React.ReactNode;
   onNavigate: (page: AppPage) => void;
   onOpenLanding: () => void;
@@ -1389,12 +1450,7 @@ function AuthenticatedShell({
       <div className="workspace-frame">
         <aside className="app-sidebar" aria-label="Рабочие разделы">
           {sidebarItems.map((item) => {
-            const badge =
-              item.page === "invitations" && invitationCount > 0
-                ? invitationCount
-                : item.page === "companies" && companyCount > 0
-                  ? companyCount
-                  : 0;
+            const badge = item.page === "invitations" && invitationCount > 0 ? invitationCount : 0;
 
             return (
               <button
@@ -2785,8 +2841,8 @@ function InvitationCard({
         </div>
         <h2>{isDepartmentInvitation ? departmentName ?? "Отдел" : companyName ?? "Компания"}</h2>
         <p>
-          {companyName ?? invitation.company_uuid}
-          {isDepartmentInvitation && ` · ${departmentName ?? invitation.department_uuid}`}
+          {companyName ?? "Компания недоступна"}
+          {isDepartmentInvitation && ` · ${departmentName ?? "Отдел недоступен"}`}
         </p>
         <small>Срок действия: {formatDate(invitation.expires_at)}</small>
         {error && <div className="form-error">{error}</div>}
@@ -2819,7 +2875,7 @@ function InvitationCreatePanel({
   const [mode, setMode] = useState<"company" | "department">("company");
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [departmentId, setDepartmentId] = useState("");
-  const [userUuid, setUserUuid] = useState("");
+  const [username, setUsername] = useState("");
   const [departmentRole, setDepartmentRole] = useState<InvitationDepartmentRole>("employee");
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
@@ -2859,8 +2915,8 @@ function InvitationCreatePanel({
       return;
     }
 
-    if (!userUuid.trim()) {
-      setError("Введите user uuid.");
+    if (!username.trim()) {
+      setError("Введите username.");
       return;
     }
 
@@ -2868,11 +2924,11 @@ function InvitationCreatePanel({
     try {
       const created =
         mode === "company"
-          ? await api.createCompanyInvitation(companyId, userUuid.trim())
-          : await api.createDepartmentInvitation(companyId, departmentId, userUuid.trim(), departmentRole);
+          ? await api.createCompanyInvitation(companyId, username.trim())
+          : await api.createDepartmentInvitation(companyId, departmentId, username.trim(), departmentRole);
       onInvitationCreated(created);
       setSuccess("Приглашение отправлено.");
-      setUserUuid("");
+      setUsername("");
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Не удалось отправить приглашение");
     } finally {
@@ -2934,8 +2990,12 @@ function InvitationCreatePanel({
         </>
       )}
       <label>
-        User UUID
-        <input value={userUuid} onChange={(event) => setUserUuid(event.target.value)} />
+        Username
+        <input
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder="@muxa"
+        />
       </label>
       {companies.length === 0 && <div className="instruction-empty standalone">Компаний пока нет.</div>}
       {error && <div className="form-error">{error}</div>}
@@ -2951,11 +3011,13 @@ function InvitationCreatePanel({
 function ProfilePage({
   session,
   companies,
+  onUserUpdated,
   onCompanyCreated,
   onNavigate
 }: {
   session: SessionState;
   companies: CompanyResponse[];
+  onUserUpdated: (user: UserResponse) => void;
   onCompanyCreated: (company: CompanyResponse) => void | Promise<void>;
   onNavigate: (page: AppPage) => void;
 }) {
@@ -2981,9 +3043,10 @@ function ProfilePage({
             <span className="status-chip ok">Активен</span>
           </div>
           <ProfileField label="Email" value={session.user.email} />
-          <ProfileField label="Ник" value={session.user.nick_name} />
+          <ProfileField label="Username" value={session.user.username} />
           <ProfileField label="Роль" value={session.user.role} />
           <ProfileField label="Дата регистрации" value={formatDate(session.user.created_at)} />
+          <UsernameEditor user={session.user} onUserUpdated={onUserUpdated} />
         </section>
 
         <section className="profile-card glass">
@@ -3013,19 +3076,129 @@ function ProfilePage({
   );
 }
 
+function UsernameEditor({
+  user,
+  onUserUpdated
+}: {
+  user: UserResponse;
+  onUserUpdated: (user: UserResponse) => void;
+}) {
+  const [username, setUsername] = useState(user.username);
+  const [success, setSuccess] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setUsername(user.username);
+  }, [user.username]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSuccess("");
+    setError("");
+
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      setError("Введите username.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const updatedUser = await api.updateUsername(trimmedUsername);
+      onUserUpdated(updatedUser);
+      setSuccess("Username обновлен.");
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Не удалось обновить username");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="username-editor" onSubmit={submit}>
+      <label>
+        Изменить username
+        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="@muxa" />
+      </label>
+      {error && <div className="form-error">{error}</div>}
+      {success && <div className="form-success">{success}</div>}
+      <button className="primary-button small" type="submit" disabled={busy}>
+        <Pencil size={16} />
+        {busy ? "Сохраняю..." : "Сохранить username"}
+      </button>
+    </form>
+  );
+}
+
 function CompaniesPage({
   session,
   companies,
   departments,
+  loading,
+  selectedCompanyId,
+  selectedDepartmentId,
   onCompanyCreated,
-  onNavigate
+  onDepartmentCreated,
+  onNavigate,
+  onOpenCompany,
+  onOpenDepartment,
+  onInvitationCreated
 }: {
   session: SessionState;
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  loading: boolean;
+  selectedCompanyId: string;
+  selectedDepartmentId: string;
   onCompanyCreated: (company: CompanyResponse) => void | Promise<void>;
+  onDepartmentCreated: (department: DepartmentResponse) => void;
   onNavigate: (page: AppPage) => void;
+  onOpenCompany: (companyId: string) => void;
+  onOpenDepartment: (companyId: string, departmentId: string) => void;
+  onInvitationCreated: (invitation: Invitation) => void;
 }) {
+  const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
+  const selectedDepartment = departments.find(
+    (department) => department.company_uuid === selectedCompanyId && department.id === selectedDepartmentId
+  );
+
+  if (selectedCompanyId) {
+    if (loading && (!selectedCompany || (selectedDepartmentId && !selectedDepartment))) {
+      return (
+        <section className="companies-layout">
+          <div className="company-workspace-empty glass">
+            <CallListSkeleton count={3} compact />
+          </div>
+        </section>
+      );
+    }
+
+    if (selectedDepartmentId) {
+      return (
+        <DepartmentWorkspace
+          company={selectedCompany}
+          department={selectedDepartment}
+          session={session}
+          onNavigate={onNavigate}
+          onOpenCompany={onOpenCompany}
+        />
+      );
+    }
+
+    return (
+      <CompanyWorkspace
+        company={selectedCompany}
+        departments={departments.filter((department) => department.company_uuid === selectedCompanyId)}
+        session={session}
+        onNavigate={onNavigate}
+        onDepartmentCreated={onDepartmentCreated}
+        onOpenDepartment={onOpenDepartment}
+        onInvitationCreated={onInvitationCreated}
+      />
+    );
+  }
+
   return (
     <section className="companies-layout">
       <div className="companies-hero glass">
@@ -3061,11 +3234,21 @@ function CompaniesPage({
                   </span>
                 </div>
                 <div className="company-meta-grid">
-                  <ProfileField label="UUID" value={company.id} />
                   <ProfileField label="Создана" value={formatDate(company.created_at)} />
                   <ProfileField label="Лимит участников" value={company.member_limit.toString()} />
                   <ProfileField label="Отделов" value={companyDepartments.length.toString()} />
                 </div>
+                <a
+                  className="primary-button small company-link"
+                  href={`/app/companies/${encodeURIComponent(company.id)}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onOpenCompany(company.id);
+                  }}
+                >
+                  Открыть компанию
+                  <ChevronRight size={16} />
+                </a>
                 <CompanySubscriptionStatus company={company} isManager={isManager} onNavigate={onNavigate} />
               </article>
             );
@@ -3073,6 +3256,383 @@ function CompaniesPage({
         </div>
       )}
     </section>
+  );
+}
+
+function CompanyWorkspace({
+  company,
+  departments,
+  session,
+  onNavigate,
+  onDepartmentCreated,
+  onOpenDepartment,
+  onInvitationCreated
+}: {
+  company?: CompanyResponse;
+  departments: DepartmentResponse[];
+  session: SessionState;
+  onNavigate: (page: AppPage) => void;
+  onDepartmentCreated: (department: DepartmentResponse) => void;
+  onOpenDepartment: (companyId: string, departmentId: string) => void;
+  onInvitationCreated: (invitation: Invitation) => void;
+}) {
+  if (!company) {
+    return (
+      <section className="companies-layout">
+        <div className="company-workspace-empty glass">
+          <Building2 size={34} />
+          <div>
+            <h1>Компания не найдена</h1>
+            <p>Проверьте ссылку или вернитесь к списку компаний.</p>
+          </div>
+          <button className="ghost-button" type="button" onClick={() => onNavigate("companies")}>
+            К списку компаний
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  const isManager = company.manager_user_uuid === session.user.id;
+
+  return (
+    <section className="company-workspace-layout">
+      <div className="company-workspace-hero glass">
+        <button className="text-button" type="button" onClick={() => onNavigate("companies")}>
+          Назад к компаниям
+        </button>
+        <div className="company-workspace-title">
+          <div>
+            <h1>{company.name}</h1>
+            <p>{isManager ? "Рабочая область менеджера компании" : "Рабочая область участника компании"}</p>
+          </div>
+          <span className={`status-chip ${isManager ? "ok" : "warn"}`}>
+            {isManager ? "Менеджер" : "Участник"}
+          </span>
+        </div>
+        <div className="company-meta-grid">
+          <ProfileField label="Создана" value={formatDate(company.created_at)} />
+          <ProfileField label="Лимит участников" value={company.member_limit.toString()} />
+          <ProfileField label="Отделов" value={departments.length.toString()} />
+        </div>
+        <CompanySubscriptionStatus company={company} isManager={isManager} onNavigate={onNavigate} />
+      </div>
+
+      <div className="company-workspace-grid">
+        <section className="company-card glass">
+          <div className="panel-heading">
+            <div>
+              <h2>Отделы</h2>
+              <p>Откройте отдел, чтобы посмотреть работников и роли.</p>
+            </div>
+          </div>
+          {isManager && <CreateDepartmentForm companyId={company.id} onCreated={onDepartmentCreated} />}
+          {departments.length === 0 ? (
+            <div className="instruction-empty standalone">Отделов пока нет.</div>
+          ) : (
+            <div className="company-mini-list">
+              {departments.map((department) => (
+                <a
+                  className="company-mini-card department-link"
+                  href={`/app/companies/${encodeURIComponent(company.id)}/departments/${encodeURIComponent(department.id)}`}
+                  key={department.id}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    onOpenDepartment(company.id, department.id);
+                  }}
+                >
+                  <div>
+                    <strong>{department.name}</strong>
+                    <small>Создан: {formatDate(department.created_at)}</small>
+                  </div>
+                  <span className="status-chip ok">
+                    Открыть
+                    <ChevronRight size={14} />
+                  </span>
+                </a>
+              ))}
+            </div>
+          )}
+        </section>
+
+        {isManager ? (
+          <InvitationCreatePanel
+            companies={[company]}
+            departments={departments}
+            session={session}
+            onInvitationCreated={onInvitationCreated}
+          />
+        ) : (
+          <section className="company-card glass">
+            <div className="company-lock-note">
+              <LockKeyhole size={18} />
+              <p>Приглашать пользователей и назначать роли может менеджер компании.</p>
+            </div>
+          </section>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DepartmentWorkspace({
+  company,
+  department,
+  session,
+  onNavigate,
+  onOpenCompany
+}: {
+  company?: CompanyResponse;
+  department?: DepartmentResponse;
+  session: SessionState;
+  onNavigate: (page: AppPage) => void;
+  onOpenCompany: (companyId: string) => void;
+}) {
+  const [members, setMembers] = useState<DepartmentMemberResponse[]>([]);
+  const [loading, setLoading] = useState(Boolean(company && department));
+  const [error, setError] = useState("");
+  const [busyMemberId, setBusyMemberId] = useState("");
+  const isManager = company?.manager_user_uuid === session.user.id;
+
+  useEffect(() => {
+    if (!company || !department) return;
+
+    let cancelled = false;
+    const companyId = company.id;
+    const departmentId = department.id;
+
+    async function loadMembers() {
+      try {
+        setLoading(true);
+        setError("");
+        const response = await api.listDepartmentMembers(companyId, departmentId);
+        if (!cancelled) setMembers(response);
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить работников отдела");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadMembers();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [company?.id, department?.id]);
+
+  async function updateMemberRole(member: DepartmentMemberResponse, role: InvitationDepartmentRole) {
+    if (!company || !department) return;
+    setBusyMemberId(member.user_uuid);
+    setError("");
+    try {
+      const updated = await api.updateDepartmentMemberRole(company.id, department.id, member.user_uuid, role);
+      setMembers((current) => current.map((item) => (item.user_uuid === updated.user_uuid ? updated : item)));
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Не удалось обновить роль работника");
+    } finally {
+      setBusyMemberId("");
+    }
+  }
+
+  async function updateMemberStatus(member: DepartmentMemberResponse, status: MembershipStatus) {
+    if (!company || !department) return;
+    setBusyMemberId(member.user_uuid);
+    setError("");
+    try {
+      const updated = await api.updateDepartmentMemberStatus(company.id, department.id, member.user_uuid, status);
+      setMembers((current) => current.map((item) => (item.user_uuid === updated.user_uuid ? updated : item)));
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Не удалось обновить статус работника");
+    } finally {
+      setBusyMemberId("");
+    }
+  }
+
+  if (!company || !department) {
+    return (
+      <section className="companies-layout">
+        <div className="company-workspace-empty glass">
+          <UsersRound size={34} />
+          <div>
+            <h1>Отдел не найден</h1>
+            <p>Проверьте ссылку или вернитесь к списку компаний.</p>
+          </div>
+          <button className="ghost-button" type="button" onClick={() => onNavigate("companies")}>
+            К списку компаний
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="department-workspace-layout">
+      <div className="company-workspace-hero glass">
+        <div className="panel-actions">
+          <button className="text-button" type="button" onClick={() => onOpenCompany(company.id)}>
+            Назад к компании
+          </button>
+          <button className="ghost-button small" type="button" onClick={() => onNavigate("companies")}>
+            Все компании
+          </button>
+        </div>
+        <div className="company-workspace-title">
+          <div>
+            <h1>{department.name}</h1>
+            <p>{company.name} · работники отдела и назначенные роли.</p>
+          </div>
+          <span className={`status-chip ${isManager ? "ok" : "warn"}`}>
+            {isManager ? "Менеджер" : "Просмотр"}
+          </span>
+        </div>
+        <div className="company-meta-grid">
+          <ProfileField label="Создан" value={formatDate(department.created_at)} />
+          <ProfileField label="Работников" value={members.length.toString()} />
+        </div>
+      </div>
+
+      <section className="company-card glass">
+        <div className="panel-heading">
+          <div>
+            <h2>Работники отдела</h2>
+            <p>Имена показываются, когда backend передаёт профиль работника.</p>
+          </div>
+        </div>
+        {error && <div className="form-error">{error}</div>}
+        {loading ? (
+          <CallListSkeleton count={3} compact />
+        ) : members.length === 0 ? (
+          <div className="instruction-empty standalone">В отделе пока нет работников.</div>
+        ) : (
+          <div className="department-member-list">
+            {members.map((member) => (
+              <DepartmentMemberRow
+                key={member.user_uuid}
+                member={member}
+                currentUser={session.user}
+                manager={isManager}
+                busy={busyMemberId === member.user_uuid}
+                onRoleChange={(role) => updateMemberRole(member, role)}
+                onStatusChange={(status) => updateMemberStatus(member, status)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function DepartmentMemberRow({
+  member,
+  currentUser,
+  manager,
+  busy,
+  onRoleChange,
+  onStatusChange
+}: {
+  member: DepartmentMemberResponse;
+  currentUser: UserResponse;
+  manager: boolean;
+  busy: boolean;
+  onRoleChange: (role: InvitationDepartmentRole) => void;
+  onStatusChange: (status: MembershipStatus) => void;
+}) {
+  const fullName =
+    member.user_uuid === currentUser.id
+      ? `${currentUser.full_surname} ${currentUser.full_name}`.trim()
+      : `${member.full_surname ?? ""} ${member.full_name ?? ""}`.trim() || "Пользователь";
+  const username = member.user_uuid === currentUser.id ? currentUser.username : member.username ?? "username не передан";
+
+  return (
+    <article className="department-member-row">
+      <div>
+        <strong>{fullName}</strong>
+        <small>{username} · добавлен: {formatDate(member.created_at)}</small>
+      </div>
+      {manager ? (
+        <>
+          <SelectControl
+            value={member.role}
+            onChange={(event) => onRoleChange(event.target.value as InvitationDepartmentRole)}
+            disabled={busy}
+          >
+            <option value="employee">Сотрудник</option>
+            <option value="department_leader">Руководитель отдела</option>
+          </SelectControl>
+          <SelectControl
+            value={member.status}
+            onChange={(event) => onStatusChange(event.target.value as MembershipStatus)}
+            disabled={busy}
+          >
+            <option value="active">Активен</option>
+            <option value="suspended">Приостановлен</option>
+            <option value="left">Покинул отдел</option>
+          </SelectControl>
+        </>
+      ) : (
+        <>
+          <span className="status-chip ok">{departmentRoleText(member.role)}</span>
+          <span className={`status-chip ${member.status === "active" ? "ok" : "warn"}`}>
+            {membershipStatusText(member.status)}
+          </span>
+        </>
+      )}
+    </article>
+  );
+}
+
+function CreateDepartmentForm({
+  companyId,
+  onCreated
+}: {
+  companyId: string;
+  onCreated: (department: DepartmentResponse) => void;
+}) {
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!name.trim()) {
+      setError("Введите название отдела.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const department = await api.createDepartment(companyId, name.trim());
+      onCreated(department);
+      setName("");
+      setSuccess("Отдел создан.");
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Не удалось создать отдел");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="create-department-form" onSubmit={submit}>
+      <label>
+        Название отдела
+        <input value={name} onChange={(event) => setName(event.target.value)} />
+      </label>
+      {error && <div className="form-error">{error}</div>}
+      {success && <div className="form-success">{success}</div>}
+      <button className="primary-button small" type="submit" disabled={busy}>
+        <Plus size={16} />
+        {busy ? "Создаю..." : "Создать отдел"}
+      </button>
+    </form>
   );
 }
 
@@ -3235,7 +3795,7 @@ function CompanyMiniCard({ company, manager }: { company: CompanyResponse; manag
     <div className="company-mini-card">
       <div>
         <strong>{company.name}</strong>
-        <small>{company.id}</small>
+        <small>Создана: {formatDate(company.created_at)}</small>
       </div>
       <span className={`status-chip ${manager ? "ok" : "warn"}`}>
         {manager ? "Менеджер" : "Участник"}
@@ -3532,7 +4092,7 @@ function CompanySubscriptionPanel({
             <div className="subscription-company" key={company.id}>
               <div>
                 <strong>{company.name}</strong>
-                <small>{company.id}</small>
+                <small>{subscription?.plan.name ?? "Бизнес-тариф не выбран"}</small>
               </div>
               <SelectControl
                 value={selectedPlan}
@@ -4559,6 +5119,16 @@ function instructionContextLabel(
 function invitationRoleLabel(invitation: Invitation) {
   if (invitation.department_role === "department_leader") return "Руководитель отдела";
   return "Сотрудник";
+}
+
+function departmentRoleText(role: InvitationDepartmentRole) {
+  return role === "department_leader" ? "Руководитель отдела" : "Сотрудник";
+}
+
+function membershipStatusText(status: MembershipStatus) {
+  if (status === "active") return "Активен";
+  if (status === "suspended") return "Приостановлен";
+  return "Покинул отдел";
 }
 
 function transcriptionSegments(transcription?: TranscriptionResponse) {

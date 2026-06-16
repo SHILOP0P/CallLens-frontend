@@ -4,6 +4,7 @@ import type {
   AuthResponse,
   CallResponse,
   CompanyResponse,
+  DepartmentMemberResponse,
   CreateReportRequest,
   DepartmentResponse,
   Invitation,
@@ -58,9 +59,16 @@ const apiErrorMessages: Record<string, string> = {
   forbidden: "Недостаточно прав",
   unauthorized: "Необходимо войти в аккаунт",
   invalid_request_body: "Некорректное тело запроса",
+  invalid_user_input: "Некорректный username",
+  user_already_exists: "Этот username уже занят",
   company_not_found: "Компания не найдена",
   department_not_found: "Отдел не найден",
   user_not_found: "Пользователь не найден",
+  invalid_department_input: "Некорректные данные отдела",
+  failed_to_create_department: "Не удалось создать отдел",
+  failed_to_list_department_members: "Не удалось загрузить работников отдела",
+  failed_to_update_department_member: "Не удалось обновить работника отдела",
+  failed_to_convert_department: "Не удалось обработать данные отдела",
   invitation_not_found: "Приглашение не найдено",
   invalid_invitation_input: "Некорректные данные приглашения",
   invitation_already_exists: "Такое приглашение уже ожидает ответа",
@@ -273,6 +281,18 @@ export const api = {
     return refreshSessionRequest();
   },
 
+  updateUsername(username: string) {
+    return request<UserResponse>("/auth/me/username", {
+      method: "PATCH",
+      body: JSON.stringify({ username })
+    });
+  },
+
+  lookupUserByUsername(username: string) {
+    const query = new URLSearchParams({ username }).toString();
+    return request<UserResponse>(`/users/lookup?${query}`);
+  },
+
   listCalls() {
     return request<CallResponse[]>("/calls");
   },
@@ -318,27 +338,70 @@ export const api = {
   },
 
   listDepartments(companyId: string) {
-    return request<DepartmentResponse[]>(`/companies/${companyId}/departments`);
+    return request<DepartmentResponse[]>(`/companies/${encodeURIComponent(companyId)}/departments`);
   },
 
-  createCompanyInvitation(companyId: string, userUuid: string) {
+  createDepartment(companyId: string, name: string) {
+    return request<DepartmentResponse>(`/companies/${encodeURIComponent(companyId)}/departments`, {
+      method: "POST",
+      body: JSON.stringify({ name })
+    });
+  },
+
+  listDepartmentMembers(companyId: string, departmentId: string) {
+    return request<DepartmentMemberResponse[]>(
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/members`
+    );
+  },
+
+  updateDepartmentMemberRole(
+    companyId: string,
+    departmentId: string,
+    userId: string,
+    role: InvitationDepartmentRole
+  ) {
+    return request<DepartmentMemberResponse>(
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/members/${encodeURIComponent(userId)}/role`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ role })
+      }
+    );
+  },
+
+  updateDepartmentMemberStatus(
+    companyId: string,
+    departmentId: string,
+    userId: string,
+    status: "active" | "suspended" | "left"
+  ) {
+    return request<DepartmentMemberResponse>(
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/members/${encodeURIComponent(userId)}/status`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status })
+      }
+    );
+  },
+
+  createCompanyInvitation(companyId: string, username: string) {
     return request<Invitation>(`/companies/${encodeURIComponent(companyId)}/invitations`, {
       method: "POST",
-      body: JSON.stringify({ user_uuid: userUuid, role: "employee" })
+      body: JSON.stringify({ username, role: "employee" })
     });
   },
 
   createDepartmentInvitation(
     companyId: string,
     departmentId: string,
-    userUuid: string,
+    username: string,
     role: InvitationDepartmentRole
   ) {
     return request<Invitation>(
       `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/invitations`,
       {
         method: "POST",
-        body: JSON.stringify({ user_uuid: userUuid, role })
+        body: JSON.stringify({ username, role })
       }
     );
   },
