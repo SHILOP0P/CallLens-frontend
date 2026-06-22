@@ -1586,7 +1586,23 @@ function CallsPage({
   onDeleteCall?: (callId: string) => Promise<void>;
 }) {
   const [scopeFilter, setScopeFilter] = useState<VisibilityScope | "all">("all");
-  const filteredCalls = calls.filter((call) => scopeFilter === "all" || call.visibility_scope === scopeFilter);
+  const effectiveScopeFilter =
+    companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
+      ? "all"
+      : scopeFilter;
+  const filteredCalls = calls.filter(
+    (call) => effectiveScopeFilter === "all" || call.visibility_scope === effectiveScopeFilter
+  );
+  const scopeOptions: Array<[VisibilityScope | "all", string]> = [
+    ["all", "Все"],
+    ["personal", "Личные"],
+    ...(companies.length > 0
+      ? ([
+          ["company", "Компания"],
+          ["department", "Отдел"]
+        ] as Array<[VisibilityScope, string]>)
+      : [])
+  ];
 
   return (
     <section className="calls-layout">
@@ -1599,15 +1615,10 @@ function CallsPage({
           </button>
         </div>
         <div className="segmented compact">
-          {[
-            ["all", "Все"],
-            ["personal", "Личные"],
-            ["company", "Компания"],
-            ["department", "Отдел"]
-          ].map(([value, label]) => (
+          {scopeOptions.map(([value, label]) => (
             <button
               key={value}
-              className={scopeFilter === value ? "active" : ""}
+              className={effectiveScopeFilter === value ? "active" : ""}
               onClick={() => setScopeFilter(value as VisibilityScope | "all")}
             >
               {label}
@@ -1641,7 +1652,7 @@ function CallsPage({
             <div className="empty-state">Звонков в этом контексте пока нет.</div>
           )}
         </div>
-        <button className="ghost-button wide">
+        <button className="ghost-button wide calls-show-all">
           Показать все звонки
           <ChevronRight size={16} />
         </button>
@@ -1777,6 +1788,8 @@ function CallDetailPanel({
           status={transcription?.status === "transcribed" ? "Готово" : "Ожидает"}
           action={showFullTranscript ? "Свернуть расшифровку" : "Открыть полную расшифровку"}
           onAction={() => setShowFullTranscript((current) => !current)}
+          actionVariant="analysis"
+          expanded={showFullTranscript}
         >
           <TranscriptPreview transcription={transcription} expanded={showFullTranscript} loading={loadingDetails} />
         </InfoCard>
@@ -1785,6 +1798,8 @@ function CallDetailPanel({
           status={isAnalysisDone(analysis) ? "Анализ готов" : "Ожидает"}
           action={showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
           onAction={() => setShowFullAnalysis((current) => !current)}
+          actionVariant="analysis"
+          expanded={showFullAnalysis}
         >
           <AnalysisPreview analysis={analysis} expanded={showFullAnalysis} loading={loadingDetails} />
         </InfoCard>
@@ -2222,9 +2237,16 @@ function AnalysisPage({
                 <div className={`analysis-full-text expandable-content ${showFullAnalysis ? "expanded" : "collapsed"}`}>
                   <AnalysisStructuredView analysis={analysis} />
                 </div>
-                <button className="text-link" type="button" onClick={() => setShowFullAnalysis((current) => !current)}>
-                  {showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
-                  <ChevronRight size={16} />
+                <button
+                  className={`analysis-toggle-button ${showFullAnalysis ? "expanded" : ""}`}
+                  type="button"
+                  aria-expanded={showFullAnalysis}
+                  onClick={() => setShowFullAnalysis((current) => !current)}
+                >
+                  <span>{showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}</span>
+                  <span className="analysis-toggle-icon">
+                    <ChevronRight size={18} />
+                  </span>
                 </button>
               </div>
             )}
@@ -4626,13 +4648,17 @@ function InfoCard({
   status,
   action,
   children,
-  onAction
+  onAction,
+  actionVariant = "link",
+  expanded = false
 }: {
   title: string;
   status: string;
   action: string;
   children: React.ReactNode;
   onAction?: () => void;
+  actionVariant?: "link" | "analysis";
+  expanded?: boolean;
 }) {
   return (
     <div className="info-card">
@@ -4641,10 +4667,24 @@ function InfoCard({
         <span className="status-chip ok">{status}</span>
       </div>
       {children}
-      <button className="text-link" type="button" onClick={onAction}>
-        {action}
-        <ChevronRight size={16} />
-      </button>
+      {actionVariant === "analysis" ? (
+        <button
+          className={`analysis-toggle-button ${expanded ? "expanded" : ""}`}
+          type="button"
+          aria-expanded={expanded}
+          onClick={onAction}
+        >
+          <span>{action}</span>
+          <span className="analysis-toggle-icon">
+            <ChevronRight size={18} />
+          </span>
+        </button>
+      ) : (
+        <button className="text-link" type="button" onClick={onAction}>
+          {action}
+          <ChevronRight size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -4714,7 +4754,7 @@ function AnalysisPreview({
   }
 
   return (
-    <div className={`analysis-preview expandable-content ${expanded ? "expanded" : "collapsed"}`}>
+    <div className={`analysis-preview analysis-full-text expandable-content ${expanded ? "expanded" : "collapsed"}`}>
       <AnalysisStructuredView analysis={analysis} />
     </div>
   );
