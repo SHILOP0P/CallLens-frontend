@@ -1,0 +1,235 @@
+@media (max-width: 1180px) {
+  .landing-header,
+  .app-header {
+    padding: 0 24px;
+  }
+
+  .landing-header nav,
+  .app-header nav {
+    gap: 20px;
+  }
+
+  .landing-hero,
+  .calls-layout,
+  .upload-layout,
+  .analysis-layout,
+  .instructions-layout,
+  .invitations-layout,
+  .overview-layout,
+  .companies-hero,
+  .company-workspace-grid,
+  .profile-grid,
+  .company-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-copy,
+  .product-preview,
+  .overview-preview {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .hero-copy {
+    justify-self: end;
+  }
+
+  .calls-sidebar,
+  .invitations-list,
+  .step-rail,
+  .analysis-detail {
+    min-height: auto;
+  }
+
+  .benefit-grid,
+  .metrics-row,
+  .report-format-grid,
+  .tariff-grid,
+  .workflow-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .security-section {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .welcome-panel {
+    grid-template-areas:
+      "title"
+      "copy"
+      "actions";
+    grid-template-columns: 1fr;
+  }
+
+  .welcome-panel .overview-actions {
+    justify-self: start;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .landing-header,
+  .app-header {
+    height: auto;
+    flex-wrap: wrap;
+    padding: 18px;
+  }
+
+  .workspace-frame {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 18px 18px 40px;
+  }
+
+  .app-sidebar {
+    position: relative;
+    top: auto;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(148px, 1fr);
+    width: auto;
+    overflow-x: auto;
+    padding: 10px;
+  }
+
+  .app-sidebar button,
+  .app-sidebar button:hover {
+    justify-content: space-between;
+    width: auto;
+    padding: 0 12px;
+    box-shadow: none;
+  }
+
+  .app-sidebar button span,
+  .app-sidebar button:hover span {
+    gap: 10px;
+  }
+
+  .app-sidebar .sidebar-label {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+  }
+
+  .landing-header nav,
+  .app-header nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .landing-actions,
+  .profile-block {
+    margin-left: auto;
+  }
+
+  .landing-hero,
+  .workspace {
+    width: 100%;
+  }
+
+  .headline-main {
+    white-space: normal;
+  }
+
+  .hero-copy h1 {
+    font-size: 39px;
+  }
+
+  .welcome-panel {
+    gap: 18px;
+  }
+
+  .welcome-panel h1 {
+    font-size: 42px;
+  }
+
+  .detail-grid,
+  .analysis-content-grid,
+  .preview-grid,
+  .analysis-kv-grid,
+  .analysis-columns,
+  .benefit-grid,
+  .workflow-grid,
+  .security-section,
+  .metrics-row,
+  .report-format-grid,
+  .tariff-grid,
+  .form-grid.two {
+    grid-template-columns: 1fr;
+  }
+
+  .transcript-segment {
+    grid-template-columns: 1fr;
+  }
+
+  .status-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .timeline-step {
+    justify-items: start;
+    grid-template-columns: auto 1fr;
+    text-align: left;
+  }
+
+  .timeline-step::before {
+    display: none;
+  }
+
+  .panel-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .selected-call-card,
+  .invitation-card,
+  .preview-selected-call,
+  .preview-next-step,
+    .next-step,
+    .report-row,
+    .subscription-company,
+    .company-meta-grid,
+    .company-lock-note,
+    .department-member-row,
+    .file-picker,
+  .file-dropzone,
+  .context-note,
+  .instruction-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .report-actions {
+    justify-content: flex-start;
+  }
+
+  .preview-timeline {
+    grid-template-columns: 1fr;
+  }
+
+  .preview-timeline-step {
+    grid-template-columns: auto 1fr;
+    justify-items: start;
+    text-align: left;
+  }
+
+  .preview-timeline-step::before {
+    display: none;
+  }
+
+  .benefits,
+  .landing-section {
+    width: 100%;
+    margin-top: 0;
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .benefits {
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+}

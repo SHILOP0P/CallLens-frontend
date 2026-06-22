@@ -1,0 +1,309 @@
+import {
+  Bell,
+  BriefcaseBusiness,
+  Check,
+  Plus,
+  UsersRound,
+  X
+} from "lucide-react";
+import { FormEvent, useEffect, useState } from "react";
+import { api } from "../../api";
+import type {
+  CompanyResponse,
+  DepartmentResponse,
+  Invitation,
+  InvitationDepartmentRole,
+  SessionState
+} from "../../types";
+
+import { formatDate, invitationRoleLabel } from "../../shared/lib/formatters";
+import { CallListSkeleton } from "../../shared/ui/loading";
+import { SelectControl } from "../../shared/ui/primitives";
+
+export function InvitationsPage({
+  invitations,
+  companies,
+  departments,
+  session,
+  loading,
+  onInvitationCreated,
+  onInvitationAccepted,
+  onInvitationDeclined
+}: {
+  invitations: Invitation[];
+  companies: CompanyResponse[];
+  departments: DepartmentResponse[];
+  session: SessionState;
+  loading: boolean;
+  onInvitationCreated: (invitation: Invitation) => void;
+  onInvitationAccepted: (invitation: Invitation) => Promise<void>;
+  onInvitationDeclined: (invitation: Invitation) => void;
+}) {
+  const pendingInvitations = invitations.filter((invitation) => invitation.status === "pending");
+
+  return (
+    <section className="invitations-layout">
+      <div className="invitations-list glass">
+        <div className="panel-heading large">
+          <div>
+            <h1>Приглашения</h1>
+            <p>Входящие заявки в компанию или отдел.</p>
+          </div>
+          <span className="status-chip warn">{pendingInvitations.length}</span>
+        </div>
+        {loading ? (
+          <CallListSkeleton count={3} compact />
+        ) : pendingInvitations.length === 0 ? (
+          <div className="empty-panel">
+            <Bell size={34} />
+            <h2>Нет входящих приглашений</h2>
+          </div>
+        ) : (
+          <div className="invitation-card-list">
+            {pendingInvitations.map((invitation) => (
+              <InvitationCard
+                key={invitation.id}
+                invitation={invitation}
+                companies={companies}
+                departments={departments}
+                onAccepted={onInvitationAccepted}
+                onDeclined={onInvitationDeclined}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <InvitationCreatePanel
+        companies={companies}
+        departments={departments}
+        session={session}
+        onInvitationCreated={onInvitationCreated}
+      />
+    </section>
+  );
+}
+
+export function InvitationCard({
+  invitation,
+  companies,
+  departments,
+  onAccepted,
+  onDeclined
+}: {
+  invitation: Invitation;
+  companies: CompanyResponse[];
+  departments: DepartmentResponse[];
+  onAccepted: (invitation: Invitation) => Promise<void>;
+  onDeclined: (invitation: Invitation) => void;
+}) {
+  const [busyAction, setBusyAction] = useState<"accept" | "decline" | null>(null);
+  const [error, setError] = useState("");
+
+  const companyName = companies.find((company) => company.id === invitation.company_uuid)?.name;
+  const departmentName = departments.find((department) => department.id === invitation.department_uuid)?.name;
+  const isDepartmentInvitation = Boolean(invitation.department_uuid);
+
+  async function acceptInvitation() {
+    setError("");
+    setBusyAction("accept");
+    try {
+      const accepted = await api.acceptInvitation(invitation.id);
+      await onAccepted(accepted);
+    } catch (acceptError) {
+      setError(acceptError instanceof Error ? acceptError.message : "Не удалось принять приглашение");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function declineInvitation() {
+    setError("");
+    setBusyAction("decline");
+    try {
+      const declined = await api.declineInvitation(invitation.id);
+      onDeclined(declined);
+    } catch (declineError) {
+      setError(declineError instanceof Error ? declineError.message : "Не удалось отклонить приглашение");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  return (
+    <article className="invitation-card">
+      <div className="invitation-icon">
+        {isDepartmentInvitation ? <UsersRound size={20} /> : <BriefcaseBusiness size={20} />}
+      </div>
+      <div className="invitation-main">
+        <div className="invitation-title-row">
+          <span className="status-chip warn">{isDepartmentInvitation ? "Отдел" : "Компания"}</span>
+          <span className="status-chip ok">{invitationRoleLabel(invitation)}</span>
+        </div>
+        <h2>{isDepartmentInvitation ? departmentName ?? "Отдел" : companyName ?? "Компания"}</h2>
+        <p>
+          {companyName ?? "Компания недоступна"}
+          {isDepartmentInvitation && ` · ${departmentName ?? "Отдел недоступен"}`}
+        </p>
+        <small>Срок действия: {formatDate(invitation.expires_at)}</small>
+        {error && <div className="form-error">{error}</div>}
+      </div>
+      <div className="invitation-actions">
+        <button className="primary-button small" onClick={acceptInvitation} disabled={Boolean(busyAction)}>
+          <Check size={16} />
+          {busyAction === "accept" ? "Принимаю..." : "Принять"}
+        </button>
+        <button className="ghost-button small" onClick={declineInvitation} disabled={Boolean(busyAction)}>
+          <X size={16} />
+          {busyAction === "decline" ? "Отклоняю..." : "Отклонить"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+export function InvitationCreatePanel({
+  companies,
+  departments,
+  session,
+  onInvitationCreated
+}: {
+  companies: CompanyResponse[];
+  departments: DepartmentResponse[];
+  session: SessionState;
+  onInvitationCreated: (invitation: Invitation) => void;
+}) {
+  const [mode, setMode] = useState<"company" | "department">("company");
+  const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
+  const [departmentId, setDepartmentId] = useState("");
+  const [username, setUsername] = useState("");
+  const [departmentRole, setDepartmentRole] = useState<InvitationDepartmentRole>("employee");
+  const [success, setSuccess] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const availableDepartments = departments.filter((department) => department.company_uuid === companyId);
+  const selectedCompany = companies.find((company) => company.id === companyId);
+  const canInviteDepartmentLeader = selectedCompany?.manager_user_uuid === session.user.id;
+
+  useEffect(() => {
+    if (!companyId && companies[0]) setCompanyId(companies[0].id);
+  }, [companies, companyId]);
+
+  useEffect(() => {
+    if (availableDepartments[0] && !availableDepartments.some((department) => department.id === departmentId)) {
+      setDepartmentId(availableDepartments[0].id);
+    }
+  }, [availableDepartments, departmentId]);
+
+  useEffect(() => {
+    if (!canInviteDepartmentLeader && departmentRole !== "employee") {
+      setDepartmentRole("employee");
+    }
+  }, [canInviteDepartmentLeader, departmentRole]);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (!companyId) {
+      setError("Выберите компанию.");
+      return;
+    }
+
+    if (mode === "department" && !departmentId) {
+      setError("Выберите отдел.");
+      return;
+    }
+
+    if (!username.trim()) {
+      setError("Введите username.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const created =
+        mode === "company"
+          ? await api.createCompanyInvitation(companyId, username.trim())
+          : await api.createDepartmentInvitation(companyId, departmentId, username.trim(), departmentRole);
+      onInvitationCreated(created);
+      setSuccess("Приглашение отправлено.");
+      setUsername("");
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Не удалось отправить приглашение");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form className="invitation-create glass" onSubmit={submit}>
+      <h2>Отправить приглашение</h2>
+      <div className="segmented scope">
+        <button
+          type="button"
+          className={mode === "company" ? "active" : ""}
+          onClick={() => setMode("company")}
+        >
+          Компания
+        </button>
+        <button
+          type="button"
+          className={mode === "department" ? "active" : ""}
+          onClick={() => setMode("department")}
+        >
+          Отдел
+        </button>
+      </div>
+      <label>
+        Компания
+        <SelectControl value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
+          {companies.map((company) => (
+            <option key={company.id} value={company.id}>
+              {company.name}
+            </option>
+          ))}
+        </SelectControl>
+      </label>
+      {mode === "department" && (
+        <>
+          <label>
+            Отдел
+            <SelectControl value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
+              {availableDepartments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                </option>
+              ))}
+            </SelectControl>
+          </label>
+          <label>
+            Роль
+            <SelectControl
+              value={departmentRole}
+              onChange={(event) => setDepartmentRole(event.target.value as InvitationDepartmentRole)}
+            >
+              <option value="employee">Сотрудник</option>
+              {canInviteDepartmentLeader && <option value="department_leader">Руководитель отдела</option>}
+            </SelectControl>
+          </label>
+        </>
+      )}
+      <label>
+        Username
+        <input
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          placeholder="@muxa"
+        />
+      </label>
+      {companies.length === 0 && <div className="instruction-empty standalone">Компаний пока нет.</div>}
+      {error && <div className="form-error">{error}</div>}
+      {success && <div className="form-success">{success}</div>}
+      <button className="primary-button" type="submit" disabled={busy || companies.length === 0}>
+        <Plus size={18} />
+        {busy ? "Отправляю..." : "Отправить приглашение"}
+      </button>
+    </form>
+  );
+}
