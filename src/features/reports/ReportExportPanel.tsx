@@ -23,6 +23,18 @@ export const reportFormats: Array<{ format: ReportFormat; label: string; descrip
   { format: "xlsx", label: "Excel", description: "Метаданные, анализ и транскрипция" }
 ];
 
+function reportDisplayName(fileName: string) {
+  const lastDot = fileName.lastIndexOf(".");
+  const extension = lastDot > 0 ? fileName.slice(lastDot) : "";
+  const baseName = lastDot > 0 ? fileName.slice(0, lastDot) : fileName;
+  const withoutUuid = baseName.replace(
+    /[-_][0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    ""
+  );
+
+  return `${withoutUuid.replace(/[-_]+/g, " ").trim() || baseName}${extension}`;
+}
+
 export function ReportExportPanel({
   call,
   analysis
@@ -38,6 +50,12 @@ export function ReportExportPanel({
   const [exportEnabled, setExportEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
+    if (exportEnabled !== true) {
+      setReports([]);
+      setLoadingReports(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function loadReports() {
@@ -60,7 +78,7 @@ export function ReportExportPanel({
     return () => {
       cancelled = true;
     };
-  }, [call.id]);
+  }, [call.id, exportEnabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +163,10 @@ export function ReportExportPanel({
   const analysisReady = isAnalysisDone(analysis);
   const exportBlocked = exportEnabled === false;
 
+  if (exportEnabled !== true) {
+    return null;
+  }
+
   return (
     <section className="report-panel">
       <div className="card-title">
@@ -187,9 +209,9 @@ export function ReportExportPanel({
         {reports.map((report) => (
           <div className="report-row" key={report.id}>
             <FileText size={18} />
-            <div>
-              <strong>{report.file_name}</strong>
-              <small>
+            <div className="report-row-content">
+              <strong className="report-file-name" title={report.file_name}>{reportDisplayName(report.file_name)}</strong>
+              <small className="report-meta">
                 {reportFormatLabel(report.format)} · {formatBytes(report.size_bytes)} · создан{" "}
                 {formatDate(report.created_at)} · хранится до {formatDate(report.expires_at)}
               </small>

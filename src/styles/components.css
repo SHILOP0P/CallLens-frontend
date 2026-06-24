@@ -1775,7 +1775,7 @@ html.theme-reveal-running::view-transition-new(root) {
 .report-row {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
+  align-items: start;
   gap: 12px;
   padding: 14px;
   background: rgba(255, 255, 255, 0.62);
@@ -1784,15 +1784,26 @@ html.theme-reveal-running::view-transition-new(root) {
 }
 
 .report-row > svg {
+  margin-top: 3px;
   color: var(--accent);
 }
 
-.report-row strong,
-.report-row small {
+.report-row-content {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.report-file-name {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.report-meta {
+  display: block;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .report-row .report-error {

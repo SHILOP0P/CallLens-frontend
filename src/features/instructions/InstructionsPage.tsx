@@ -6,11 +6,13 @@ import { api } from "../../api";
 import type {
   AnalysisInstruction,
   CompanyResponse,
+  DepartmentMemberResponse,
   DepartmentResponse,
   InstructionScope,
   SessionState
 } from "../../types";
 
+import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/access";
 import { instructionScopeLabel } from "../../shared/lib/formatters";
 import { InstructionListSkeleton } from "../../shared/ui/loading";
 import { FileDropZone, SelectControl } from "../../shared/ui/primitives";
@@ -21,6 +23,7 @@ export function InstructionsPage({
   instructions,
   companies,
   departments,
+  departmentMembers,
   loading,
   onInstructionCreated
 }: {
@@ -28,45 +31,69 @@ export function InstructionsPage({
   instructions: AnalysisInstruction[];
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  departmentMembers: DepartmentMemberResponse[];
   loading: boolean;
   onInstructionCreated: (instruction: AnalysisInstruction) => void;
 }) {
   const [title, setTitle] = useState("Инструкция анализа продаж");
   const managedCompanies = useMemo(
-    () => companies.filter((company) => company.manager_user_uuid === session.user.id),
+    () => companies.filter((company) => isCompanyManager(company, session.user.id)),
     [companies, session.user.id]
   );
   const managedCompanyIds = useMemo(
     () => new Set(managedCompanies.map((company) => company.id)),
     [managedCompanies]
   );
-  const managedDepartments = useMemo(
-    () => departments.filter((department) => managedCompanyIds.has(department.company_uuid)),
-    [departments, managedCompanyIds]
+  const ledDepartmentIds = useMemo(
+    () => activeDepartmentLeaderIds(departmentMembers, session.user.id),
+    [departmentMembers, session.user.id]
+  );
+  const editableDepartments = useMemo(
+    () =>
+      departments.filter(
+        (department) =>
+          managedCompanyIds.has(department.company_uuid) || ledDepartmentIds.has(department.id)
+      ),
+    [departments, ledDepartmentIds, managedCompanyIds]
+  );
+  const editableDepartmentIds = useMemo(
+    () => new Set(editableDepartments.map((department) => department.id)),
+    [editableDepartments]
   );
   const companiesWithDepartments = useMemo(
     () =>
-      managedCompanies.filter((company) =>
-        managedDepartments.some((department) => department.company_uuid === company.id)
+      companies.filter((company) =>
+        editableDepartments.some((department) => department.company_uuid === company.id)
       ),
-    [managedCompanies, managedDepartments]
+    [companies, editableDepartments]
   );
   const [scope, setScope] = useState<InstructionScope>("personal");
   const [companyId, setCompanyId] = useState(managedCompanies[0]?.id ?? "");
-  const [departmentId, setDepartmentId] = useState(managedDepartments[0]?.id ?? "");
+  const [departmentId, setDepartmentId] = useState(editableDepartments[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const availableInstructionScopes: InstructionScope[] = [
-    "personal",
-    ...(managedCompanies.length > 0 ? (["company"] as InstructionScope[]) : []),
-    ...(managedDepartments.length > 0 ? (["department"] as InstructionScope[]) : [])
-  ];
+  const availableInstructionScopes = useMemo<InstructionScope[]>(
+    () => [
+      "personal",
+      ...(managedCompanies.length > 0 ? (["company"] as InstructionScope[]) : []),
+      ...(editableDepartments.length > 0 ? (["department"] as InstructionScope[]) : [])
+    ],
+    [editableDepartments.length, managedCompanies.length]
+  );
   const selectableCompanies = scope === "department" ? companiesWithDepartments : managedCompanies;
-  const availableDepartments = managedDepartments.filter((department) => department.company_uuid === companyId);
+  const availableDepartments = editableDepartments.filter((department) => department.company_uuid === companyId);
   const personalInstructions = instructions.filter((instruction) => instruction.scope === "personal");
-  const companyInstructions = instructions.filter((instruction) => instruction.scope === "company");
-  const departmentInstructions = instructions.filter((instruction) => instruction.scope === "department");
+  const companyInstructions = instructions.filter(
+    (instruction) =>
+      instruction.scope === "company" &&
+      Boolean(instruction.company_uuid && managedCompanyIds.has(instruction.company_uuid))
+  );
+  const departmentInstructions = instructions.filter(
+    (instruction) =>
+      instruction.scope === "department" &&
+      Boolean(instruction.department_uuid && editableDepartmentIds.has(instruction.department_uuid))
+  );
   const instructionSections = [
     {
       title: "Личная инструкция",

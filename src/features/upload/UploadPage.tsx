@@ -16,11 +16,13 @@ import type {
   AppPage,
   CallResponse,
   CompanyResponse,
+  DepartmentMemberResponse,
   DepartmentResponse,
   SessionState,
   VisibilityScope
 } from "../../types";
 
+import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/access";
 import { callScopeLabel } from "../../shared/lib/formatters";
 import { FileDropZone, SelectControl } from "../../shared/ui/primitives";
 import { availableInstructionsForContext, InstructionChoiceList, instructionContextHint, InstructionMiniList, StepItem } from "../instructions/instruction-components";
@@ -29,6 +31,7 @@ export function UploadPage({
   session,
   companies,
   departments,
+  departmentMembers,
   instructions,
   loading,
   onNavigate,
@@ -37,6 +40,7 @@ export function UploadPage({
   session: SessionState;
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  departmentMembers: DepartmentMemberResponse[];
   instructions: AnalysisInstruction[];
   loading: boolean;
   onNavigate: (page: AppPage) => void;
@@ -53,23 +57,43 @@ export function UploadPage({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const companiesWithDepartments = useMemo(
+  const managedCompanies = useMemo(
+    () => companies.filter((company) => isCompanyManager(company, session.user.id)),
+    [companies, session.user.id]
+  );
+  const managedCompanyIds = useMemo(
+    () => new Set(managedCompanies.map((company) => company.id)),
+    [managedCompanies]
+  );
+  const ledDepartmentIds = useMemo(
+    () => activeDepartmentLeaderIds(departmentMembers, session.user.id),
+    [departmentMembers, session.user.id]
+  );
+  const accessibleDepartments = useMemo(
+    () =>
+      departments.filter(
+        (department) =>
+          managedCompanyIds.has(department.company_uuid) || ledDepartmentIds.has(department.id)
+      ),
+    [departments, ledDepartmentIds, managedCompanyIds]
+  );
+  const companiesWithAccessibleDepartments = useMemo(
     () =>
       companies.filter((company) =>
-        departments.some((department) => department.company_uuid === company.id)
+        accessibleDepartments.some((department) => department.company_uuid === company.id)
       ),
-    [companies, departments]
+    [accessibleDepartments, companies]
   );
   const availableCallScopes = useMemo<VisibilityScope[]>(
     () => [
       "personal",
-      ...(companies.length > 0 ? (["company"] as VisibilityScope[]) : []),
-      ...(companiesWithDepartments.length > 0 ? (["department"] as VisibilityScope[]) : [])
+      ...(managedCompanies.length > 0 ? (["company"] as VisibilityScope[]) : []),
+      ...(accessibleDepartments.length > 0 ? (["department"] as VisibilityScope[]) : [])
     ],
-    [companies.length, companiesWithDepartments.length]
+    [accessibleDepartments.length, managedCompanies.length]
   );
-  const selectableCompanies = scope === "department" ? companiesWithDepartments : companies;
-  const availableDepartments = departments.filter((department) => department.company_uuid === companyId);
+  const selectableCompanies = scope === "department" ? companiesWithAccessibleDepartments : managedCompanies;
+  const availableDepartments = accessibleDepartments.filter((department) => department.company_uuid === companyId);
   const availableInstructions = availableInstructionsForContext(
     instructions,
     scope,
@@ -96,8 +120,10 @@ export function UploadPage({
   }, [companyId, scope, selectableCompanies]);
 
   useEffect(() => {
-    if (scope === "department" && !departmentId && availableDepartments[0]) {
-      setDepartmentId(availableDepartments[0].id);
+    if (scope !== "department") return;
+
+    if (!availableDepartments.some((department) => department.id === departmentId)) {
+      setDepartmentId(availableDepartments[0]?.id ?? "");
     }
   }, [availableDepartments, departmentId, scope]);
 

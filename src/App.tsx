@@ -8,6 +8,7 @@ import type {
   CallResponse,
   CallStatus,
   CompanyResponse,
+  DepartmentMemberResponse,
   DepartmentResponse,
   Invitation,
   SessionState,
@@ -57,7 +58,9 @@ function App() {
   });
   const [session, setSession] = useState<SessionState | null>(initialAuth.session);
   const [authReady, setAuthReady] = useState(initialAuth.ready);
-  const [showPublicLanding, setShowPublicLanding] = useState(() => !initialAuth.session);
+  const [showPublicLanding, setShowPublicLanding] = useState(
+    () => !initialAuth.session || !window.location.pathname.startsWith("/app")
+  );
   const [workspaceReady, setWorkspaceReady] = useState(initialAuth.ready);
   const [page, setPage] = useState<AppPage>(() => pageFromPath(window.location.pathname));
   const [selectedCompanyId, setSelectedCompanyId] = useState(() => companyIdFromPath(window.location.pathname));
@@ -65,6 +68,7 @@ function App() {
   const [calls, setCalls] = useState<CallResponse[]>([]);
   const [companies, setCompanies] = useState<CompanyResponse[]>([]);
   const [departments, setDepartments] = useState<DepartmentResponse[]>([]);
+  const [departmentMembers, setDepartmentMembers] = useState<DepartmentMemberResponse[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [instructions, setInstructions] = useState<AnalysisInstruction[]>([]);
   const [transcriptions, setTranscriptions] = useState<Record<string, TranscriptionResponse>>({});
@@ -102,22 +106,27 @@ function App() {
         if (cancelled) return;
 
         const restoredSession = { user: response.user };
+        const requestedAppPage = window.location.pathname.startsWith("/app");
         persistSession(restoredSession);
         setSession(restoredSession);
-        setShowPublicLanding(false);
+        setShowPublicLanding(!requestedAppPage);
         setWorkspaceReady(true);
         setLoadingWorkspace(true);
-
-        if (!window.location.pathname.startsWith("/app")) {
-          window.history.replaceState({}, "", pageRoutes.overview);
-          setPage("overview");
-        }
+        setPage(pageFromPath(window.location.pathname));
+        setSelectedCompanyId(companyIdFromPath(window.location.pathname));
+        setSelectedDepartmentId(departmentIdFromPath(window.location.pathname));
       } catch {
         if (cancelled) return;
         persistSession(null);
         clearWorkspaceState();
         setShowPublicLanding(true);
         setWorkspaceReady(true);
+        if (window.location.pathname.startsWith("/app")) {
+          window.history.replaceState({}, "", "/");
+          setPage(pageFromPath(window.location.pathname));
+          setSelectedCompanyId("");
+          setSelectedDepartmentId("");
+        }
       } finally {
         if (!cancelled) setAuthReady(true);
       }
@@ -139,15 +148,6 @@ function App() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
-
-  useEffect(() => {
-    if (!session) return;
-
-    if (!showPublicLanding && !window.location.pathname.startsWith("/app")) {
-      window.history.replaceState({}, "", pageRoutes.calls);
-      setPage("calls");
-    }
-  }, [session, showPublicLanding]);
 
   useEffect(() => {
     let cancelled = false;
@@ -195,6 +195,15 @@ function App() {
             )
           ])
         ).flat();
+        const loadedDepartmentMembers = (
+          await Promise.all(
+            loadedDepartments.map((department) =>
+              api
+                .listDepartmentMembers(department.company_uuid, department.id)
+                .catch(() => [])
+            )
+          )
+        ).flat();
 
         if (cancelled) return;
 
@@ -207,6 +216,7 @@ function App() {
         );
         setCompanies(loadedCompanies);
         setDepartments(loadedDepartments);
+        setDepartmentMembers(loadedDepartmentMembers);
         setInvitations(loadedInvitations);
         setInstructions(loadedInstructions);
         setSelectedCallId((current) => current || loadedCalls[0]?.id || "");
@@ -436,6 +446,7 @@ function App() {
     setCalls([]);
     setCompanies([]);
     setDepartments([]);
+    setDepartmentMembers([]);
     setInvitations([]);
     setInstructions([]);
     setTranscriptions({});
@@ -477,9 +488,19 @@ function App() {
         )
       ])
     ).flat();
+    const loadedDepartmentMembers = (
+      await Promise.all(
+        loadedDepartments.map((department) =>
+          api
+            .listDepartmentMembers(department.company_uuid, department.id)
+            .catch(() => [])
+        )
+      )
+    ).flat();
 
     setCompanies(loadedCompanies);
     setDepartments(loadedDepartments);
+    setDepartmentMembers(loadedDepartmentMembers);
     setInstructions(loadedInstructions);
   }
 
@@ -588,6 +609,7 @@ function App() {
           session={session}
           companies={companies}
           departments={departments}
+          departmentMembers={departmentMembers}
           instructions={instructions}
           loading={loadingWorkspace}
           onNavigate={navigate}
@@ -634,6 +656,7 @@ function App() {
           instructions={instructions}
           companies={companies}
           departments={departments}
+          departmentMembers={departmentMembers}
           loading={loadingWorkspace}
           onInstructionCreated={(instruction) =>
             setInstructions((current) => [instruction, ...current])
