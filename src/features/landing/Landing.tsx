@@ -43,34 +43,38 @@ export function Landing({
   onToggleTheme: (event: ThemeToggleEvent) => void;
 }) {
   const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
+  const benefitsRef = useRef<HTMLElement | null>(null);
   const workflowRef = useRef<HTMLElement | null>(null);
   useRevealOnScroll<HTMLElement>();
   const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
 
   useEffect(() => {
-    const section = workflowRef.current;
-    if (!section) return;
+    const sections = [benefitsRef.current, workflowRef.current].filter(Boolean) as HTMLElement[];
+    if (!sections.length) return;
 
     let frame = 0;
 
-    const updateWorkflowGlow = () => {
+    const updateEmblemGlow = () => {
       frame = 0;
-      const rect = section.getBoundingClientRect();
       const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-      const progress = Math.min(1, Math.max(0, (viewportHeight - rect.top) / (viewportHeight + rect.height)));
-      const shine = -18 + progress * 186;
-      const light = 0.42 + Math.sin(progress * Math.PI) * 0.28;
 
-      section.style.setProperty("--workflow-scroll-shine", `${shine.toFixed(2)}px`);
-      section.style.setProperty("--workflow-scroll-light", light.toFixed(3));
+      sections.forEach((section) => {
+        const rect = section.getBoundingClientRect();
+        const progress = Math.min(1, Math.max(0, (viewportHeight - rect.top) / (viewportHeight + rect.height)));
+        const shine = -18 + progress * 186;
+        const light = 0.42 + Math.sin(progress * Math.PI) * 0.28;
+
+        section.style.setProperty("--workflow-scroll-shine", `${shine.toFixed(2)}px`);
+        section.style.setProperty("--workflow-scroll-light", light.toFixed(3));
+      });
     };
 
     const scheduleUpdate = () => {
       if (frame) return;
-      frame = window.requestAnimationFrame(updateWorkflowGlow);
+      frame = window.requestAnimationFrame(updateEmblemGlow);
     };
 
-    updateWorkflowGlow();
+    updateEmblemGlow();
     window.addEventListener("scroll", scheduleUpdate, { passive: true });
     window.addEventListener("resize", scheduleUpdate);
 
@@ -137,7 +141,7 @@ export function Landing({
         <ProductPreview compact={false} />
       </section>
 
-      <section className="benefits" id="features" data-reveal>
+      <section className="benefits" id="features" ref={benefitsRef} data-reveal>
         <div className="section-heading" data-reveal-item>
           <span>Возможности</span>
           <h2>Что можно делать в CallLens</h2>
