@@ -32,19 +32,114 @@ html[data-theme="light"] .landing .benefit small,
 html[data-theme="light"] .landing .workflow-step p,
 html[data-theme="light"] .landing .security-item small,
 html[data-theme="light"] .landing .security-panel p,
+html[data-theme="light"] .landing .landing-showcase-card p,
 html[data-theme="light"] .section-heading p {
   color: var(--muted);
 }
 
-html[data-theme="light"] :is(.section-heading, .benefit, .workflow-step, .security-panel) {
+html[data-theme="light"] :is(.section-heading, .benefit, .workflow-step, .security-panel, .landing-showcase-card) {
   color: var(--ink);
   background: rgba(255, 250, 245, 0.72);
   border-color: rgba(255, 255, 255, 0.65);
 }
 
 html[data-theme="light"] .section-heading h2,
+html[data-theme="light"] .landing-showcase-card h3,
 html[data-theme="light"] .tariff-preview-section .tariff-section h2 {
   color: var(--ink);
+}
+
+html[data-theme="light"] .showcase-visual {
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 139, 86, 0.16), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 250, 245, 0.2));
+  border-color: rgba(120, 78, 50, 0.12);
+}
+
+html[data-theme="light"] .emblem-panel,
+html[data-theme="light"] .emblem-halo {
+  stroke: rgba(175, 91, 45, 0.5);
+}
+
+html[data-theme="light"] .emblem-line {
+  stroke: rgba(77, 51, 36, 0.56);
+}
+
+html[data-theme="light"] .analysis-ring-main {
+  filter: drop-shadow(0 0 7px rgba(242, 103, 50, 0.28));
+}
+
+html[data-theme="light"] .analysis-ring-glint {
+  stroke: rgba(255, 247, 238, 0.98);
+}
+
+html[data-theme="light"] .analysis-wavebar {
+  stroke: rgba(172, 91, 50, 0.68);
+}
+
+html[data-theme="light"] .analysis-wavebar-three,
+html[data-theme="light"] .analysis-star-core,
+html[data-theme="light"] .analysis-wave-dot,
+html[data-theme="light"] .analysis-signal-dots circle {
+  filter: drop-shadow(0 0 7px rgba(242, 103, 50, 0.36));
+}
+
+html[data-theme="light"] .org-road {
+  stroke: rgba(188, 94, 44, 0.62);
+}
+
+html[data-theme="light"] .org-flow-path,
+html[data-theme="light"] .export-flow {
+  stroke: #f26732;
+}
+
+html[data-theme="light"] .company-building path:first-child {
+  fill: rgba(255, 122, 67, 0.14);
+}
+
+html[data-theme="light"] .company-building path:last-child,
+html[data-theme="light"] .org-department-card path,
+html[data-theme="light"] .org-employee-card path,
+html[data-theme="light"] .report-fold,
+html[data-theme="light"] .report-line,
+html[data-theme="light"] .download-arrow,
+html[data-theme="light"] .export-road {
+  stroke: rgba(91, 58, 39, 0.58);
+}
+
+html[data-theme="light"] .company-node rect,
+html[data-theme="light"] .org-department-card rect,
+html[data-theme="light"] .org-employee-card rect,
+html[data-theme="light"] .org-level-chip rect,
+html[data-theme="light"] .report-frame,
+html[data-theme="light"] .export-file-card rect {
+  fill: rgba(255, 252, 248, 0.78);
+  stroke: rgba(168, 99, 58, 0.24);
+}
+
+html[data-theme="light"] .report-sheet {
+  fill: rgba(255, 255, 255, 0.36);
+  stroke: rgba(168, 99, 58, 0.48);
+}
+
+html[data-theme="light"] .report-chart {
+  fill: rgba(255, 142, 72, 0.2);
+}
+
+html[data-theme="light"] .download-orb {
+  fill: rgba(255, 105, 49, 0.36);
+  stroke: rgba(202, 96, 42, 0.58);
+}
+
+html[data-theme="light"] .org-label,
+html[data-theme="light"] .org-level-label,
+html[data-theme="light"] .report-title,
+html[data-theme="light"] .export-file-card text {
+  fill: rgba(48, 31, 22, 0.74);
+}
+
+html[data-theme="light"] .org-label-strong {
+  fill: rgba(23, 18, 15, 0.88);
 }
 
 html[data-theme="light"] .access-row {
@@ -174,6 +269,7 @@ html[data-theme="dark"] :is(
   .preview-grid > div,
   .preview-next-step,
   .info-card,
+  .landing-showcase-card,
   .next-step,
   .report-panel,
   .report-format-button,
@@ -212,6 +308,7 @@ html[data-theme="dark"] :is(
   .preview-grid > div,
   .preview-next-step,
   .info-card,
+  .landing-showcase-card,
   .next-step,
   .report-panel,
   .report-format-button,

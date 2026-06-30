@@ -42,6 +42,7 @@
   }
 
   .benefit-grid,
+  .landing-showcase-grid,
   .metrics-row,
   .report-format-grid,
   .tariff-grid,
@@ -154,6 +155,7 @@
   .analysis-kv-grid,
   .analysis-columns,
   .benefit-grid,
+  .landing-showcase-grid,
   .workflow-grid,
   .security-section,
   .metrics-row,
@@ -231,5 +233,18 @@
 
   .benefits {
     border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  }
+
+  .benefit {
+    min-height: auto;
+  }
+
+  .landing-showcase-card {
+    min-height: auto;
+    padding: 18px;
+  }
+
+  .showcase-visual {
+    min-height: 220px;
   }
 }
