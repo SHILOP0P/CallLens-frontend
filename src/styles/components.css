@@ -1567,40 +1567,24 @@
   --security-orange: #f59e0b;
   --security-purple: #7c5cff;
   --security-green: #2fa84f;
-  --security-blue-glass: rgba(74, 160, 255, 0.36);
-  --security-glass-stroke: rgba(255, 255, 255, 0.72);
-  --security-shield-edge: rgba(255, 255, 255, 0.84);
-  --shield-glass-fill-start: rgba(255, 255, 255, 0.66);
-  --shield-glass-fill-mid: rgba(255, 255, 255, 0.22);
-  --shield-glass-fill-end: rgba(255, 118, 78, 0.16);
-  --shield-main-stroke: rgba(255, 255, 255, 0.92);
-  --shield-cool-stroke: rgba(120, 190, 255, 0.42);
-  --shield-warm-stroke: rgba(255, 98, 48, 0.46);
-  --shield-inner-stroke: rgba(255, 255, 255, 0.48);
-  --shield-highlight: rgba(255, 255, 255, 0.86);
-  --shield-shadow: rgba(125, 75, 48, 0.18);
-  --sales-glass-fill-start: rgba(255, 255, 255, 0.62);
-  --sales-glass-fill-mid: rgba(255, 255, 255, 0.18);
-  --sales-glass-fill-end: rgba(47, 168, 79, 0.16);
-  --sales-glass-stroke: rgba(64, 185, 132, 0.48);
-  --sales-glass-cool-stroke: rgba(80, 170, 255, 0.42);
-  --sales-glass-highlight: rgba(255, 255, 255, 0.82);
-  --sales-panel-fill: rgba(255, 255, 255, 0.18);
-  --sales-panel-stroke: rgba(74, 160, 255, 0.38);
-  --sales-panel-line: rgba(47, 168, 79, 0.46);
-  --sales-platform-fill: rgba(255, 255, 255, 0.2);
-  --sales-platform-stroke: rgba(120, 190, 255, 0.38);
-  --sales-platform-green: rgba(47, 168, 79, 0.3);
-  --sales-green: #2faa4f;
-  --sales-green-glow: rgba(47, 168, 79, 0.34);
-  --sales-blue-glow: rgba(80, 170, 255, 0.22);
-  --orbit-stroke: rgba(239, 91, 69, 0.68);
-  --orbit-stroke-soft: rgba(255, 126, 84, 0.42);
-  --orbit-dot: #ff633f;
-  --orbit-glow: rgba(255, 92, 54, 0.42);
-  --glass-white-strong: rgba(255, 255, 255, 0.84);
-  --glass-white-medium: rgba(255, 255, 255, 0.5);
-  --glass-white-soft: rgba(255, 255, 255, 0.24);
+  --security-visual-coral: #ff5a38;
+  --security-visual-coral-2: #ff7a4d;
+  --security-visual-coral-soft: rgba(255, 90, 56, 0.16);
+  --security-visual-coral-glow: rgba(255, 90, 56, 0.22);
+  --security-visual-green: #2faa4f;
+  --security-visual-green-2: #55c878;
+  --security-visual-green-soft: rgba(47, 168, 79, 0.15);
+  --security-visual-green-glow: rgba(47, 168, 79, 0.24);
+  --security-visual-blue: rgba(86, 165, 255, 0.42);
+  --security-visual-blue-soft: rgba(86, 165, 255, 0.14);
+  --security-visual-ink: rgba(20, 17, 15, 0.72);
+  --security-visual-muted: rgba(96, 78, 68, 0.52);
+  --security-visual-tile-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.72), rgba(255, 244, 236, 0.44));
+  --security-visual-tile-border: rgba(255, 255, 255, 0.72);
+  --security-visual-tile-inner: rgba(255, 255, 255, 0.44);
+  --security-visual-soft-shadow: rgba(98, 58, 38, 0.13);
+  --security-visual-ring: rgba(255, 90, 56, 0.24);
+  --sales-visual-ring: rgba(47, 168, 79, 0.22);
   display: grid;
   grid-template-columns: minmax(0, 1.08fr) minmax(380px, 0.92fr);
   gap: clamp(24px, 3vw, 38px);
@@ -1624,40 +1608,24 @@ html[data-theme="dark"] .security-section {
   --security-orange: #f59e0b;
   --security-purple: #8b6cff;
   --security-green: #4ade80;
-  --security-blue-glass: rgba(102, 210, 255, 0.38);
-  --security-glass-stroke: rgba(255, 205, 182, 0.46);
-  --security-shield-edge: rgba(255, 210, 190, 0.46);
-  --shield-glass-fill-start: rgba(255, 255, 255, 0.2);
-  --shield-glass-fill-mid: rgba(255, 255, 255, 0.08);
-  --shield-glass-fill-end: rgba(255, 98, 48, 0.14);
-  --shield-main-stroke: rgba(255, 213, 190, 0.52);
-  --shield-cool-stroke: rgba(120, 190, 255, 0.26);
-  --shield-warm-stroke: rgba(255, 98, 48, 0.62);
-  --shield-inner-stroke: rgba(255, 255, 255, 0.24);
-  --shield-highlight: rgba(255, 235, 220, 0.42);
-  --shield-shadow: rgba(255, 98, 48, 0.22);
-  --sales-glass-fill-start: rgba(255, 255, 255, 0.22);
-  --sales-glass-fill-mid: rgba(255, 255, 255, 0.08);
-  --sales-glass-fill-end: rgba(74, 222, 128, 0.14);
-  --sales-glass-stroke: rgba(74, 222, 128, 0.58);
-  --sales-glass-cool-stroke: rgba(102, 210, 255, 0.42);
-  --sales-glass-highlight: rgba(255, 255, 255, 0.32);
-  --sales-panel-fill: rgba(255, 255, 255, 0.08);
-  --sales-panel-stroke: rgba(102, 210, 255, 0.38);
-  --sales-panel-line: rgba(74, 222, 128, 0.52);
-  --sales-platform-fill: rgba(255, 255, 255, 0.08);
-  --sales-platform-stroke: rgba(102, 210, 255, 0.36);
-  --sales-platform-green: rgba(74, 222, 128, 0.28);
-  --sales-green: #4ade80;
-  --sales-green-glow: rgba(74, 222, 128, 0.44);
-  --sales-blue-glow: rgba(56, 189, 248, 0.28);
-  --orbit-stroke: rgba(255, 98, 48, 0.86);
-  --orbit-stroke-soft: rgba(255, 150, 92, 0.5);
-  --orbit-dot: #ff7a45;
-  --orbit-glow: rgba(255, 93, 38, 0.58);
-  --glass-white-strong: rgba(255, 255, 255, 0.36);
-  --glass-white-medium: rgba(255, 255, 255, 0.2);
-  --glass-white-soft: rgba(255, 255, 255, 0.08);
+  --security-visual-coral: #ff6b35;
+  --security-visual-coral-2: #ff8a5c;
+  --security-visual-coral-soft: rgba(255, 107, 53, 0.13);
+  --security-visual-coral-glow: rgba(255, 107, 53, 0.32);
+  --security-visual-green: #4ade80;
+  --security-visual-green-2: #86efac;
+  --security-visual-green-soft: rgba(74, 222, 128, 0.12);
+  --security-visual-green-glow: rgba(74, 222, 128, 0.34);
+  --security-visual-blue: rgba(102, 210, 255, 0.26);
+  --security-visual-blue-soft: rgba(102, 210, 255, 0.08);
+  --security-visual-ink: rgba(255, 247, 240, 0.76);
+  --security-visual-muted: rgba(255, 247, 240, 0.38);
+  --security-visual-tile-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.035));
+  --security-visual-tile-border: rgba(255, 255, 255, 0.14);
+  --security-visual-tile-inner: rgba(255, 255, 255, 0.065);
+  --security-visual-soft-shadow: rgba(0, 0, 0, 0.36);
+  --security-visual-ring: rgba(255, 107, 53, 0.34);
+  --sales-visual-ring: rgba(74, 222, 128, 0.28);
 }
 
 .security-glass-card {
@@ -1730,8 +1698,11 @@ html[data-theme="dark"] .security-glass-card::before {
 }
 
 .security-shield-visual {
-  width: min(226px, 100%);
-  aspect-ratio: 1.1;
+  display: grid;
+  width: clamp(210px, 17vw, 270px);
+  min-width: 210px;
+  aspect-ratio: 260 / 220;
+  place-items: center;
   justify-self: center;
 }
 
@@ -1743,58 +1714,60 @@ html[data-theme="dark"] .security-glass-card::before {
   overflow: visible;
 }
 
-.security-shield-svg {
-  transform: scale(1.12);
+.security-flat-shield {
+  transform-box: fill-box;
   transform-origin: center;
+  filter:
+    drop-shadow(0 18px 34px var(--security-visual-soft-shadow))
+    drop-shadow(0 0 20px var(--security-visual-coral-glow));
 }
 
-.security-platform,
-.security-platform-line,
-.security-platform-shadow {
-  filter: drop-shadow(0 18px 20px rgba(113, 65, 43, 0.14));
+.security-flat-shield-bg {
+  opacity: 0.92;
 }
 
-.security-orbit {
-  opacity: 0.9;
-  filter: drop-shadow(0 0 8px var(--orbit-glow));
+.security-flat-shield-outline {
+  filter:
+    drop-shadow(0 0 10px var(--security-visual-coral-glow))
+    drop-shadow(0 10px 18px rgba(255, 90, 56, 0.15));
 }
 
-.security-orbit-soft,
-.security-orbit-far {
+.security-flat-shield-highlight {
+  opacity: 0.72;
+}
+
+.security-flat-lock {
+  filter:
+    drop-shadow(0 0 10px rgba(255, 90, 56, 0.3))
+    drop-shadow(0 12px 18px rgba(192, 60, 34, 0.18));
+}
+
+.security-flat-ring-main {
   opacity: 0.78;
 }
 
-.security-orbit-front {
+.security-flat-ring-soft {
+  opacity: 0.62;
+}
+
+html[data-theme="dark"] .security-flat-shield {
+  filter:
+    drop-shadow(0 18px 34px rgba(0, 0, 0, 0.36))
+    drop-shadow(0 0 24px var(--security-visual-coral-glow));
+}
+
+html[data-theme="dark"] .security-flat-shield-bg {
   opacity: 0.82;
-  filter: drop-shadow(0 0 9px var(--orbit-glow));
 }
 
-.security-orbit-dot {
-  filter: drop-shadow(0 0 7px var(--orbit-glow));
+html[data-theme="dark"] .security-flat-shield-highlight {
+  opacity: 0.36;
 }
 
-.security-shield-stack {
+html[data-theme="dark"] .security-flat-lock {
   filter:
-    drop-shadow(0 0 13px rgba(255, 117, 74, 0.16))
-    drop-shadow(0 24px 24px rgba(96, 52, 32, 0.14));
-}
-
-.security-lock {
-  filter:
-    drop-shadow(0 0 10px rgba(255, 92, 54, 0.42))
-    drop-shadow(0 14px 24px rgba(200, 72, 36, 0.22));
-}
-
-html[data-theme="dark"] .security-shield-stack {
-  filter:
-    drop-shadow(0 0 18px rgba(255, 93, 38, 0.28))
-    drop-shadow(0 24px 28px rgba(0, 0, 0, 0.32));
-}
-
-html[data-theme="dark"] .security-lock {
-  filter:
-    drop-shadow(0 0 14px rgba(255, 93, 38, 0.58))
-    drop-shadow(0 15px 28px rgba(0, 0, 0, 0.36));
+    drop-shadow(0 0 14px rgba(255, 107, 53, 0.42))
+    drop-shadow(0 14px 22px rgba(0, 0, 0, 0.26));
 }
 
 .security-main-content {
@@ -1814,15 +1787,89 @@ html[data-theme="dark"] .security-lock {
   text-transform: uppercase;
 }
 
-.security-kicker svg {
+.security-kicker-emblem {
+  position: relative;
+  display: grid;
   width: 30px;
   height: 30px;
-  padding: 6px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
   color: var(--security-red);
   background: rgba(255, 90, 56, 0.12);
   border: 1px solid rgba(255, 90, 56, 0.2);
   border-radius: 999px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  isolation: isolate;
+}
+
+.security-kicker svg {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  color: currentColor;
+}
+
+.security-scroll-shine {
+  --security-shine-local-y: -120px;
+  --security-shine-strength: 0;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+html[data-theme="dark"] .security-scroll-shine::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  padding: 2px;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 236, 224, 0.04) 18%,
+      rgba(255, 238, 228, 0.58) 48%,
+      rgba(255, 118, 78, 0.28) 58%,
+      transparent 100%
+    ) center calc(var(--security-shine-local-y) - 18px) / 100% 36px no-repeat;
+  filter:
+    drop-shadow(0 0 3px rgba(255, 122, 80, 0.24))
+    drop-shadow(0 0 1px rgba(255, 245, 235, 0.42));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  mix-blend-mode: screen;
+  opacity: calc(var(--security-shine-strength) * 0.58);
+  transform: translateZ(0);
+}
+
+html[data-theme="dark"] .security-status-chip.security-scroll-shine::before {
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(211, 255, 224, 0.04) 18%,
+      rgba(221, 255, 230, 0.56) 48%,
+      rgba(74, 222, 128, 0.26) 58%,
+      transparent 100%
+    ) center calc(var(--security-shine-local-y) - 18px) / 100% 36px no-repeat;
+  filter:
+    drop-shadow(0 0 3px rgba(74, 222, 128, 0.24))
+    drop-shadow(0 0 1px rgba(226, 255, 234, 0.42));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .security-scroll-shine {
+    --security-shine-strength: 0;
+  }
 }
 
 .security-main-content h2,
@@ -1932,6 +1979,9 @@ html[data-theme="dark"] .security-item > span {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.08), var(--feature-bg));
   border-color: rgba(255, 255, 255, 0.11);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 12px 28px var(--feature-glow);
 }
 
 .security-item strong {
@@ -1958,62 +2008,69 @@ html[data-theme="dark"] .security-item > span {
 
 .sales-glass-visual {
   position: absolute;
-  top: 20px;
-  right: 20px;
+  top: 28px;
+  right: 34px;
   z-index: 1;
-  width: clamp(260px, 22vw, 330px);
-  height: auto;
+  width: clamp(300px, 23vw, 380px);
+  aspect-ratio: 360 / 230;
   pointer-events: none;
 }
 
-.sales-back-panel {
+.sales-flat-scene {
+  transform-box: fill-box;
+  transform-origin: center;
   filter:
-    drop-shadow(0 0 12px var(--sales-blue-glow))
-    drop-shadow(0 18px 34px rgba(67, 115, 150, 0.12));
+    drop-shadow(0 16px 32px var(--security-visual-soft-shadow))
+    drop-shadow(0 0 18px var(--security-visual-green-glow));
 }
 
-.sales-platform,
-.sales-platform-line,
-.sales-platform-shadow,
-.sales-platform-glint {
+.sales-flat-panel {
   filter:
-    drop-shadow(0 0 14px var(--sales-blue-glow))
-    drop-shadow(0 18px 34px rgba(67, 115, 150, 0.12));
+    drop-shadow(0 10px 20px rgba(60, 100, 130, 0.1))
+    drop-shadow(0 0 12px rgba(86, 165, 255, 0.16));
 }
 
-.sales-headset-tile {
+.sales-flat-headset-tile {
   filter:
-    drop-shadow(0 0 15px var(--sales-green-glow))
-    drop-shadow(0 18px 34px rgba(47, 108, 68, 0.16));
+    drop-shadow(0 0 14px var(--security-visual-green-glow))
+    drop-shadow(0 16px 24px rgba(47, 168, 79, 0.14));
 }
 
-.sales-headset {
-  filter:
-    drop-shadow(0 0 8px var(--sales-green-glow))
-    drop-shadow(0 10px 18px rgba(47, 168, 79, 0.16));
+.sales-flat-platform-main {
+  opacity: 0.85;
 }
 
-html[data-theme="dark"] .sales-back-panel,
-html[data-theme="dark"] .sales-platform,
-html[data-theme="dark"] .sales-platform-line,
-html[data-theme="dark"] .sales-platform-shadow,
-html[data-theme="dark"] .sales-platform-glint {
-  filter:
-    drop-shadow(0 0 16px var(--sales-blue-glow))
-    drop-shadow(0 20px 38px rgba(0, 0, 0, 0.36));
+.sales-flat-platform-inner {
+  opacity: 0.68;
 }
 
-html[data-theme="dark"] .sales-headset-tile {
+.sales-flat-platform-glow {
+  opacity: 0.8;
+}
+
+html[data-theme="dark"] .sales-flat-scene {
   filter:
-    drop-shadow(0 0 18px var(--sales-green-glow))
-    drop-shadow(0 20px 38px rgba(0, 0, 0, 0.38));
+    drop-shadow(0 18px 34px rgba(0, 0, 0, 0.42))
+    drop-shadow(0 0 24px var(--security-visual-green-glow));
+}
+
+html[data-theme="dark"] .sales-flat-panel {
+  filter:
+    drop-shadow(0 14px 24px rgba(0, 0, 0, 0.28))
+    drop-shadow(0 0 14px rgba(86, 165, 255, 0.2));
+}
+
+html[data-theme="dark"] .sales-flat-headset-tile {
+  filter:
+    drop-shadow(0 0 18px var(--security-visual-green-glow))
+    drop-shadow(0 18px 26px rgba(0, 0, 0, 0.32));
 }
 
 .security-access-copy {
   position: relative;
   z-index: 2;
-  max-width: 280px;
-  padding-right: 0;
+  max-width: 430px;
+  padding-right: min(320px, 36%);
 }
 
 .security-status-chip {
@@ -2032,6 +2089,7 @@ html[data-theme="dark"] .security-status-chip {
   color: var(--security-green);
   background: rgba(74, 222, 128, 0.14);
   border-color: rgba(74, 222, 128, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .security-access-copy h3 {
@@ -2124,6 +2182,9 @@ html[data-theme="dark"] .access-icon-box {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.07), var(--access-bg));
   border-color: rgba(255, 255, 255, 0.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 10px 24px color-mix(in srgb, var(--access-color) 16%, transparent);
 }
 
 .access-row strong {
@@ -2164,15 +2225,21 @@ html[data-theme="dark"] .access-icon-box {
 }
 
 .landing [data-reveal-item] {
-  opacity: 0;
-  transform: translateY(26px) scale(0.985);
+  opacity: 1;
+  transform: translateY(0) scale(1);
   transition:
     opacity 560ms ease,
     transform 560ms ease;
   will-change: opacity, transform;
 }
 
-.landing [data-reveal-item].is-visible {
+html.reveal-ready .landing [data-reveal-item] {
+  opacity: 0;
+  transform: translateY(26px) scale(0.985);
+}
+
+.landing [data-reveal-item].is-visible,
+html.reveal-ready .landing [data-reveal-item].is-visible {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
@@ -4665,25 +4732,51 @@ label small {
 }
 
 .tariff-card {
+  --tariff-card-surface-1: rgba(255, 255, 255, 0.62);
+  --tariff-card-surface-2: rgba(255, 245, 237, 0.44);
+  --tariff-card-surface-3: rgba(255, 228, 212, 0.22);
+  --tariff-card-border: rgba(255, 255, 255, 0.7);
+  --tariff-card-border-hover: rgba(255, 122, 77, 0.36);
+  --tariff-card-shadow: rgba(86, 55, 36, 0.13);
+  --tariff-card-inner-line: rgba(255, 255, 255, 0.7);
+  --tariff-card-text: #17120f;
+  --tariff-card-muted: rgba(65, 51, 43, 0.76);
+  --tariff-card-accent: #ff5a38;
+  --tariff-card-chip-bg: rgba(255, 106, 72, 0.13);
+  --tariff-card-chip-border: rgba(255, 106, 72, 0.2);
+  --tariff-card-chip-text: #c64724;
   align-content: start;
   display: grid;
   gap: 18px;
   position: relative;
   overflow: hidden;
+  color: var(--tariff-card-text);
+  background:
+    linear-gradient(
+      135deg,
+      var(--tariff-card-surface-1) 0%,
+      var(--tariff-card-surface-2) 54%,
+      var(--tariff-card-surface-3) 100%
+    );
+  border-color: var(--tariff-card-border);
+  box-shadow:
+    0 24px 66px var(--tariff-card-shadow),
+    inset 0 1px 0 var(--tariff-card-inner-line),
+    inset 0 -1px 0 rgba(170, 116, 82, 0.08);
+  backdrop-filter: blur(24px) saturate(145%);
   transition:
     transform 180ms ease,
     border-color 180ms ease,
     box-shadow 180ms ease;
 }
 
-.tariff-card::before {
+.tariff-card::before,
+.tariff-card::after {
   content: "";
   position: absolute;
   inset: -18px;
   z-index: 0;
-  background: var(--tariff-card-gradient, linear-gradient(145deg, rgba(255, 103, 61, 0.22), rgba(255, 255, 255, 0)));
-  filter: blur(16px);
-  opacity: 0.18;
+  pointer-events: none;
   transition:
     opacity 180ms ease,
     filter 180ms ease,
@@ -4691,16 +4784,36 @@ label small {
   transform: scale(0.98);
 }
 
+.tariff-card::before {
+  background: var(--tariff-card-gradient, linear-gradient(145deg, rgba(255, 103, 61, 0.22), transparent 78%));
+  filter: blur(22px);
+  opacity: 0;
+}
+
+.tariff-card::after {
+  inset: 0;
+  background: var(--tariff-card-gradient, linear-gradient(145deg, rgba(255, 103, 61, 0.18), transparent 78%));
+  opacity: 0;
+  transform: none;
+}
+
 .tariff-card:hover {
   transform: translateY(-3px);
-  border-color: rgba(255, 255, 255, 0.86);
-  box-shadow: 0 30px 90px rgba(81, 45, 25, 0.2);
+  border-color: var(--tariff-card-border-hover);
+  box-shadow:
+    0 30px 86px color-mix(in srgb, var(--tariff-card-accent) 18%, transparent),
+    0 24px 70px var(--tariff-card-shadow),
+    inset 0 1px 0 var(--tariff-card-inner-line);
 }
 
 .tariff-card:hover::before {
-  opacity: 0.82;
-  filter: blur(18px);
+  opacity: 0.4;
+  filter: blur(24px);
   transform: scale(1.02);
+}
+
+.tariff-card:hover::after {
+  opacity: 0.82;
 }
 
 .tariff-card > * {
@@ -4720,7 +4833,7 @@ label small {
 }
 
 .tariff-card h3 {
-  color: var(--ink);
+  color: var(--tariff-card-text);
   font-size: 22px;
 }
 
@@ -4737,14 +4850,67 @@ label small {
   grid-template-columns: 20px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
-  color: var(--muted);
+  color: var(--tariff-card-muted);
   font-size: 14px;
   line-height: 1.45;
 }
 
 .tariff-feature-list svg {
   margin-top: 2px;
-  color: var(--accent-strong);
+  color: var(--tariff-card-accent);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--tariff-card-accent) 18%, transparent));
+}
+
+.tariff-card .status-chip.warn {
+  color: var(--tariff-card-chip-text);
+  background: var(--tariff-card-chip-bg);
+  border: 1px solid var(--tariff-card-chip-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.46);
+}
+
+.tariff-card .ghost-button {
+  color: var(--tariff-card-text);
+  background: rgba(255, 255, 255, 0.34);
+  border-color: rgba(120, 78, 50, 0.16);
+}
+
+html[data-theme="dark"] .tariff-card {
+  --tariff-card-surface-1: rgba(22, 26, 31, 0.62);
+  --tariff-card-surface-2: rgba(20, 18, 16, 0.56);
+  --tariff-card-surface-3: rgba(40, 24, 16, 0.36);
+  --tariff-card-border: rgba(255, 133, 82, 0.22);
+  --tariff-card-border-hover: rgba(255, 138, 92, 0.42);
+  --tariff-card-shadow: rgba(0, 0, 0, 0.44);
+  --tariff-card-inner-line: rgba(255, 255, 255, 0.08);
+  --tariff-card-text: #fff7f0;
+  --tariff-card-muted: rgba(255, 247, 240, 0.7);
+  --tariff-card-accent: #ff8a5c;
+  --tariff-card-chip-bg: rgba(255, 122, 77, 0.12);
+  --tariff-card-chip-border: rgba(255, 122, 77, 0.22);
+  --tariff-card-chip-text: #ffb08f;
+}
+
+html[data-theme="dark"] .tariff-card::before {
+  filter: blur(24px);
+  opacity: 0;
+}
+
+html[data-theme="dark"] .tariff-card:hover::before {
+  opacity: 0.34;
+}
+
+html[data-theme="dark"] .tariff-card:hover::after {
+  opacity: 0.72;
+}
+
+html[data-theme="dark"] .tariff-card .status-chip.warn {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .tariff-card .ghost-button {
+  color: #fff7f0;
+  background: rgba(255, 250, 245, 0.08);
+  border-color: rgba(255, 250, 245, 0.14);
 }
 
 .tariff-message {

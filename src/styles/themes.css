@@ -711,3 +711,27 @@ html[data-theme="dark"] .ghost-button {
   background: rgba(255, 250, 245, 0.08);
   border-color: rgba(255, 250, 245, 0.18);
 }
+
+html[data-theme="dark"] .tariff-card.glass {
+  color: var(--tariff-card-text);
+  background:
+    linear-gradient(
+      135deg,
+      var(--tariff-card-surface-1) 0%,
+      var(--tariff-card-surface-2) 54%,
+      var(--tariff-card-surface-3) 100%
+    );
+  border-color: var(--tariff-card-border);
+  box-shadow:
+    0 24px 66px var(--tariff-card-shadow),
+    inset 0 1px 0 var(--tariff-card-inner-line),
+    inset 0 -1px 0 rgba(170, 116, 82, 0.08);
+}
+
+html[data-theme="dark"] .tariff-card.glass:hover {
+  border-color: var(--tariff-card-border-hover);
+  box-shadow:
+    0 30px 86px color-mix(in srgb, var(--tariff-card-accent) 18%, transparent),
+    0 24px 70px var(--tariff-card-shadow),
+    inset 0 1px 0 var(--tariff-card-inner-line);
+}

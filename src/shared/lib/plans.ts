@@ -20,12 +20,12 @@ export const analysisLevelLabels: Record<string, string> = {
 };
 
 export const planGradients: Record<PlanCode, string> = {
-  personal_start: "linear-gradient(145deg, rgba(96, 165, 250, 0.42), rgba(250, 204, 21, 0.24))",
-  personal_plus: "linear-gradient(145deg, rgba(45, 212, 191, 0.38), rgba(255, 122, 89, 0.28))",
-  personal_pro: "linear-gradient(145deg, rgba(129, 140, 248, 0.4), rgba(236, 72, 153, 0.28))",
-  business_start: "linear-gradient(145deg, rgba(52, 211, 153, 0.38), rgba(14, 165, 233, 0.26))",
-  business_plus: "linear-gradient(145deg, rgba(251, 146, 60, 0.36), rgba(168, 85, 247, 0.28))",
-  business_pro: "linear-gradient(145deg, rgba(244, 63, 94, 0.34), rgba(59, 130, 246, 0.3))"
+  personal_start: "linear-gradient(145deg, rgba(255, 107, 53, 0.26), rgba(245, 158, 11, 0.2) 48%, transparent 78%)",
+  personal_plus: "linear-gradient(145deg, rgba(255, 122, 77, 0.27), rgba(255, 206, 128, 0.18) 50%, transparent 78%)",
+  personal_pro: "linear-gradient(145deg, rgba(255, 107, 53, 0.25), rgba(139, 108, 255, 0.16) 54%, transparent 80%)",
+  business_start: "linear-gradient(145deg, rgba(255, 138, 92, 0.24), rgba(74, 222, 128, 0.14) 52%, transparent 80%)",
+  business_plus: "linear-gradient(145deg, rgba(245, 158, 11, 0.23), rgba(255, 122, 77, 0.18) 54%, transparent 80%)",
+  business_pro: "linear-gradient(145deg, rgba(255, 90, 56, 0.28), rgba(255, 206, 128, 0.17) 54%, transparent 80%)"
 };
 
 export function comparePlans(left: Plan, right: Plan) {

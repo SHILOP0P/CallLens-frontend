@@ -45,6 +45,7 @@ export function Landing({
   const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
   const benefitsRef = useRef<HTMLElement | null>(null);
   const workflowRef = useRef<HTMLElement | null>(null);
+  const securityRef = useRef<HTMLElement | null>(null);
   useRevealOnScroll<HTMLElement>();
   const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
 
@@ -75,6 +76,49 @@ export function Landing({
     };
 
     updateEmblemGlow();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+
+    return () => {
+      if (frame) {
+        window.cancelAnimationFrame(frame);
+      }
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+    };
+  }, []);
+
+  useEffect(() => {
+    const section = securityRef.current;
+    if (!section) return;
+
+    let frame = 0;
+    const shineTargets = () => Array.from(section.querySelectorAll<HTMLElement>(".security-scroll-shine"));
+
+    const updateSecurityShine = () => {
+      frame = 0;
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+      const bandY = viewportHeight * 0.34;
+      const bandSoftness = 160;
+
+      shineTargets().forEach((target) => {
+        const rect = target.getBoundingClientRect();
+        const localY = bandY - rect.top;
+        const centerDistance = Math.abs(localY - rect.height / 2);
+        const influence = Math.max(rect.height / 2 + bandSoftness, 1);
+        const strength = Math.max(0, Math.min(1, 1 - centerDistance / influence));
+
+        target.style.setProperty("--security-shine-local-y", `${localY.toFixed(2)}px`);
+        target.style.setProperty("--security-shine-strength", strength.toFixed(3));
+      });
+    };
+
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(updateSecurityShine);
+    };
+
+    updateSecurityShine();
     window.addEventListener("scroll", scheduleUpdate, { passive: true });
     window.addEventListener("resize", scheduleUpdate);
 
@@ -187,13 +231,15 @@ export function Landing({
         </div>
       </section>
 
-      <section className="landing-section security-section" id="security" data-reveal>
+      <section className="landing-section security-section" id="security" ref={securityRef} data-reveal>
         <article className="security-glass-card security-main-card" data-reveal-item>
           <div className="security-main-top">
             <SecurityShieldIllustration />
             <div className="security-main-content">
               <span className="security-kicker">
-                <ShieldCheck size={18} />
+                <span className="security-kicker-emblem security-scroll-shine">
+                  <ShieldCheck size={18} />
+                </span>
                 Безопасность
               </span>
               <h2>Доступы и данные под контролем команды</h2>
@@ -212,7 +258,7 @@ export function Landing({
         <article className="security-glass-card security-access-card" data-reveal-item>
           <SalesGlassIllustration />
           <div className="security-access-copy">
-            <span className="status-chip ok security-status-chip">
+            <span className="status-chip ok security-status-chip security-scroll-shine">
               <Check size={15} />
               Доступ настроен
             </span>
@@ -493,7 +539,7 @@ export function SecurityItem({
 }) {
   return (
     <div className={`security-item ${tone}`}>
-      <span>{icon}</span>
+      <span className="security-scroll-shine">{icon}</span>
       <div>
         <strong>{title}</strong>
         <small>{text}</small>
@@ -515,7 +561,7 @@ export function AccessRow({
 }) {
   return (
     <div className={`access-row ${tone}`}>
-      <span className="access-icon-box">{icon}</span>
+      <span className="access-icon-box security-scroll-shine">{icon}</span>
       <strong>{label}</strong>
       <em>{value}</em>
       <ChevronRight size={21} />
@@ -525,71 +571,79 @@ export function AccessRow({
 
 export function SecurityShieldIllustration() {
   const shieldPrefix = useId().replace(/:/g, "");
-  const shieldGlassGradientId = `${shieldPrefix}-shieldGlassGradient`;
+  const shieldBgGradientId = `${shieldPrefix}-shieldBgGradient`;
+  const shieldAccentGradientId = `${shieldPrefix}-shieldAccentGradient`;
   const lockGradientId = `${shieldPrefix}-lockGradient`;
-  const platformGradientId = `${shieldPrefix}-shieldPlatformGradient`;
-  const shieldDepthShadowId = `${shieldPrefix}-shieldDepthShadow`;
+  const shieldGlowId = `${shieldPrefix}-shieldGlow`;
 
   return (
     <div className="security-shield-visual" aria-hidden="true">
-      <svg viewBox="0 0 330 300" className="security-shield-svg">
+      <svg viewBox="0 0 260 220" className="security-shield-svg">
         <defs>
-          <linearGradient id={shieldGlassGradientId} x1="82" x2="222" y1="35" y2="224" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="var(--shield-glass-fill-start)" />
-            <stop offset="45%" stopColor="var(--shield-glass-fill-mid)" />
-            <stop offset="100%" stopColor="var(--shield-glass-fill-end)" />
+          <linearGradient id={shieldBgGradientId} x1="70" y1="24" x2="190" y2="174" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.48)" />
+            <stop offset="52%" stopColor="rgba(255,255,255,0.14)" />
+            <stop offset="100%" stopColor="rgba(255,90,56,0.10)" />
           </linearGradient>
-          <linearGradient id={lockGradientId} x1="123" x2="183" y1="116" y2="194" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#ff9b6e" />
-            <stop offset="55%" stopColor="#ff5a38" />
-            <stop offset="100%" stopColor="#e64022" />
+
+          <linearGradient id={shieldAccentGradientId} x1="72" y1="34" x2="188" y2="168" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="var(--security-visual-coral-2)" />
+            <stop offset="100%" stopColor="var(--security-visual-coral)" />
           </linearGradient>
-          <radialGradient id={platformGradientId} cx="50%" cy="44%" r="58%">
-            <stop offset="0%" stopColor="rgba(255,255,255,0.72)" />
-            <stop offset="58%" stopColor="rgba(255,126,84,0.18)" />
-            <stop offset="100%" stopColor="rgba(255,255,255,0.02)" />
-          </radialGradient>
-          <filter id={shieldDepthShadowId} x="-40%" y="-40%" width="180%" height="180%">
-            <feDropShadow dx="0" dy="18" stdDeviation="14" floodColor="var(--shield-shadow)" floodOpacity="1" />
-            <feDropShadow dx="0" dy="0" stdDeviation="5" floodColor="rgba(255,255,255,0.38)" floodOpacity="1" />
+
+          <linearGradient id={lockGradientId} x1="102" y1="86" x2="158" y2="150" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#ff9a72" />
+            <stop offset="58%" stopColor="var(--security-visual-coral)" />
+            <stop offset="100%" stopColor="#ef3f22" />
+          </linearGradient>
+
+          <filter id={shieldGlowId} x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="0" stdDeviation="8" floodColor="var(--security-visual-coral)" floodOpacity="0.28" />
+            <feDropShadow dx="0" dy="18" stdDeviation="16" floodColor="var(--security-visual-coral)" floodOpacity="0.16" />
           </filter>
         </defs>
-        <ellipse className="security-platform-shadow" cx="158" cy="246" rx="102" ry="23" fill="rgba(78, 39, 24, 0.16)" stroke="none" />
-        <ellipse className="security-platform" cx="158" cy="231" rx="92" ry="24" fill={`url(#${platformGradientId})`} stroke="var(--security-glass-stroke)" strokeWidth="1.5" />
-        <ellipse className="security-platform-line" cx="158" cy="230" rx="70" ry="16" fill="none" stroke="var(--security-red-soft)" strokeWidth="1.15" />
 
-        <g className="security-orbits security-orbits-back">
-          <ellipse className="security-orbit security-orbit-soft" cx="158" cy="156" rx="136" ry="31" fill="none" stroke="var(--orbit-stroke-soft)" strokeWidth="1.35" />
-          <ellipse className="security-orbit" cx="158" cy="154" rx="129" ry="35" fill="none" stroke="var(--orbit-stroke)" strokeWidth="1.8" transform="rotate(-15 158 154)" />
-          <ellipse className="security-orbit security-orbit-far" cx="158" cy="158" rx="148" ry="42" fill="none" stroke="var(--orbit-stroke-soft)" strokeWidth="1.15" transform="rotate(5 158 158)" />
-        </g>
+        <g className="security-flat-shield">
+          <ellipse className="security-flat-ring security-flat-ring-main" cx="130" cy="170" rx="78" ry="18" fill="none" stroke="var(--security-visual-ring)" strokeWidth="1.25" />
+          <ellipse className="security-flat-ring security-flat-ring-soft" cx="130" cy="176" rx="58" ry="12" fill="none" stroke="rgba(255,255,255,0.32)" strokeWidth="1" />
+          <ellipse className="security-flat-shadow" cx="130" cy="184" rx="75" ry="12" fill="rgba(85, 45, 28, 0.13)" stroke="none" />
 
-        <g className="security-shield-stack">
-          <path className="security-shield-back" d="M158 33 227 61v64c0 52-28 91-69 111-41-20-69-59-69-111V61l69-28Z" fill="rgba(255,255,255,0.1)" stroke="var(--shield-cool-stroke)" strokeWidth="1.4" />
-          <path className="security-shield-face" d="M158 45 215 69v55c0 43-22 77-57 96-35-19-57-53-57-96V69l57-24Z" fill={`url(#${shieldGlassGradientId})`} stroke="var(--shield-main-stroke)" strokeWidth="2.4" filter={`url(#${shieldDepthShadowId})`} />
-          <path className="security-shield-cool-edge" d="M106 72 158 50l52 22M105 91v34c0 32 14 59 37 78" fill="none" stroke="var(--shield-cool-stroke)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-          <path className="security-shield-warm-edge" d="M215 70v54c0 43-22 77-57 96M194 188c14-15 21-36 21-64" fill="none" stroke="var(--shield-warm-stroke)" strokeWidth="1.8" strokeLinecap="round" opacity="0.95" />
-          <path className="security-shield-inner" d="M158 61 199 78v44c0 32-15 57-41 73-26-16-41-41-41-73V78l41-17Z" fill="rgba(255,255,255,0.08)" stroke="var(--shield-inner-stroke)" strokeWidth="1.3" />
-          <path className="security-shield-inner-secondary" d="M158 77 186 89v32c0 24-10 44-28 57-18-13-28-33-28-57V89l28-12Z" fill="rgba(255,255,255,0.05)" stroke="var(--shield-inner-stroke)" strokeWidth="0.95" />
-          <path className="security-shield-highlight" d="M121 78 158 62l37 15M116 96v27c0 28 10 50 30 67" fill="none" stroke="var(--shield-highlight)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
-          <path className="security-shield-highlight-soft" d="M134 73 158 64l24 9M128 92v24c0 19 5 35 16 48" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="1.1" strokeLinecap="round" opacity="0.75" />
-        </g>
+          <path
+            className="security-flat-shield-bg"
+            d="M130 28 L188 54 V105 C188 144 166 174 130 192 C94 174 72 144 72 105 V54 L130 28 Z"
+            fill={`url(#${shieldBgGradientId})`}
+            stroke="var(--security-visual-tile-border)"
+            strokeWidth="1.4"
+          />
 
-        <g className="security-lock">
-          <path className="security-lock-shackle" d="M132 136v-16c0-17 12-29 27-29s27 12 27 29v16" fill="none" stroke="var(--security-red-2)" strokeWidth="11" strokeLinecap="round" />
-          <path className="security-lock-shackle-glint" d="M138 134v-13c0-13 8-21 21-21 12 0 21 8 21 21v13" fill="none" stroke="rgba(255,255,255,0.62)" strokeWidth="2.4" strokeLinecap="round" />
-          <rect className="security-lock-body" x="121" y="132" width="76" height="61" rx="15" fill={`url(#${lockGradientId})`} stroke="rgba(255,255,255,0.42)" strokeWidth="1.3" />
-          <path className="security-lock-keyhole" d="M159 153a8 8 0 0 0-4 15v13h8v-13a8 8 0 0 0-4-15Z" fill="rgba(255,255,255,0.9)" stroke="none" />
-          <path className="security-lock-shine" d="M135 144h33" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="2.2" strokeLinecap="round" />
-        </g>
+          <path
+            className="security-flat-shield-outline"
+            d="M130 48 L172 67 V105 C172 133 156 157 130 172 C104 157 88 133 88 105 V67 L130 48 Z"
+            fill="none"
+            stroke={`url(#${shieldAccentGradientId})`}
+            strokeWidth="4.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            filter={`url(#${shieldGlowId})`}
+          />
 
-        <g className="security-orbits security-orbits-front">
-          <ellipse className="security-orbit-front" cx="158" cy="160" rx="122" ry="33" fill="none" stroke="var(--orbit-stroke)" strokeWidth="1.45" transform="rotate(17 158 160)" />
-          <circle className="security-orbit-dot" cx="42" cy="154" r="3.2" fill="var(--orbit-dot)" stroke="rgba(255,255,255,0.5)" strokeWidth="0.6" />
-          <circle className="security-orbit-dot" cx="76" cy="127" r="2.5" fill="var(--orbit-dot)" stroke="rgba(255,255,255,0.48)" strokeWidth="0.55" />
-          <circle className="security-orbit-dot" cx="247" cy="138" r="3" fill="var(--orbit-dot)" stroke="rgba(255,255,255,0.48)" strokeWidth="0.55" />
-          <circle className="security-orbit-dot" cx="282" cy="164" r="2.4" fill="var(--orbit-dot)" stroke="rgba(255,255,255,0.46)" strokeWidth="0.5" />
-          <circle className="security-orbit-dot small" cx="108" cy="191" r="2" fill="var(--orbit-dot)" stroke="rgba(255,255,255,0.42)" strokeWidth="0.45" />
+          <path
+            className="security-flat-shield-highlight"
+            d="M93 68 L130 51 L166 68"
+            fill="none"
+            stroke="rgba(255,255,255,0.62)"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          <g className="security-flat-lock" transform="translate(0 -7)">
+            <path d="M111 112 V96 C111 84 119 76 130 76 C141 76 149 84 149 96 V112" fill="none" stroke="var(--security-visual-coral-2)" strokeWidth="8" strokeLinecap="round" />
+            <path d="M117 111 V98 C117 89 122 84 130 84 C138 84 143 89 143 98 V111" fill="none" stroke="rgba(255,255,255,0.56)" strokeWidth="2" strokeLinecap="round" />
+            <rect x="104" y="107" width="52" height="46" rx="13" fill={`url(#${lockGradientId})`} stroke="rgba(255,255,255,0.36)" strokeWidth="1.1" />
+            <path d="M118 119 H142" fill="none" stroke="rgba(255,255,255,0.54)" strokeWidth="2" strokeLinecap="round" />
+            <path d="M130 128 a6 6 0 0 0-3 11 v9 h6 v-9 a6 6 0 0 0-3-11Z" fill="rgba(255,255,255,0.9)" stroke="none" />
+          </g>
         </g>
       </svg>
     </div>
@@ -598,73 +652,68 @@ export function SecurityShieldIllustration() {
 
 export function SalesGlassIllustration() {
   const salesPrefix = useId().replace(/:/g, "");
-  const salesPanelGradientId = `${salesPrefix}-salesPanelGradient`;
-  const salesTileGradientId = `${salesPrefix}-salesTileGradient`;
-  const salesTileGlowId = `${salesPrefix}-salesTileGlow`;
-  const salesPlatformGlowId = `${salesPrefix}-salesPlatformGlow`;
+  const panelGradientId = `${salesPrefix}-panelGradient`;
+  const tileGradientId = `${salesPrefix}-tileGradient`;
+  const greenGlowId = `${salesPrefix}-greenGlow`;
 
   return (
     <div className="sales-glass-visual" aria-hidden="true">
-      <svg viewBox="0 0 360 240" className="sales-glass-svg">
+      <svg viewBox="0 0 360 230" className="sales-glass-svg">
         <defs>
-          <linearGradient id={salesPanelGradientId} x1="60" x2="320" y1="20" y2="180" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="var(--sales-glass-fill-start)" />
-            <stop offset="54%" stopColor="var(--sales-glass-fill-mid)" />
-            <stop offset="100%" stopColor="var(--sales-glass-fill-end)" />
+          <linearGradient id={panelGradientId} x1="60" y1="40" x2="330" y2="150" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="var(--security-visual-tile-inner)" />
+            <stop offset="100%" stopColor="var(--security-visual-blue-soft)" />
           </linearGradient>
-          <linearGradient id={salesTileGradientId} x1="145" x2="265" y1="54" y2="174" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="var(--sales-glass-fill-start)" />
-            <stop offset="45%" stopColor="var(--sales-glass-fill-mid)" />
-            <stop offset="100%" stopColor="var(--sales-glass-fill-end)" />
+
+          <linearGradient id={tileGradientId} x1="150" y1="62" x2="262" y2="174" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="rgba(255,255,255,0.66)" />
+            <stop offset="56%" stopColor="rgba(255,255,255,0.22)" />
+            <stop offset="100%" stopColor="var(--security-visual-green-soft)" />
           </linearGradient>
-          <filter id={salesTileGlowId} x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="var(--sales-green-glow)" floodOpacity="1" />
-            <feDropShadow dx="0" dy="18" stdDeviation="18" floodColor="var(--sales-blue-glow)" floodOpacity="1" />
-          </filter>
-          <filter id={salesPlatformGlowId} x="-50%" y="-50%" width="200%" height="200%">
-            <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="var(--sales-blue-glow)" floodOpacity="1" />
-            <feDropShadow dx="0" dy="8" stdDeviation="12" floodColor="var(--sales-green-glow)" floodOpacity="0.65" />
+
+          <filter id={greenGlowId} x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="0" stdDeviation="7" floodColor="var(--security-visual-green)" floodOpacity="0.28" />
+            <feDropShadow dx="0" dy="14" stdDeviation="14" floodColor="var(--security-visual-green)" floodOpacity="0.16" />
           </filter>
         </defs>
 
-        <g className="sales-back-panel sales-check-panel" transform="translate(36 42) rotate(-5 80 45)">
-          <rect x="0" y="0" width="136" height="90" rx="18" fill={`url(#${salesPanelGradientId})`} stroke="var(--sales-panel-stroke)" strokeWidth="1.6" />
-          <path d="M14 14C42 6 92 6 122 16" fill="none" stroke="var(--sales-glass-highlight)" strokeWidth="1.3" strokeLinecap="round" opacity="0.65" />
-          <circle cx="24" cy="29" r="5" fill="rgba(47,168,79,0.18)" stroke="var(--sales-panel-line)" strokeWidth="2" />
-          <path d="M42 29h60" fill="none" stroke="var(--sales-panel-line)" strokeWidth="3.5" strokeLinecap="round" />
-          <circle cx="24" cy="50" r="5" fill="rgba(47,168,79,0.12)" stroke="rgba(47,168,79,0.36)" strokeWidth="2" />
-          <path d="M42 50h72" fill="none" stroke="rgba(47,168,79,0.34)" strokeWidth="3.5" strokeLinecap="round" />
-          <circle cx="24" cy="71" r="5" fill="rgba(47,168,79,0.1)" stroke="rgba(47,168,79,0.28)" strokeWidth="2" />
-          <path d="M42 71h46" fill="none" stroke="rgba(47,168,79,0.28)" strokeWidth="3.5" strokeLinecap="round" />
-        </g>
-        <g className="sales-back-panel sales-chart-panel" transform="translate(224 28) rotate(5 60 50)">
-          <rect x="0" y="0" width="120" height="104" rx="18" fill={`url(#${salesPanelGradientId})`} stroke="var(--sales-panel-stroke)" strokeWidth="1.6" />
-          <path d="M14 14C42 6 82 6 106 16" fill="none" stroke="var(--sales-glass-highlight)" strokeWidth="1.3" strokeLinecap="round" opacity="0.65" />
-          <path d="M24 80v-20" fill="none" stroke="var(--sales-panel-line)" strokeWidth="7" strokeLinecap="round" />
-          <path d="M47 80v-35" fill="none" stroke="rgba(47,168,79,0.42)" strokeWidth="7" strokeLinecap="round" />
-          <path d="M70 80v-48" fill="none" stroke="rgba(47,168,79,0.36)" strokeWidth="7" strokeLinecap="round" />
-          <path d="M93 80v-58" fill="none" stroke="rgba(47,168,79,0.30)" strokeWidth="7" strokeLinecap="round" />
-          <path d="M18 88h84" fill="none" stroke="var(--sales-panel-stroke)" strokeWidth="1.2" strokeLinecap="round" />
-        </g>
+        <g className="sales-flat-scene">
+          <g className="sales-flat-panel sales-flat-check-panel" transform="rotate(-3 114 84)">
+            <rect x="58" y="46" width="112" height="76" rx="18" fill={`url(#${panelGradientId})`} stroke="var(--security-visual-blue)" strokeWidth="1.45" />
+            <path d="M76 62 C98 56 128 56 151 64" fill="none" stroke="rgba(255,255,255,0.52)" strokeWidth="1.2" strokeLinecap="round" />
+            <circle cx="82" cy="78" r="4.4" fill="none" stroke="var(--security-visual-green)" strokeWidth="2.2" />
+            <path d="M98 78 H145" fill="none" stroke="var(--security-visual-green)" strokeWidth="3.4" strokeLinecap="round" />
+            <circle cx="82" cy="98" r="4.4" fill="none" stroke="rgba(47,168,79,0.50)" strokeWidth="2.2" />
+            <path d="M98 98 H138" fill="none" stroke="rgba(47,168,79,0.46)" strokeWidth="3.4" strokeLinecap="round" />
+          </g>
 
-        <ellipse className="sales-platform-shadow" cx="206" cy="188" rx="118" ry="28" fill="rgba(36,70,48,0.16)" stroke="none" />
-        <ellipse className="sales-platform" cx="206" cy="178" rx="104" ry="27" fill="var(--sales-platform-fill)" stroke="var(--sales-platform-stroke)" strokeWidth="1.4" filter={`url(#${salesPlatformGlowId})`} />
-        <ellipse className="sales-platform-line" cx="206" cy="170" rx="78" ry="15" fill="none" stroke="var(--sales-platform-green)" strokeWidth="1.4" />
-        <ellipse className="sales-platform-glint" cx="206" cy="183" rx="92" ry="19" fill="none" stroke="rgba(255,255,255,0.26)" strokeWidth="1" />
+          <g className="sales-flat-panel sales-flat-chart-panel" transform="rotate(3 290 84)">
+            <rect x="238" y="42" width="104" height="84" rx="18" fill={`url(#${panelGradientId})`} stroke="var(--security-visual-blue)" strokeWidth="1.45" />
+            <path d="M254 58 C276 52 304 52 326 60" fill="none" stroke="rgba(255,255,255,0.52)" strokeWidth="1.2" strokeLinecap="round" />
+            <path d="M260 104 V86" fill="none" stroke="rgba(47,168,79,0.42)" strokeWidth="6" strokeLinecap="round" />
+            <path d="M282 104 V76" fill="none" stroke="rgba(47,168,79,0.52)" strokeWidth="6" strokeLinecap="round" />
+            <path d="M304 104 V66" fill="none" stroke="rgba(47,168,79,0.60)" strokeWidth="6" strokeLinecap="round" />
+            <path d="M326 104 V58" fill="none" stroke="var(--security-visual-green)" strokeWidth="6" strokeLinecap="round" />
+          </g>
 
-        <g className="sales-headset-tile">
-          <rect className="sales-headset-glass" x="145" y="54" width="120" height="120" rx="30" fill={`url(#${salesTileGradientId})`} stroke="var(--sales-glass-stroke)" strokeWidth="1.8" filter={`url(#${salesTileGlowId})`} />
-          <rect className="sales-headset-inner-glass" x="153" y="62" width="104" height="104" rx="25" fill="none" stroke="rgba(255,255,255,0.34)" strokeWidth="1.1" />
-          <path className="sales-headset-highlight" d="M164 75C183 62 223 62 247 78" fill="none" stroke="var(--sales-glass-highlight)" strokeWidth="2.2" strokeLinecap="round" opacity="0.85" />
-          <path className="sales-headset-cool-edge" d="M255 86C260 112 258 145 244 163" fill="none" stroke="var(--sales-glass-cool-stroke)" strokeWidth="1.4" strokeLinecap="round" opacity="0.75" />
-          <path className="sales-headset-reflection" d="M159 95C174 83 197 80 220 86" fill="none" stroke="rgba(255,255,255,0.26)" strokeWidth="1.2" strokeLinecap="round" opacity="0.68" />
-          <g className="sales-headset">
-            <path className="sales-headset-line" d="M178 117C178 91 190 78 205 78s27 13 27 39" fill="none" stroke="var(--sales-green)" strokeWidth="8" strokeLinecap="round" />
-            <path className="sales-headset-glint" d="M178 117C178 91 190 78 205 78s27 13 27 39" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2" strokeLinecap="round" opacity="0.8" />
-            <rect className="sales-earcup" x="170" y="112" width="18" height="34" rx="8" fill="rgba(47,168,79,0.22)" stroke="var(--sales-green)" strokeWidth="2.4" />
-            <rect className="sales-earcup" x="222" y="112" width="18" height="34" rx="8" fill="rgba(47,168,79,0.22)" stroke="var(--sales-green)" strokeWidth="2.4" />
-            <path className="sales-mic" d="M232 143c-4 11-13 16-25 16" fill="none" stroke="var(--sales-green)" strokeWidth="5" strokeLinecap="round" />
-            <circle className="sales-mic-dot" cx="203" cy="159" r="4" fill="var(--sales-green)" stroke="rgba(255,255,255,0.38)" strokeWidth="1" />
+          <ellipse className="sales-flat-platform-shadow" cx="206" cy="188" rx="105" ry="20" fill="rgba(47, 82, 58, 0.12)" stroke="none" />
+          <ellipse className="sales-flat-platform-main" cx="206" cy="176" rx="96" ry="24" fill="none" stroke="var(--sales-visual-ring)" strokeWidth="1.4" />
+          <ellipse className="sales-flat-platform-inner" cx="206" cy="170" rx="70" ry="15" fill="none" stroke="rgba(47,168,79,0.28)" strokeWidth="1.2" />
+          <ellipse className="sales-flat-platform-glow" cx="206" cy="168" rx="54" ry="11" fill="var(--security-visual-green-soft)" stroke="none" />
+
+          <g className="sales-flat-headset-tile" filter={`url(#${greenGlowId})`}>
+            <rect x="150" y="62" width="112" height="112" rx="30" fill={`url(#${tileGradientId})`} stroke="var(--security-visual-green)" strokeWidth="1.65" />
+            <rect x="160" y="72" width="92" height="92" rx="24" fill="none" stroke="rgba(255,255,255,0.34)" strokeWidth="1.1" />
+            <path d="M166 82 C184 70 226 70 246 84" fill="none" stroke="rgba(255,255,255,0.62)" strokeWidth="1.7" strokeLinecap="round" />
+
+            <path d="M178 122 C178 96 190 84 206 84 C222 84 234 96 234 122" fill="none" stroke="var(--security-visual-green)" strokeWidth="7" strokeLinecap="round" />
+            <path d="M178 122 C178 96 190 84 206 84 C222 84 234 96 234 122" fill="none" stroke="rgba(255,255,255,0.40)" strokeWidth="1.8" strokeLinecap="round" />
+
+            <rect x="170" y="116" width="17" height="32" rx="8" fill="var(--security-visual-green-soft)" stroke="var(--security-visual-green)" strokeWidth="2.3" />
+            <rect x="225" y="116" width="17" height="32" rx="8" fill="var(--security-visual-green-soft)" stroke="var(--security-visual-green)" strokeWidth="2.3" />
+
+            <path d="M234 144 C229 155 220 160 208 160" fill="none" stroke="var(--security-visual-green)" strokeWidth="4.2" strokeLinecap="round" />
+            <circle cx="204" cy="160" r="3.8" fill="var(--security-visual-green)" stroke="rgba(255,255,255,0.42)" strokeWidth="1" />
           </g>
         </g>
       </svg>
