@@ -278,7 +278,7 @@ export const demoInstructions: AnalysisInstruction[] = [
     department_uuid: demoDepartments[0].id,
     title: "Отдел продаж",
     original_filename: "sales-checklist.md",
-    file_path: "instructions/sales-checklist.md",
+    download_url: "/api/v1/instructions/mock-instruction/download",
     mime_type: "text/markdown; charset=utf-8",
     size_bytes: 2140,
     content_sha256: "demo",

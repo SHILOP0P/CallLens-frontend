@@ -1,6 +1,14 @@
 import {
-  ChevronRight,
-  Pencil
+  ArrowLeft,
+  Bell,
+  Camera,
+  CheckCircle2,
+  LockKeyhole,
+  MonitorSmartphone,
+  Pencil,
+  Power,
+  ShieldCheck,
+  UserRound
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { api } from "../../api";
@@ -13,91 +21,145 @@ import type {
 
 import { formatDate } from "../../shared/lib/formatters";
 import { ProfileField } from "../../shared/ui/primitives";
-import { CompanyEmptyState, CompanyMiniCard } from "../companies/CompaniesPage";
+import { CompanyMiniCard } from "../companies/CompaniesPage";
 
 export function ProfilePage({
   session,
   companies,
-  onUserUpdated,
-  onCompanyCreated,
+  onBackToSettings,
   onNavigate
 }: {
   session: SessionState;
   companies: CompanyResponse[];
+  onBackToSettings: () => void;
   onUserUpdated: (user: UserResponse) => void;
   onCompanyCreated: (company: CompanyResponse) => void | Promise<void>;
   onNavigate: (page: AppPage) => void;
 }) {
   const managedCompanies = companies.filter((company) => company.manager_user_uuid === session.user.id);
   const memberCompanies = companies.filter((company) => company.manager_user_uuid !== session.user.id);
+  const username = formatUsername(session.user.username);
+  const avatarInitial = profileInitial(session.user.full_name || session.user.full_surname || session.user.username);
+  const avatarUrl = session.user.avatar_url;
 
   return (
-    <section className="profile-layout">
-      <div className="profile-hero glass">
-        <div className="avatar large">{session.user.full_name[0] ?? "C"}</div>
+    <section className="profile-layout app-page">
+      <div className="settings-back-row">
+        <button className="ghost-button small" type="button" onClick={onBackToSettings}>
+          <ArrowLeft size={16} />
+          Назад
+        </button>
+      </div>
+      <div className="app-page-heading settings-heading">
+        <span className="settings-heading-icon" aria-hidden="true">
+          <UserRound size={26} />
+        </span>
         <div>
-          <h1>
-            {session.user.full_name} {session.user.full_surname}
-          </h1>
-          <p>{session.user.post ?? "Должность не указана"}</p>
+          <h1>Профиль</h1>
+          <p>Аккаунт, безопасность и личные параметры пользователя.</p>
         </div>
       </div>
 
-      <div className="profile-grid">
-        <section className="profile-card glass">
-          <div className="panel-heading">
-            <h2>Профиль</h2>
-            <span className="status-chip ok">Активен</span>
+      <div className="profile-settings-grid">
+        <section className="profile-account-panel glass-panel">
+          <div className="profile-account-head">
+            <div className="avatar large">{avatarUrl ? <img src={avatarUrl} alt="" /> : avatarInitial}</div>
+            <div>
+              <h2>
+                {session.user.full_name} {session.user.full_surname}
+              </h2>
+              <p>{roleLabel(session.user.role)} • {session.user.post || "должность не указана"}</p>
+            </div>
+            <button className="primary-button" type="button" onClick={() => onNavigate("settingsProfileEdit")}>
+              <Pencil size={17} />
+              Изменить профиль
+            </button>
           </div>
-          <ProfileField label="Email" value={session.user.email} />
-          <ProfileField label="Username" value={session.user.username} />
-          <ProfileField label="Роль" value={session.user.role} />
-          <ProfileField label="Дата регистрации" value={formatDate(session.user.created_at)} />
-          <UsernameEditor user={session.user} onUserUpdated={onUserUpdated} />
+
+          <div className="profile-data-list">
+            <ProfileDataRow
+              label={`Тэг: ${username}`}
+              note="Для быстрого приглашения сотрудников в компанию"
+            />
+            <ProfileDataRow label={`Email: ${session.user.email}`} note="Основные данные профиля" />
+            <ProfileDataRow label={`Телефон: ${session.user.phone || "не указан"}`} note="Личные данные профиля" />
+            <ProfileDataRow label={`Часовой пояс: ${session.user.timezone || "не указан"}`} note="Используется для отображения времени" />
+            <ProfileDataRow label="Уведомления профиля" note="Email, приглашения в компании и события подписки" status="Активно" />
+          </div>
         </section>
 
-        <section className="profile-card glass">
-          <div className="panel-heading">
-            <h2>Компания</h2>
-            {companies.length > 0 && <span className="status-chip warn">{companies.length}</span>}
-          </div>
-          {companies.length === 0 ? (
-            <CompanyEmptyState onCompanyCreated={onCompanyCreated} compact />
-          ) : (
-            <div className="company-mini-list">
-              {managedCompanies.map((company) => (
-                <CompanyMiniCard key={company.id} company={company} manager />
-              ))}
-              {memberCompanies.map((company) => (
-                <CompanyMiniCard key={company.id} company={company} manager={false} />
-              ))}
-            </div>
-          )}
-          <button className="ghost-button" type="button" onClick={() => onNavigate("companies")}>
-            Открыть компании
-            <ChevronRight size={16} />
-          </button>
-        </section>
+        <aside className="profile-security-panel glass-panel">
+          <h2>Безопасность</h2>
+          <SecurityRow icon={<LockKeyhole size={18} />} title="Пароль" note="Обновлен 12 мая" />
+          <SecurityRow
+            icon={<MonitorSmartphone size={18} />}
+            title="Устройства"
+            note="Активные входы и завершение лишних сессий"
+            action="Открыть"
+            onAction={() => onNavigate("settingsDevices")}
+          />
+          <SecurityRow icon={<Bell size={18} />} title="Уведомления" note="Email и системные события" />
+        </aside>
       </div>
+
+      <section className="profile-card glass-panel">
+        <div className="panel-heading large">
+          <div>
+            <h2>Компании пользователя</h2>
+            <p>Компании, в которых состоит пользователь.</p>
+          </div>
+        </div>
+        {companies.length === 0 ? (
+          <div className="instruction-empty standalone">Компаний пока нет.</div>
+        ) : (
+          <div className="company-mini-list">
+            {managedCompanies.map((company) => (
+              <CompanyMiniCard key={company.id} company={company} manager />
+            ))}
+            {memberCompanies.map((company) => (
+              <CompanyMiniCard key={company.id} company={company} manager={false} />
+            ))}
+          </div>
+        )}
+        <button className="ghost-button" type="button" onClick={() => onNavigate("settingsCompanies")}>
+          Открыть компании
+        </button>
+      </section>
     </section>
   );
 }
 
-export function UsernameEditor({
-  user,
-  onUserUpdated
+export function ProfileEditPage({
+  session,
+  onUserUpdated,
+  onNavigate
 }: {
-  user: UserResponse;
+  session: SessionState;
   onUserUpdated: (user: UserResponse) => void;
+  onNavigate: (page: AppPage) => void;
 }) {
-  const [username, setUsername] = useState(user.username);
+  const [username, setUsername] = useState(formatUsername(session.user.username));
+  const [fullName, setFullName] = useState(session.user.full_name);
+  const [fullSurname, setFullSurname] = useState(session.user.full_surname);
+  const [post, setPost] = useState(session.user.post ?? "");
+  const [phone, setPhone] = useState(session.user.phone ?? "");
+  const [timezone, setTimezone] = useState(session.user.timezone ?? "Europe/Moscow");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const avatarInitial = profileInitial(session.user.full_name || session.user.full_surname || session.user.username);
+  const avatarUrl = session.user.avatar_url;
 
   useEffect(() => {
-    setUsername(user.username);
-  }, [user.username]);
+    setUsername(formatUsername(session.user.username));
+    setFullName(session.user.full_name);
+    setFullSurname(session.user.full_surname);
+    setPost(session.user.post ?? "");
+    setPhone(session.user.phone ?? "");
+    setTimezone(session.user.timezone ?? "Europe/Moscow");
+  }, [session.user.username]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -106,15 +168,26 @@ export function UsernameEditor({
 
     const trimmedUsername = username.trim();
     if (!trimmedUsername) {
-      setError("Введите username.");
+      setError("Введите тэг.");
       return;
     }
 
     setBusy(true);
     try {
-      const updatedUser = await api.updateUsername(trimmedUsername);
+      let updatedUser = await api.updateProfile({
+        full_name: fullName.trim(),
+        full_surname: fullSurname.trim(),
+        post: post.trim() || null,
+        phone: phone.trim() || null,
+        timezone: timezone.trim() || null
+      });
+
+      if (trimmedUsername !== formatUsername(session.user.username)) {
+        updatedUser = await api.updateUsername(trimmedUsername);
+      }
+
       onUserUpdated(updatedUser);
-      setSuccess("Username обновлен.");
+      setSuccess("Профиль обновлен.");
     } catch (updateError) {
       setError(updateError instanceof Error ? updateError.message : "Не удалось обновить username");
     } finally {
@@ -123,17 +196,372 @@ export function UsernameEditor({
   }
 
   return (
-    <form className="username-editor" onSubmit={submit}>
-      <label>
-        Изменить username
-        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="@muxa" />
-      </label>
-      {error && <div className="form-error">{error}</div>}
-      {success && <div className="form-success">{success}</div>}
-      <button className="primary-button small" type="submit" disabled={busy}>
-        <Pencil size={16} />
-        {busy ? "Сохраняю..." : "Сохранить username"}
-      </button>
-    </form>
+    <section className="profile-edit-page app-page">
+      <div className="settings-back-row">
+        <button className="ghost-button small" type="button" onClick={() => onNavigate("settingsProfile")}>
+          <ArrowLeft size={16} />
+          Назад
+        </button>
+      </div>
+      <div className="app-page-heading settings-heading">
+        <span className="settings-heading-icon" aria-hidden="true">
+          <Pencil size={26} />
+        </span>
+        <div>
+          <h1>Изменение профиля</h1>
+          <p>Можно обновить публичный тэг. Остальные поля появятся после подключения профиля.</p>
+        </div>
+      </div>
+
+      <div className="profile-edit-grid">
+        <form className="profile-edit-form glass-panel" onSubmit={submit}>
+          <h2>Данные профиля</h2>
+          <div className="form-grid two">
+            <label>
+              Имя
+              <input value={fullName} onChange={(event) => setFullName(event.target.value)} />
+            </label>
+            <label>
+              Фамилия
+              <input value={fullSurname} onChange={(event) => setFullSurname(event.target.value)} />
+            </label>
+            <label>
+              Тэг / username
+              <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="@petrov" />
+              <small>Латинские буквы, цифры и `_`, от 4 до 24 символов после `@`.</small>
+            </label>
+            <label>
+              Email
+              <input value={session.user.email} disabled />
+            </label>
+            <label>
+              Телефон
+              <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="+79990000000" />
+            </label>
+            <label>
+              Часовой пояс
+              <input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Europe/Moscow" />
+            </label>
+            <label>
+              Должность
+              <input value={post} onChange={(event) => setPost(event.target.value)} placeholder="Менеджер" />
+            </label>
+          </div>
+          {error && <div className="form-error">{error}</div>}
+          {success && <div className="form-success">{success}</div>}
+          <div className="form-actions">
+            <button className="primary-button" type="submit" disabled={busy}>
+              <Pencil size={18} />
+              {busy ? "Сохраняю..." : "Сохранить изменения"}
+            </button>
+            <button className="ghost-button" type="button" onClick={() => onNavigate("settingsProfile")}>
+              Отмена
+            </button>
+          </div>
+        </form>
+
+        <aside className="profile-avatar-panel glass-panel">
+          <h2>Аватар</h2>
+          <div className="avatar edit-preview">{avatarUrl ? <img src={avatarUrl} alt="" /> : avatarInitial}</div>
+          <p>Можно загрузить файл аватара или вернуть буквенную заглушку.</p>
+          <label className="ghost-button">
+            <Camera size={17} />
+            Загрузить аватар
+            <input
+              type="file"
+              accept="image/*"
+              hidden
+              onChange={async (event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                setError("");
+                try {
+                  const response = await api.uploadAvatar(file);
+                  onUserUpdated({ ...session.user, avatar_url: response.avatar_url });
+                  setSuccess("Аватар обновлен.");
+                } catch (avatarError) {
+                  setError(avatarError instanceof Error ? avatarError.message : "Не удалось загрузить аватар");
+                }
+              }}
+            />
+          </label>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={async () => {
+              await api.deleteAvatar();
+              onUserUpdated({ ...session.user, avatar_url: null });
+              setSuccess("Аватар сброшен.");
+            }}
+          >
+            Удалить аватар
+          </button>
+          <ProfileField label="Дата регистрации" value={formatDate(session.user.created_at)} />
+        </aside>
+      </div>
+
+      <div className="profile-edit-grid single">
+        <form
+          className="profile-edit-form glass-panel"
+          onSubmit={async (event) => {
+            event.preventDefault();
+            setError("");
+            setSuccess("");
+            try {
+              await api.updatePassword({ current_password: currentPassword, new_password: newPassword });
+              setCurrentPassword("");
+              setNewPassword("");
+              setSuccess("Пароль обновлен.");
+            } catch (passwordError) {
+              setError(passwordError instanceof Error ? passwordError.message : "Не удалось обновить пароль");
+            }
+          }}
+        >
+          <h2>Пароль</h2>
+          <p className="muted">Введите текущий пароль и новый пароль. После сохранения backend применит свои правила проверки сложности.</p>
+          <div className="form-grid two">
+            <label>
+              Текущий пароль
+              <input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} />
+            </label>
+            <label>
+              Новый пароль
+              <input type="password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+            </label>
+          </div>
+          <button className="primary-button" type="submit" disabled={!currentPassword || !newPassword}>
+            Обновить пароль
+          </button>
+        </form>
+      </div>
+    </section>
   );
+}
+
+export function DevicesPage({
+  onBackToSettings,
+  onLogoutAll
+}: {
+  onBackToSettings: () => void;
+  onLogoutAll: () => Promise<void>;
+}) {
+  const [sessions, setSessions] = useState<Array<{ id: string; current: boolean; user_agent: string | null; ip: string | null; created_at: string; last_seen_at: string | null }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [loggingOutAll, setLoggingOutAll] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    api.listSessions()
+      .then((response) => {
+        if (!cancelled) setSessions(response.sessions);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить устройства");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <section className="devices-page app-page settings-subpage-layout">
+      <div className="settings-back-row">
+        <button className="ghost-button small" type="button" onClick={onBackToSettings}>
+          <ArrowLeft size={16} />
+          Назад
+        </button>
+      </div>
+      <div className="app-page-heading settings-heading">
+        <span className="settings-heading-icon" aria-hidden="true">
+          <MonitorSmartphone size={26} />
+        </span>
+        <div>
+          <h1>Устройства</h1>
+          <p>Активные входы в аккаунт. Завершайте сессии, которыми больше не пользуетесь.</p>
+        </div>
+      </div>
+
+      <section className="devices-panel glass-panel">
+        <div className="devices-panel-head">
+          <div>
+            <h2>Активные сеансы</h2>
+            <p>Если устройство больше не используется, завершите отдельный сеанс или выйдите везде сразу.</p>
+          </div>
+          <button
+            className="primary-button small"
+            type="button"
+            disabled={loggingOutAll}
+            onClick={async () => {
+              setLoggingOutAll(true);
+              await onLogoutAll();
+            }}
+          >
+            <Power size={16} />
+            {loggingOutAll ? "Завершаю..." : "Завершить все сеансы"}
+          </button>
+        </div>
+        {loading ? (
+          <div className="instruction-empty standalone">Загружаю устройства...</div>
+        ) : error ? (
+          <div className="form-error">Не удалось загрузить устройства. Можно завершить все сеансы и войти заново.</div>
+        ) : sessions.length === 0 ? (
+          <div className="instruction-empty standalone">Активных устройств не найдено.</div>
+        ) : (
+          <div className="device-list">
+            {sessions.map((item) => {
+              const info = deviceInfo(item.user_agent);
+              return (
+                <article className={`device-card ${item.current ? "current" : ""}`} key={item.id}>
+                  <span className="device-icon" aria-hidden="true">
+                    <MonitorSmartphone size={22} />
+                  </span>
+                  <div className="device-main">
+                    <div>
+                      <strong>{item.current ? "Текущее устройство" : info.title}</strong>
+                      <small>{info.subtitle}</small>
+                    </div>
+                    <div className="device-meta">
+                      <span>IP: {item.ip || "не указан"}</span>
+                      <span>Вход: {formatDate(item.created_at)}</span>
+                      {item.last_seen_at && <span>Активность: {formatDate(item.last_seen_at)}</span>}
+                    </div>
+                  </div>
+                  {item.current ? (
+                    <span className="status-chip ok">Сейчас</span>
+                  ) : (
+                    <button
+                      className="ghost-button small"
+                      type="button"
+                      onClick={async () => {
+                        await api.deleteSession(item.id);
+                        setSessions((current) => current.filter((sessionItem) => sessionItem.id !== item.id));
+                      }}
+                    >
+                      <Power size={15} />
+                      Завершить
+                    </button>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+    </section>
+  );
+}
+
+function ProfileDataRow({
+  label,
+  note,
+  status,
+  action,
+  onAction
+}: {
+  label: string;
+  note: string;
+  status?: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="profile-data-row">
+      <div>
+        <strong>{label}</strong>
+        <small>{note}</small>
+      </div>
+      {status && <span className="status-chip ok">{status}</span>}
+      {action && (
+        <button className="text-button" type="button" onClick={onAction}>
+          {action}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function SecurityRow({
+  icon,
+  title,
+  note,
+  action,
+  onAction
+}: {
+  icon: React.ReactNode;
+  title: string;
+  note: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="security-row">
+      <span>{icon}</span>
+      <div>
+        <strong>{title}</strong>
+        <small>{note}</small>
+      </div>
+      {action ? (
+        <button className="text-button" type="button" onClick={onAction}>
+          {action}
+        </button>
+      ) : (
+        <span className="status-chip ok">
+          <CheckCircle2 size={14} />
+          Активно
+        </span>
+      )}
+    </div>
+  );
+}
+
+function deviceInfo(userAgent: string | null) {
+  const value = userAgent ?? "";
+  const browser = value.includes("Edg/")
+    ? "Microsoft Edge"
+    : value.includes("Chrome/")
+      ? "Google Chrome"
+      : value.includes("Firefox/")
+        ? "Mozilla Firefox"
+        : value.includes("Safari/")
+          ? "Safari"
+          : "Браузер";
+  const system = value.includes("Windows")
+    ? "Windows"
+    : value.includes("Mac OS")
+      ? "macOS"
+      : value.includes("Android")
+        ? "Android"
+        : value.includes("iPhone") || value.includes("iPad")
+          ? "iOS"
+          : "ОС не определена";
+
+  return {
+    title: `${browser}, ${system}`,
+    subtitle: value ? "Данные браузера распознаны по user-agent" : "Backend не передал данные браузера"
+  };
+}
+
+function formatUsername(username: string) {
+  const trimmed = username.trim();
+  if (!trimmed) return "@username";
+  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
+}
+
+function profileInitial(value: string) {
+  const trimmed = value.trim();
+  return trimmed ? trimmed[0].toUpperCase() : "П";
+}
+
+function roleLabel(role: string) {
+  if (role === "admin") return "Администратор";
+  if (role === "company_manager") return "Менеджер компании";
+  if (role === "department_leader") return "Руководитель отдела";
+  if (role === "employee") return "Сотрудник";
+  return "Пользователь";
 }

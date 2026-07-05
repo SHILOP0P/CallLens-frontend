@@ -4,6 +4,8 @@
 }
 
 .landing {
+  --landing-header-offset: 8px;
+  --landing-header-space: 108px;
   position: relative;
   isolation: isolate;
   color: #fffaf5;
@@ -48,7 +50,22 @@
 }
 
 .landing-header {
+  position: fixed;
+  top: var(--landing-header-offset);
+  left: 50%;
+  z-index: 40;
+  width: min(1720px, calc(100% - 48px));
+  transform: translateX(-50%);
   color: #fffaf5;
+  background:
+    linear-gradient(135deg, #171a1f 0%, #17120f 56%, #281810 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 30px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(25px) saturate(1.28);
+  -webkit-backdrop-filter: blur(25px) saturate(1.28);
 }
 
 .app-header {
@@ -314,9 +331,9 @@
   gap: 42px;
   align-items: center;
   width: min(1260px, calc(100% - 72px));
-  min-height: calc(100vh - 166px);
+  min-height: calc(100vh - var(--landing-header-space));
   margin: 0 auto;
-  padding: 28px 0 84px;
+  padding: var(--landing-header-space) 0 84px;
 }
 
 .hero-copy {
@@ -654,6 +671,8 @@
 }
 
 .landing-emblem {
+  --emblem-shine-local-y: -120px;
+  --emblem-shine-strength: 0;
   position: relative;
   display: grid;
   place-items: center;
@@ -687,13 +706,33 @@
 }
 
 .landing-emblem::after {
-  width: 34px;
-  height: 156px;
-  left: -62px;
-  top: -37px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 250, 245, 0.1) 25%, rgba(255, 250, 245, 0.42) 50%, rgba(255, 250, 245, 0.1) 75%, transparent 100%);
-  transform: rotate(24deg) translateX(var(--workflow-scroll-shine, -18px));
-  opacity: calc(var(--workflow-scroll-light, 0.42) * 0.68);
+  z-index: 2;
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(in srgb, var(--benefit-accent) 10%, transparent) 18%,
+      color-mix(in srgb, var(--benefit-accent) 74%, #fffaf5) 48%,
+      color-mix(in srgb, var(--benefit-accent) 48%, transparent) 60%,
+      transparent 100%
+    ) center calc(var(--emblem-shine-local-y, -120px) - 36px) / 100% 72px no-repeat;
+  filter:
+    drop-shadow(0 0 4px color-mix(in srgb, var(--benefit-accent) 28%, transparent))
+    drop-shadow(0 0 1px color-mix(in srgb, var(--benefit-accent) 42%, #fffaf5));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  mix-blend-mode: screen;
+  opacity: calc(var(--emblem-shine-strength, 0) * 0.72);
+  transform: translateZ(0);
   transition: opacity 120ms ease-out;
 }
 
@@ -1340,6 +1379,8 @@
 }
 
 .workflow-emblem {
+  --emblem-shine-local-y: -120px;
+  --emblem-shine-strength: 0;
   position: relative;
   display: grid;
   place-items: center;
@@ -1373,13 +1414,33 @@
 }
 
 .workflow-emblem::after {
-  width: 34px;
-  height: 156px;
-  left: -62px;
-  top: -37px;
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 250, 245, 0.1) 25%, rgba(255, 250, 245, 0.42) 50%, rgba(255, 250, 245, 0.1) 75%, transparent 100%);
-  transform: rotate(24deg) translateX(var(--workflow-scroll-shine));
-  opacity: calc(var(--workflow-scroll-light) * 0.68);
+  z-index: 2;
+  inset: 0;
+  padding: 2px;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(in srgb, var(--workflow-accent) 10%, transparent) 18%,
+      color-mix(in srgb, var(--workflow-accent) 74%, #fffaf5) 48%,
+      color-mix(in srgb, var(--workflow-accent) 48%, transparent) 60%,
+      transparent 100%
+    ) center calc(var(--emblem-shine-local-y, -120px) - 36px) / 100% 72px no-repeat;
+  filter:
+    drop-shadow(0 0 4px color-mix(in srgb, var(--workflow-accent) 28%, transparent))
+    drop-shadow(0 0 1px color-mix(in srgb, var(--workflow-accent) 42%, #fffaf5));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  mix-blend-mode: screen;
+  opacity: calc(var(--emblem-shine-strength, 0) * 0.72);
+  transform: translateZ(0);
   transition: opacity 120ms ease-out;
 }
 
@@ -1535,6 +1596,24 @@
     inset 0 1px 0 rgba(255, 250, 245, 0.2),
     0 0 24px rgba(151, 216, 124, 0.14),
     0 18px 42px rgba(20, 12, 8, 0.14);
+}
+
+.workflow-emblem.brain .brain-icon {
+  --brain-icon-size: 62px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.workflow-emblem.brain .brain-icon:hover {
+  border-color: transparent;
+  box-shadow: none;
+  transform: none;
+}
+
+.workflow-emblem.brain .brain-icon-radial {
+  inset: 2px;
 }
 
 .workflow-step h3,
@@ -1804,18 +1883,56 @@ html[data-theme="dark"] .security-flat-lock {
 }
 
 .security-kicker svg {
-  width: 30px;
-  height: 30px;
-  padding: 6px;
+  display: block;
+  width: 18px;
+  height: 18px;
   color: currentColor;
+}
+
+html[data-theme="light"] .security-kicker-emblem svg {
+  transform: none;
 }
 
 .security-scroll-shine {
   --security-shine-local-y: -120px;
   --security-shine-strength: 0;
+  --security-shine-color: currentColor;
   position: relative;
   overflow: hidden;
   isolation: isolate;
+}
+
+html[data-theme="light"] .security-scroll-shine::before {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  padding: 2px;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(in srgb, var(--security-shine-color) 18%, transparent) 18%,
+      color-mix(in srgb, var(--security-shine-color) 78%, rgba(255, 255, 255, 0.48)) 48%,
+      color-mix(in srgb, var(--security-shine-color) 54%, transparent) 62%,
+      transparent 100%
+    ) center calc(var(--security-shine-local-y) - 48px) / 100% 96px no-repeat;
+  filter:
+    drop-shadow(0 0 4px color-mix(in srgb, var(--security-shine-color) 34%, transparent))
+    drop-shadow(0 0 2px color-mix(in srgb, var(--security-shine-color) 48%, rgba(255, 255, 255, 0.5)));
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  mix-blend-mode: multiply;
+  opacity: calc(var(--security-shine-strength) * 0.76);
+  transform: translateZ(0);
 }
 
 html[data-theme="dark"] .security-scroll-shine::before {
@@ -1834,7 +1951,7 @@ html[data-theme="dark"] .security-scroll-shine::before {
       rgba(255, 238, 228, 0.58) 48%,
       rgba(255, 118, 78, 0.28) 58%,
       transparent 100%
-    ) center calc(var(--security-shine-local-y) - 18px) / 100% 36px no-repeat;
+    ) center calc(var(--security-shine-local-y) - 36px) / 100% 72px no-repeat;
   filter:
     drop-shadow(0 0 3px rgba(255, 122, 80, 0.24))
     drop-shadow(0 0 1px rgba(255, 245, 235, 0.42));
@@ -1860,7 +1977,7 @@ html[data-theme="dark"] .security-status-chip.security-scroll-shine::before {
       rgba(221, 255, 230, 0.56) 48%,
       rgba(74, 222, 128, 0.26) 58%,
       transparent 100%
-    ) center calc(var(--security-shine-local-y) - 18px) / 100% 36px no-repeat;
+    ) center calc(var(--security-shine-local-y) - 36px) / 100% 72px no-repeat;
   filter:
     drop-shadow(0 0 3px rgba(74, 222, 128, 0.24))
     drop-shadow(0 0 1px rgba(226, 255, 234, 0.42));
@@ -2492,23 +2609,49 @@ html.reveal-ready .landing [data-reveal-item].is-visible {
 .modal-layer {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 60;
   display: grid;
   place-items: center;
   padding: 24px;
-  background: rgba(20, 13, 9, 0.45);
-  backdrop-filter: blur(12px);
+  background:
+    radial-gradient(circle at 74% 18%, rgba(255, 122, 67, 0.18), transparent 26%),
+    rgba(10, 10, 9, 0.62);
+  backdrop-filter: blur(18px) saturate(1.12);
+  -webkit-backdrop-filter: blur(18px) saturate(1.12);
 }
 
 .auth-card {
   position: relative;
   width: min(480px, 100%);
+  overflow: hidden;
   padding: 32px;
-  color: var(--ink);
-  background: rgba(255, 250, 245, 0.93);
-  border: 1px solid rgba(255, 255, 255, 0.62);
+  color: #fffaf5;
+  background:
+    linear-gradient(135deg, rgba(28, 24, 20, 0.92), rgba(18, 18, 16, 0.86) 58%, rgba(40, 25, 18, 0.8)),
+    rgba(22, 20, 17, 0.86);
+  border: 1px solid rgba(255, 250, 245, 0.16);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
+  box-shadow:
+    0 30px 90px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11);
+  backdrop-filter: blur(28px) saturate(1.2);
+  -webkit-backdrop-filter: blur(28px) saturate(1.2);
+}
+
+.auth-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 4%, rgba(255, 138, 92, 0.18), transparent 38%),
+    linear-gradient(116deg, transparent 9%, rgba(255, 250, 245, 0.1) 38%, transparent 58%);
+  opacity: 0.86;
+}
+
+.auth-card > * {
+  position: relative;
+  z-index: 1;
 }
 
 .auth-card h2,
@@ -2520,6 +2663,10 @@ html.reveal-ready .landing [data-reveal-item].is-visible {
 .muted,
 .field-title {
   color: var(--muted);
+}
+
+.auth-card p {
+  color: rgba(255, 250, 245, 0.7);
 }
 
 .auth-form,
@@ -2654,25 +2801,77 @@ select:focus {
 
 .app-shell {
   position: relative;
-  color: var(--ink);
+  color: #fffaf5;
   background:
-    radial-gradient(circle at 86% 18%, rgba(255, 120, 65, 0.15), transparent 28%),
-    linear-gradient(180deg, #fff7ef, #f4d8c5);
+    radial-gradient(circle at 74% 16%, rgba(255, 122, 67, 0.16), transparent 30%),
+    radial-gradient(circle at 16% 42%, rgba(242, 168, 77, 0.09), transparent 26%),
+    #111411;
+  overflow-x: hidden;
+  --app-panel: rgba(25, 22, 18, 0.7);
+  --app-panel-strong: rgba(27, 24, 20, 0.86);
+  --app-panel-soft: rgba(255, 250, 245, 0.075);
+  --app-panel-line: rgba(255, 250, 245, 0.15);
+  --app-panel-hover: rgba(255, 250, 245, 0.11);
+  --app-accent-line: rgba(255, 102, 55, 0.56);
+  --app-muted: rgba(255, 250, 245, 0.68);
+  --app-shadow: 0 24px 70px rgba(0, 0, 0, 0.35);
 }
 
 .app-shell::before {
   content: "";
   position: fixed;
-  inset: 84px 0 0;
+  inset: 0;
   z-index: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.08)),
+    linear-gradient(90deg, rgba(8, 14, 13, 0.58), rgba(19, 16, 13, 0.78) 46%, rgba(11, 15, 15, 0.5)),
     url("/assets/calllens-hero-background.png");
   background-size: cover;
-  background-position: center;
-  opacity: 0.24;
-  filter: blur(2px);
+  background-position: left center;
+  opacity: 0.34;
+  filter: blur(1px) saturate(0.92);
+  transform: scaleX(-1);
+}
+
+.app-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(14, 15, 13, 0.12), rgba(14, 15, 13, 0.32) 58%, rgba(14, 15, 13, 0.42)),
+    radial-gradient(circle at 82% 20%, rgba(255, 214, 168, 0.12), transparent 25%),
+    radial-gradient(circle at 24% 70%, rgba(255, 104, 57, 0.12), transparent 24%);
+}
+
+.app-shell .app-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: 78px;
+  color: #fffaf5;
+  background: rgba(17, 17, 15, 0.8);
+  border-bottom: 1px solid rgba(255, 250, 245, 0.16);
+  border-radius: 0 0 16px 16px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.18);
+  -webkit-backdrop-filter: blur(24px) saturate(1.18);
+}
+
+.app-shell .app-top-nav {
+  display: none;
+}
+
+.app-shell .app-header .logo {
+  font-size: 25px;
+}
+
+.app-shell .app-header .logo-mark {
+  color: #ff673d;
+  filter: drop-shadow(0 0 12px rgba(255, 103, 61, 0.3));
 }
 
 .workspace-frame {
@@ -2680,10 +2879,10 @@ select:focus {
   z-index: 1;
   isolation: isolate;
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr);
+  grid-template-columns: 188px minmax(0, 1fr);
   align-items: start;
   gap: 24px;
-  padding: 28px 42px 46px;
+  padding: 22px 30px 46px;
 }
 
 .workspace {
@@ -2694,30 +2893,34 @@ select:focus {
 
 .app-sidebar {
   position: sticky;
-  top: 112px;
-  z-index: 1000;
+  top: 100px;
+  z-index: 20;
   display: grid;
-  gap: 8px;
-  width: 76px;
-  padding: 10px;
-  overflow: visible;
-  background: rgba(255, 250, 245, 0.78);
-  border: 1px solid rgba(255, 255, 255, 0.65);
+  gap: 9px;
+  width: 188px;
+  padding: 12px;
+  overflow: hidden;
+  color: #fffaf5;
+  background: rgba(12, 18, 17, 0.68);
+  border: 1px solid rgba(255, 250, 245, 0.12);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(22px);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.12);
+  -webkit-backdrop-filter: blur(24px) saturate(1.12);
 }
 
 .app-sidebar button {
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0;
-  width: 54px;
-  min-height: 46px;
-  padding: 0;
-  color: #2d221b;
+  justify-content: flex-start;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 13px;
+  color: rgba(255, 250, 245, 0.72);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius);
@@ -2734,36 +2937,36 @@ select:focus {
 
 .app-sidebar button:hover,
 .app-sidebar button.active {
-  color: var(--accent-strong);
-  background: rgba(255, 255, 255, 0.66);
-  border-color: rgba(255, 90, 47, 0.22);
+  color: #ff8a5c;
+  background:
+    linear-gradient(90deg, rgba(255, 103, 61, 0.18), rgba(255, 250, 245, 0.055));
+  border-color: rgba(255, 133, 82, 0.26);
+  box-shadow:
+    inset 3px 0 0 #ff673d,
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .app-sidebar button:hover {
-  z-index: 1001;
-  justify-content: space-between;
-  width: 206px;
-  padding: 0 12px;
-  box-shadow: 0 16px 32px rgba(92, 53, 28, 0.16);
+  transform: translateX(2px);
 }
 
 .app-sidebar button span {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 12px;
   min-width: 0;
 }
 
 .app-sidebar button:hover span {
-  gap: 10px;
+  gap: 12px;
 }
 
 .app-sidebar .sidebar-label {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
   white-space: nowrap;
 }
 
@@ -2777,8 +2980,8 @@ select:focus {
 
 .app-sidebar button small {
   position: absolute;
-  top: 4px;
-  right: 4px;
+  top: 50%;
+  right: 10px;
   display: grid;
   place-items: center;
   min-width: 18px;
@@ -2789,15 +2992,11 @@ select:focus {
   font-weight: 800;
   background: #f24a1b;
   border-radius: var(--radius);
+  transform: translateY(-50%);
 }
 
 .app-sidebar button:hover small {
-  position: static;
-  min-width: 24px;
-  height: 24px;
-  margin-left: auto;
-  padding: 0 7px;
-  font-size: 12px;
+  position: absolute;
 }
 
 .profile-block {
@@ -3674,18 +3873,35 @@ html.theme-reveal-running::view-transition-new(root) {
 
 .input-with-counter {
   position: relative;
+  min-width: 0;
 }
 
 .input-with-counter input {
   padding-right: 82px;
 }
 
+.upload-form .input-with-counter input {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(88, 58, 41, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    0 10px 24px rgba(82, 61, 48, 0.06);
+}
+
+.upload-form .input-with-counter input::placeholder {
+  color: rgba(87, 76, 67, 0.46);
+  font-weight: 650;
+}
+
 .input-with-counter span {
   position: absolute;
-  top: 12px;
+  top: 50%;
   right: 13px;
   color: var(--muted);
   font-size: 13px;
+  line-height: 1;
+  pointer-events: none;
+  transform: translateY(-50%);
 }
 
 .file-picker {
@@ -4916,4 +5132,283 @@ html[data-theme="dark"] .tariff-card .ghost-button {
 .tariff-message {
   width: fit-content;
   max-width: 100%;
+}
+
+.app-shell :is(
+  .glass,
+  .calls-sidebar,
+  .call-row,
+  .selected-call-card,
+  .preview-selected-call,
+  .preview-grid > div,
+  .preview-next-step,
+  .info-card,
+  .next-step,
+  .report-panel,
+  .report-format-button,
+  .report-row,
+  .input-with-counter,
+  .file-picker,
+  .file-dropzone,
+  .context-note,
+  .instruction-preview,
+  .instruction-empty,
+  .instruction-mini-list.empty,
+  .instruction-mini-list > div,
+  .create-department-form,
+  .company-card,
+  .company-mini-card,
+  .department-member-row,
+  .department-card,
+  .company-empty,
+  .company-lock-note,
+  .invitation-card,
+  .instruction-row,
+  .instruction-choice,
+  .subscription-panel,
+  .subscription-card,
+  .subscription-company,
+  .profile-card,
+  .profile-hero,
+  .companies-hero,
+  .company-workspace-hero,
+  .company-workspace-empty,
+  .welcome-panel,
+  .metric,
+  .analysis-user-summary,
+  .analysis-section,
+  .tariff-card
+) {
+  color: #fffaf5;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255, 122, 67, 0.11), transparent 34%),
+    linear-gradient(135deg, rgba(255, 250, 245, 0.08), rgba(255, 250, 245, 0.035)),
+    var(--app-panel);
+  border-color: var(--app-panel-line);
+  box-shadow:
+    0 22px 60px rgba(0, 0, 0, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.12);
+  -webkit-backdrop-filter: blur(24px) saturate(1.12);
+}
+
+.app-shell :is(
+  .call-row,
+  .selected-call-card,
+  .info-card,
+  .file-dropzone,
+  .instruction-mini-list > div,
+  .company-card,
+  .company-mini-card,
+  .department-card,
+  .department-member-row,
+  .invitation-card,
+  .instruction-row,
+  .instruction-choice,
+  .subscription-card,
+  .subscription-company,
+  .tariff-card
+):hover {
+  border-color: rgba(255, 133, 82, 0.36);
+  box-shadow:
+    0 26px 72px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 103, 61, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.app-shell :is(
+  .panel-heading h1,
+  .panel-heading h2,
+  .welcome-panel h1,
+  .selected-call-card strong,
+  .call-row strong,
+  .preview-transcript strong,
+  .preview-card-title h3,
+  .info-card h3,
+  .next-step h3,
+  .instruction-row strong,
+  .instruction-choice strong,
+  .instruction-mini-list strong,
+  .profile-field strong,
+  .company-card h2,
+  .company-mini-card strong,
+  .department-member-row strong,
+  .subscription-company strong,
+  .tariff-card h3,
+  .analysis-section > strong,
+  .analysis-question-heading strong,
+  .analysis-kv p,
+  .metric strong
+) {
+  color: #fffaf5;
+}
+
+.app-shell :is(
+  .muted,
+  .muted-title,
+  .welcome-panel p,
+  .call-row small,
+  .selected-call-card small,
+  .preview-selected-call span:not(.play-dot, .play-large, .status-chip),
+  .preview-next-step small,
+  .preview-transcript,
+  .preview-analysis,
+  .segment-meta span,
+  .file-dropzone-copy small,
+  .instruction-preview small,
+  .instruction-mini-list small,
+  .instruction-mini-title,
+  .instruction-section-title,
+  .analysis-kv span,
+  .analysis-question p,
+  .analysis-list,
+  .evidence-quotes > span,
+  .evidence-quotes blockquote,
+  .profile-field span,
+  .company-card p,
+  .company-empty p,
+  .company-mini-card small,
+  .department-member-row small,
+  .subscription-company small,
+  .tariff-feature-list li,
+  label small
+) {
+  color: var(--app-muted);
+}
+
+.app-shell :is(input, select, .segmented) {
+  color: #fffaf5;
+  background: rgba(255, 250, 245, 0.08);
+  border-color: rgba(255, 250, 245, 0.15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.app-shell label,
+.auth-card label {
+  color: #fffaf5;
+}
+
+.auth-card :is(input, select) {
+  color: #fffaf5;
+  background: rgba(255, 250, 245, 0.09);
+  border-color: rgba(255, 250, 245, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.auth-card :is(input, select)::placeholder {
+  color: rgba(255, 250, 245, 0.42);
+}
+
+.app-shell select,
+.auth-card select {
+  background:
+    linear-gradient(45deg, transparent 50%, rgba(255, 250, 245, 0.72) 50%),
+    linear-gradient(135deg, rgba(255, 250, 245, 0.72) 50%, transparent 50%),
+    linear-gradient(180deg, rgba(255, 250, 245, 0.1), rgba(255, 250, 245, 0.07));
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 12px) 50%,
+    0 0;
+  background-size:
+    6px 6px,
+    6px 6px,
+    100% 100%;
+  background-repeat: no-repeat;
+}
+
+.app-shell .segmented button {
+  color: rgba(255, 250, 245, 0.72);
+  border-right-color: rgba(255, 250, 245, 0.1);
+}
+
+.app-shell .segmented button.active,
+.app-shell .instruction-choice.selected {
+  color: #ff8a5c;
+  background: rgba(255, 103, 61, 0.14);
+  border-color: rgba(255, 103, 61, 0.48);
+  box-shadow: inset 0 0 0 1px rgba(255, 103, 61, 0.16);
+}
+
+.app-shell .call-row.selected {
+  border-color: rgba(255, 103, 61, 0.88);
+  box-shadow:
+    inset 3px 0 0 #ff673d,
+    0 18px 46px rgba(255, 103, 61, 0.12);
+}
+
+.app-shell :is(.play-dot, .play-large, .avatar, .preview-timeline-step span) {
+  background: linear-gradient(145deg, #ff7a43, #f24a1b);
+  box-shadow: 0 0 18px rgba(255, 103, 61, 0.22);
+}
+
+.app-shell .status-chip.ok {
+  color: #97d87c;
+  background: rgba(61, 150, 69, 0.18);
+  border: 1px solid rgba(151, 216, 124, 0.28);
+}
+
+.app-shell .status-chip.warn {
+  color: #f2a84d;
+  background: rgba(242, 168, 77, 0.14);
+  border: 1px solid rgba(242, 168, 77, 0.28);
+}
+
+.app-shell .status-chip.bad {
+  color: #ff9a80;
+  background: rgba(255, 90, 47, 0.14);
+  border: 1px solid rgba(255, 120, 88, 0.28);
+}
+
+.app-shell .text-button,
+.app-shell .text-link,
+.app-shell :is(.instruction-preview svg, .context-note svg, .instruction-mini-list svg, .preview-analysis svg) {
+  color: #ff8a5c;
+}
+
+.app-shell .ghost-button {
+  color: #fffaf5;
+  background: rgba(255, 250, 245, 0.08);
+  border-color: rgba(255, 250, 245, 0.16);
+}
+
+.app-shell .ghost-button:hover {
+  border-color: rgba(255, 133, 82, 0.34);
+  background: rgba(255, 250, 245, 0.12);
+}
+
+.app-shell .profile-block span {
+  color: rgba(255, 250, 245, 0.62);
+}
+
+.app-shell .icon-button {
+  color: #fffaf5;
+  background: rgba(255, 250, 245, 0.04);
+  border-color: rgba(255, 250, 245, 0.08);
+}
+
+.app-shell .icon-button:hover,
+.app-shell .notification-button.active {
+  color: #ff8a5c;
+  background: rgba(255, 103, 61, 0.12);
+  border-color: rgba(255, 133, 82, 0.34);
+}
+
+.app-shell .notification-badge {
+  border-color: #151512;
+}
+
+.app-shell .tariff-card {
+  --tariff-card-surface-1: rgba(22, 26, 31, 0.62);
+  --tariff-card-surface-2: rgba(20, 18, 16, 0.56);
+  --tariff-card-surface-3: rgba(40, 24, 16, 0.36);
+  --tariff-card-border: rgba(255, 133, 82, 0.22);
+  --tariff-card-border-hover: rgba(255, 138, 92, 0.42);
+  --tariff-card-shadow: rgba(0, 0, 0, 0.44);
+  --tariff-card-inner-line: rgba(255, 255, 255, 0.08);
+  --tariff-card-text: #fff7f0;
+  --tariff-card-muted: rgba(255, 247, 240, 0.7);
+  --tariff-card-accent: #ff8a5c;
+  --tariff-card-chip-bg: rgba(255, 122, 77, 0.12);
+  --tariff-card-chip-border: rgba(255, 122, 77, 0.22);
+  --tariff-card-chip-text: #ffb08f;
 }

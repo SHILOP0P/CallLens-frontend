@@ -1,5 +1,7 @@
 import {
+  ArrowLeft,
   Check,
+  CreditCard,
   ShieldCheck,
   X
 } from "lucide-react";
@@ -14,21 +16,30 @@ import type {
   Subscription
 } from "../../types";
 
-import { analysisLevelLabel, availabilityLabel, comparePlans, formatHistoryDays, formatInstructionLimit, formatMinutesLimit, formatNullableLimit, planGradients } from "../../shared/lib/plans";
+import { analysisLevelLabel, comparePlans, formatHistoryDays, formatInstructionLimit, formatMinutesLimit, planGradients } from "../../shared/lib/plans";
 import { SkeletonLine, TextBlockSkeleton } from "../../shared/ui/loading";
 import { SelectControl } from "../../shared/ui/primitives";
 
 export function TariffsPage({
   session,
-  companies
+  companies,
+  personalSubscription,
+  companySubscriptions,
+  onPersonalSubscriptionChanged,
+  onCompanySubscriptionChanged,
+  onBackToSettings
 }: {
   session: SessionState;
   companies: CompanyResponse[];
+  personalSubscription: Subscription | null;
+  companySubscriptions: Record<string, Subscription | null>;
+  onPersonalSubscriptionChanged: (subscription: Subscription | null) => void;
+  onCompanySubscriptionChanged: (subscription: Subscription) => void;
+  onBackToSettings: () => void;
 }) {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [companySubscriptions, setCompanySubscriptions] = useState<Record<string, Subscription>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -43,11 +54,11 @@ export function TariffsPage({
         }
       } catch (loadError) {
         if (!cancelled) {
-          const endpointHint =
+          const notConfiguredHint =
             loadError instanceof ApiError && loadError.status === 404
-              ? " Endpoint GET /api/v1/plans пока недоступен."
+              ? " Каталог тарифов пока не настроен."
               : "";
-          setError(`Не удалось загрузить тарифы.${endpointHint}`);
+          setError(`Не удалось загрузить тарифы.${notConfiguredHint}`);
         }
       } finally {
         if (!cancelled) {
@@ -67,10 +78,21 @@ export function TariffsPage({
   const businessPlans = plans.filter((plan) => plan.type === "business");
 
   return (
-    <section className="tariffs-layout">
-      <div className="tariff-hero glass">
-        <h1>Тарифы</h1>
-        <p>Доступные планы загружаются из backend. Реальная оплата в MVP пока не подключена.</p>
+    <section className="tariffs-layout app-page">
+      <div className="settings-back-row">
+        <button className="ghost-button small" type="button" onClick={onBackToSettings}>
+          <ArrowLeft size={16} />
+          Назад
+        </button>
+      </div>
+      <div className="app-page-heading settings-heading tariff-heading">
+        <span className="settings-heading-icon" aria-hidden="true">
+          <CreditCard size={26} />
+        </span>
+        <div>
+          <h1>Тарифы</h1>
+          <p>Доступные планы, лимиты и подписки для личного аккаунта и компаний.</p>
+        </div>
       </div>
       {loading && <TariffSkeleton />}
       {!loading && error && <div className="form-error tariff-message">{error}</div>}
@@ -79,19 +101,17 @@ export function TariffsPage({
       )}
       {!loading && !error && plans.length > 0 && (
         <>
-          <PersonalSubscriptionPanel personalPlans={personalPlans} />
+          <PersonalSubscriptionPanel
+            personalPlans={personalPlans}
+            initialSubscription={personalSubscription}
+            onSubscriptionChanged={onPersonalSubscriptionChanged}
+          />
           <CompanySubscriptionPanel
             session={session}
             companies={companies}
             businessPlans={businessPlans}
             subscriptions={companySubscriptions}
-            onSubscriptionChanged={(subscription) => {
-              if (!subscription.company_uuid) return;
-              setCompanySubscriptions((current) => ({
-                ...current,
-                [subscription.company_uuid as string]: subscription
-              }));
-            }}
+            onSubscriptionChanged={onCompanySubscriptionChanged}
           />
           <TariffSection title="Персональные тарифы" plans={personalPlans} />
           <TariffSection title="Бизнес-тарифы" plans={businessPlans} business />
@@ -101,7 +121,15 @@ export function TariffsPage({
   );
 }
 
-export function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Plan[]; }) {
+export function PersonalSubscriptionPanel({
+  personalPlans,
+  initialSubscription,
+  onSubscriptionChanged
+}: {
+  personalPlans: Plan[];
+  initialSubscription: Subscription | null;
+  onSubscriptionChanged: (subscription: Subscription | null) => void;
+}) {
   const defaultPlanCode = personalPlans[0]?.code ?? "personal_plus";
   const [selectedPlan, setSelectedPlan] = useState<PlanCode>(defaultPlanCode);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -115,6 +143,10 @@ export function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Pl
   }, [defaultPlanCode]);
 
   useEffect(() => {
+    setSubscription(initialSubscription);
+  }, [initialSubscription]);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadSubscription() {
@@ -122,7 +154,10 @@ export function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Pl
         setLoading(true);
         setError("");
         const response = await api.getSubscription();
-        if (!cancelled) setSubscription(response);
+        if (!cancelled) {
+          setSubscription(response);
+          onSubscriptionChanged(response);
+        }
       } catch (loadError) {
         if (cancelled) return;
         if (
@@ -130,6 +165,7 @@ export function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Pl
           (loadError.status === 404 || loadError.code === "subscription_not_found")
         ) {
           setSubscription(null);
+          onSubscriptionChanged(null);
         } else {
           setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить подписку");
         }
@@ -153,6 +189,7 @@ export function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Pl
     try {
       const response = await api.activateSubscription(selectedPlan);
       setSubscription(response);
+      onSubscriptionChanged(response);
       setMessage("Персональная подписка активирована.");
     } catch (activateError) {
       setError(activateError instanceof Error ? activateError.message : "Не удалось активировать подписку");
@@ -168,9 +205,9 @@ export function PersonalSubscriptionPanel({ personalPlans }: { personalPlans: Pl
       <div className="panel-heading large">
         <div>
           <h2>Персональная подписка</h2>
-          <p>Mock-активация личного тарифа через backend без платежной формы.</p>
+          <p>Подключение личного тарифа без платежной формы.</p>
         </div>
-        <span className="status-chip warn">Mock</span>
+        <span className="status-chip warn">Без оплаты</span>
       </div>
       <div className="subscription-company">
         <div>
@@ -229,7 +266,7 @@ export function CompanySubscriptionPanel({
   session: SessionState;
   companies: CompanyResponse[];
   businessPlans: Plan[];
-  subscriptions: Record<string, Subscription>;
+  subscriptions: Record<string, Subscription | null>;
   onSubscriptionChanged: (subscription: Subscription) => void;
 }) {
   const managedCompanies = companies.filter((company) => company.manager_user_uuid === session.user.id);
@@ -283,9 +320,9 @@ export function CompanySubscriptionPanel({
       <div className="panel-heading large">
         <div>
           <h2>Бизнес-подписка компании</h2>
-          <p>Временная mock-активация без оплаты и платежных форм.</p>
+          <p>Подключение бизнес-тарифа без платежной формы.</p>
         </div>
-        <span className="status-chip warn">Mock</span>
+        <span className="status-chip warn">Без оплаты</span>
       </div>
       <div className="subscription-company-list">
         {managedCompanies.map((company) => {
@@ -393,14 +430,18 @@ export function TariffCard({ plan, business }: { plan: Plan; business?: boolean;
   const features = [
     `Минут в месяц: ${formatMinutesLimit(plan.monthly_minutes_limit)}`,
     `Активных инструкций: ${formatInstructionLimit(activeInstructionLimit)}`,
-    business ? `Компаний: ${formatNullableLimit(plan.company_limit)}` : "",
-    business ? `Отделов на компанию: ${formatNullableLimit(plan.departments_per_company_limit)}` : "",
-    business ? `Сотрудников на компанию: ${formatNullableLimit(plan.members_per_company_limit)}` : "",
+    business && plan.company_limit !== null ? `Компаний: ${plan.company_limit}` : "",
+    business && plan.departments_per_company_limit !== null
+      ? `Отделов на компанию: ${plan.departments_per_company_limit}`
+      : "",
+    business && plan.members_per_company_limit !== null
+      ? `Сотрудников на компанию: ${plan.members_per_company_limit}`
+      : "",
     `Уровень анализа: ${analysisLevelLabel(plan.analysis_level)}`,
     `Хранение истории: ${formatHistoryDays(plan.history_retention_days)}`,
-    `Экспорт отчетов: ${availabilityLabel(plan.export_enabled)}`,
-    business ? `Командная аналитика: ${availabilityLabel(plan.team_analytics_enabled)}` : "",
-    business ? `Доступ к API: ${availabilityLabel(plan.api_access_enabled)}` : ""
+    plan.export_enabled ? "Экспорт отчетов" : "",
+    business && plan.team_analytics_enabled ? "Командная аналитика" : "",
+    business && plan.api_access_enabled ? "Доступ к API" : ""
   ].filter(Boolean);
 
   return (

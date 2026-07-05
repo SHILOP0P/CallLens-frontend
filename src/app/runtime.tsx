@@ -1,9 +1,12 @@
 import {
-  Bell,
-  Building2,
-  CircleUserRound,
+  Activity,
+  BarChart3,
+  BrainCircuit,
+  FileBarChart2,
+  LayoutDashboard,
   CloudUpload,
-  FileText
+  PhoneCall,
+  Settings
 } from "lucide-react";
 import { useEffect } from "react";
 import type {
@@ -37,29 +40,83 @@ export function readThemePreference(): ThemePreference {
 export const pageRoutes: Record<AppPage, string> = {
   overview: "/app/overview",
   calls: "/app/calls",
-  upload: "/app/upload",
   analysis: "/app/analysis",
-  instructions: "/app/instructions",
-  invitations: "/app/invitations",
-  companies: "/app/companies",
-  profile: "/app/profile",
-  tariffs: "/app/tariffs"
+  reports: "/app/reports",
+  monitoring: "/app/monitoring",
+  settings: "/app/settings",
+  settingsTariffs: "/app/settings/tariffs",
+  settingsCompanies: "/app/settings/companies",
+  settingsInstructions: "/app/settings/instructions",
+  settingsInvitations: "/app/settings/invitations",
+  settingsProfile: "/app/settings/profile",
+  settingsProfileEdit: "/app/settings/profile/edit",
+  settingsDevices: "/app/settings/devices",
+  upload: "/app/upload"
 };
 
 export const navItems: Array<{ page: AppPage; label: string; }> = [
   { page: "overview", label: "Обзор" },
   { page: "calls", label: "Звонки" },
-  { page: "analysis", label: "AI-анализ" },
-  { page: "tariffs", label: "Тарифы" }
+  { page: "analysis", label: "Аналитика" },
+  { page: "reports", label: "AI-отчеты" },
+  { page: "monitoring", label: "Мониторинг" },
+  { page: "settings", label: "Настройки" }
 ];
 
 export const sidebarItems: Array<{ page: AppPage; label: string; icon: React.ReactNode; }> = [
-  { page: "upload", label: "Загрузка", icon: <CloudUpload size={18} /> },
-  { page: "companies", label: "Компании", icon: <Building2 size={18} /> },
-  { page: "instructions", label: "Инструкции", icon: <FileText size={18} /> },
-  { page: "invitations", label: "Приглашения", icon: <Bell size={18} /> },
-  { page: "profile", label: "Профиль", icon: <CircleUserRound size={18} /> }
+  { page: "overview", label: "Обзор", icon: <LayoutDashboard size={19} /> },
+  { page: "calls", label: "Звонки", icon: <PhoneCall size={19} /> },
+  { page: "analysis", label: "Аналитика", icon: <BarChart3 size={19} /> },
+  { page: "reports", label: "AI-отчеты", icon: <FileBarChart2 size={19} /> },
+  { page: "monitoring", label: "Мониторинг", icon: <Activity size={19} /> },
+  { page: "settings", label: "Настройки", icon: <Settings size={19} /> }
 ];
+
+export const quickActionItems: Array<{ page: AppPage; label: string; icon: React.ReactNode; }> = [
+  { page: "upload", label: "Загрузка", icon: <CloudUpload size={18} /> },
+  { page: "analysis", label: "AI-анализ", icon: <BrainCircuit size={18} /> }
+];
+
+export const settingsRoutes: Array<{ page: AppPage; label: string; description: string; }> = [
+  {
+    page: "settingsTariffs",
+    label: "Тарифы",
+    description: "План, лимиты расшифровки и условия команды."
+  },
+  {
+    page: "settingsCompanies",
+    label: "Компании",
+    description: "Организации, отделы, участники и роли доступа."
+  },
+  {
+    page: "settingsInstructions",
+    label: "Инструкции",
+    description: "Правила и критерии для AI-анализа звонков."
+  },
+  {
+    page: "settingsProfile",
+    label: "Профиль",
+    description: "Личные данные, безопасность и уведомления."
+  },
+  {
+    page: "settingsDevices",
+    label: "Устройства",
+    description: "Активные входы, браузеры и завершение лишних сессий."
+  }
+];
+
+const pathAliases: Record<string, AppPage> = {
+  "/app/tariffs": "settingsTariffs",
+  "/app/companies": "settingsCompanies",
+  "/app/instructions": "settingsInstructions",
+  "/app/invitations": "settingsInvitations",
+  "/app/profile": "settingsProfile",
+  "/app/devices": "settingsDevices"
+};
+
+export function isSettingsPage(page: AppPage) {
+  return page === "settings" || page.startsWith("settings");
+}
 
 export function readStoredSession(): SessionState | null {
   try {
@@ -80,18 +137,24 @@ export function readStoredSession(): SessionState | null {
 }
 
 export function pageFromPath(pathname: string): AppPage {
-  if (pathname.startsWith("/app/companies/")) return "companies";
+  if (/^\/app\/settings\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";
+  if (/^\/app\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";
+  if (pathname === "/app/settings/profile/edit") return "settingsProfileEdit";
+
   const entry = Object.entries(pageRoutes).find(([, route]) => route === pathname);
-  return (entry?.[0] as AppPage | undefined) ?? "calls";
+  if (entry) return entry[0] as AppPage;
+
+  const alias = pathAliases[pathname];
+  return alias ?? "overview";
 }
 
 export function companyIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/app\/companies\/([^/]+)(?:\/departments\/[^/]+)?$/);
+  const match = pathname.match(/^\/app\/(?:settings\/)?companies\/([^/]+)(?:\/departments\/[^/]+)?$/);
   return match ? decodeURIComponent(match[1]) : "";
 }
 
 export function departmentIdFromPath(pathname: string) {
-  const match = pathname.match(/^\/app\/companies\/[^/]+\/departments\/([^/]+)$/);
+  const match = pathname.match(/^\/app\/(?:settings\/)?companies\/[^/]+\/departments\/([^/]+)$/);
   return match ? decodeURIComponent(match[1]) : "";
 }
 
@@ -105,7 +168,14 @@ export function persistSession(session: SessionState | null) {
 
 export function useRevealOnScroll<T extends HTMLElement>() {
   useEffect(() => {
-    if (typeof IntersectionObserver === "undefined") return;
+    if (typeof IntersectionObserver === "undefined") {
+      document.querySelectorAll<T>("[data-reveal], [data-reveal-item]").forEach((target) => {
+        target.classList.add("is-visible");
+      });
+      return;
+    }
+
+    document.documentElement.classList.add("reveal-ready");
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -132,6 +202,13 @@ export function useRevealOnScroll<T extends HTMLElement>() {
 
     observeTargets();
 
+    const revealFallback = window.setTimeout(() => {
+      if (document.querySelector("[data-reveal-item].is-visible")) return;
+      document.querySelectorAll<T>("[data-reveal], [data-reveal-item]").forEach((target) => {
+        target.classList.add("is-visible");
+      });
+    }, 900);
+
     const mutationObserver = new MutationObserver(observeTargets);
     mutationObserver.observe(document.body, {
       childList: true,
@@ -139,6 +216,7 @@ export function useRevealOnScroll<T extends HTMLElement>() {
     });
 
     return () => {
+      window.clearTimeout(revealFallback);
       mutationObserver.disconnect();
       observer.disconnect();
     };

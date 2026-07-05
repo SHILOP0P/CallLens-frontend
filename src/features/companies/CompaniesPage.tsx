@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Building2,
   ChevronRight,
   LockKeyhole,
@@ -10,6 +11,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { api, ApiError } from "../../api";
 import type {
   AppPage,
+  CallResponse,
   CompanyResponse,
   DepartmentMemberResponse,
   DepartmentResponse,
@@ -30,7 +32,10 @@ export function CompaniesPage({
   session,
   companies,
   departments,
+  calls,
+  companySubscriptions,
   loading,
+  onBackToSettings,
   selectedCompanyId,
   selectedDepartmentId,
   onCompanyCreated,
@@ -43,7 +48,10 @@ export function CompaniesPage({
   session: SessionState;
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  calls: CallResponse[];
+  companySubscriptions: Record<string, Subscription | null>;
   loading: boolean;
+  onBackToSettings: () => void;
   selectedCompanyId: string;
   selectedDepartmentId: string;
   onCompanyCreated: (company: CompanyResponse) => void | Promise<void>;
@@ -57,6 +65,28 @@ export function CompaniesPage({
   const selectedDepartment = departments.find(
     (department) => department.company_uuid === selectedCompanyId && department.id === selectedDepartmentId
   );
+  const [activeCompanyId, setActiveCompanyId] = useState("");
+  const activeCompany = companies.find((company) => company.id === activeCompanyId) ?? companies[0];
+  const activeBusinessSubscriptions = Object.values(companySubscriptions).filter(
+    (subscription): subscription is Subscription => Boolean(subscription && subscription.status === "active")
+  );
+  const companyLimit = activeBusinessSubscriptions.reduce<number | null>((limit, subscription) => {
+    const planLimit = subscription.plan.company_limit;
+    if (planLimit === null) return limit;
+    return limit === null ? planLimit : Math.max(limit, planLimit);
+  }, null);
+  const freeSlots = companyLimit === null ? 0 : Math.max(0, companyLimit - companies.length);
+
+  useEffect(() => {
+    if (!companies.length) {
+      setActiveCompanyId("");
+      return;
+    }
+
+    if (!companies.some((company) => company.id === activeCompanyId)) {
+      setActiveCompanyId(companies[0].id);
+    }
+  }, [activeCompanyId, companies]);
 
   if (selectedCompanyId) {
     if (loading && (!selectedCompany || (selectedDepartmentId && !selectedDepartment))) {
@@ -95,63 +125,239 @@ export function CompaniesPage({
   }
 
   return (
-    <section className="companies-layout">
-      <div className="companies-hero glass">
+    <section className="companies-page app-page">
+      <div className="settings-back-row">
+        <button className="ghost-button small" type="button" onClick={onBackToSettings}>
+          <ArrowLeft size={16} />
+          Назад
+        </button>
+      </div>
+      <div className="app-page-heading settings-heading">
+        <span className="settings-heading-icon" aria-hidden="true">
+          <Building2 size={26} />
+        </span>
         <div>
           <h1>Компании</h1>
-          <p>
-            Компания создается без оплаты. Рабочие действия внутри компании доступны после
-            активной бизнес-подписки этой компании.
-          </p>
+          <p>Статус подписки, активная компания и лимиты по каждой организации.</p>
         </div>
-        <CreateCompanyForm onCreated={onCompanyCreated} />
       </div>
 
-      {companies.length === 0 ? (
-        <CompanyEmptyState onCompanyCreated={onCompanyCreated} />
-      ) : (
-        <div className="company-grid">
-          {companies.map((company) => {
-            const companyDepartments = departments.filter(
-              (department) => department.company_uuid === company.id
-            );
-            const isManager = company.manager_user_uuid === session.user.id;
-
-            return (
-              <article className="company-card glass" key={company.id}>
-                <div className="panel-heading">
-                  <div>
-                    <h2>{company.name}</h2>
-                    <p>{isManager ? "Вы управляете компанией" : "Вы участник компании"}</p>
-                  </div>
-                  <span className={`status-chip ${isManager ? "ok" : "warn"}`}>
-                    {isManager ? "Менеджер" : "Участник"}
-                  </span>
-                </div>
-                <div className="company-meta-grid">
-                  <ProfileField label="Создана" value={formatDate(company.created_at)} />
-                  <ProfileField label="Лимит участников" value={company.member_limit.toString()} />
-                  <ProfileField label="Отделов" value={companyDepartments.length.toString()} />
-                </div>
-                <a
-                  className="primary-button small company-link"
-                  href={`/app/companies/${encodeURIComponent(company.id)}`}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    onOpenCompany(company.id);
-                  }}
-                >
-                  Открыть компанию
-                  <ChevronRight size={16} />
-                </a>
-                <CompanySubscriptionStatus company={company} isManager={isManager} onNavigate={onNavigate} />
-              </article>
-            );
-          })}
+      <section className="company-summary-panel glass-panel">
+        <div>
+          <h2>Компании в бизнес-подписке</h2>
+          <p>Лимиты, слоты и подписка отображаются отдельно для каждой компании.</p>
         </div>
-      )}
+        <div className="company-summary-stats">
+          <ProfileField label="Слоты компаний" value={companyLimit === null ? `${companies.length}` : `${companies.length} / ${companyLimit}`} />
+          <ProfileField label="Активных подписок" value={activeBusinessSubscriptions.length.toString()} />
+          <ProfileField label="Подписка" value="По компаниям" />
+        </div>
+      </section>
+
+      <div className="company-limits-grid">
+        <section className="company-list-panel glass-panel">
+          <div className="panel-heading large">
+            <div>
+              <h2>Список компаний</h2>
+              <p>Активная компания выбирается здесь для текущей рабочей сессии.</p>
+            </div>
+            {companies.length > 0 && (
+              <SelectControl
+                value={activeCompany?.id ?? ""}
+                onChange={(event) => setActiveCompanyId(event.target.value)}
+              >
+                {companies.map((company) => (
+                  <option key={company.id} value={company.id}>
+                    Активная: {company.name}
+                  </option>
+                ))}
+              </SelectControl>
+            )}
+          </div>
+
+          {loading ? (
+            <CallListSkeleton count={3} compact />
+          ) : (
+            <div className="company-limit-list">
+              {companies.map((company) => (
+                <CompanyLimitRow
+                  key={company.id}
+                  company={company}
+                  calls={calls.filter((call) => call.company_uuid === company.id)}
+                  subscription={companySubscriptions[company.id] ?? null}
+                  active={company.id === activeCompany?.id}
+                  departments={departments.filter((department) => department.company_uuid === company.id)}
+                  manager={company.manager_user_uuid === session.user.id}
+                  onSelect={() => setActiveCompanyId(company.id)}
+                  onOpen={() => onOpenCompany(company.id)}
+                />
+              ))}
+              {Array.from({ length: freeSlots }).map((_, index) => (
+                <div className="company-limit-row empty-slot" key={`slot-${index}`}>
+                  <div>
+                    <strong>Свободный слот</strong>
+                    <span className="status-chip warn">Можно создать</span>
+                    <small>Доступен в текущей бизнес-подписке</small>
+                  </div>
+                  <CreateCompanyForm onCreated={onCompanyCreated} compact />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <CompanyLimitDetail
+          company={activeCompany}
+          calls={activeCompany ? calls.filter((call) => call.company_uuid === activeCompany.id) : []}
+          subscription={activeCompany ? companySubscriptions[activeCompany.id] ?? null : null}
+          departments={activeCompany ? departments.filter((department) => department.company_uuid === activeCompany.id) : []}
+          manager={Boolean(activeCompany && activeCompany.manager_user_uuid === session.user.id)}
+          onOpenCompany={onOpenCompany}
+        />
+      </div>
     </section>
   );
+}
+
+function CompanyLimitRow({
+  company,
+  calls,
+  subscription,
+  departments,
+  manager,
+  active,
+  onSelect,
+  onOpen
+}: {
+  company: CompanyResponse;
+  calls: CallResponse[];
+  subscription: Subscription | null;
+  departments: DepartmentResponse[];
+  manager: boolean;
+  active: boolean;
+  onSelect: () => void;
+  onOpen: () => void;
+}) {
+  const activeSubscription = subscription?.status === "active" ? subscription : null;
+  const usedMinutes = totalMinutes(calls);
+  const limitMinutes = activeSubscription?.plan.monthly_minutes_limit ?? 0;
+  const progress = limitMinutes > 0 ? Math.min(100, Math.round((usedMinutes / limitMinutes) * 100)) : 0;
+
+  return (
+    <button className={`company-limit-row ${active ? "active" : ""}`} type="button" onClick={onSelect}>
+      <div className="company-limit-main">
+        <strong>{company.name}</strong>
+        <span className={`status-chip ${manager ? "ok" : "warn"}`}>
+          {activeSubscription ? activeSubscription.plan.name : manager ? "Подписка не активна" : "Статус скрыт"}
+        </span>
+        <small>{manager ? "Активная компания" : "Компания участника"} · {departments.length} отделов</small>
+      </div>
+      <div className="company-limit-progress">
+        <span>Расшифровка</span>
+        <strong>{limitMinutes > 0 ? `${formatMinutes(usedMinutes)} / ${formatMinutes(limitMinutes)}` : "Нет лимита"}</strong>
+        <small>{activeSubscription ? "по загруженным звонкам" : "активируйте бизнес-тариф"}</small>
+        <div className="limit-progress-track"><span style={{ width: `${progress}%` }} /></div>
+      </div>
+      <span
+        className="text-button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen();
+        }}
+      >
+        Открыть
+      </span>
+    </button>
+  );
+}
+
+function CompanyLimitDetail({
+  company,
+  calls,
+  subscription,
+  departments,
+  manager,
+  onOpenCompany
+}: {
+  company?: CompanyResponse;
+  calls: CallResponse[];
+  subscription: Subscription | null;
+  departments: DepartmentResponse[];
+  manager: boolean;
+  onOpenCompany: (companyId: string) => void;
+}) {
+  if (!company) {
+    return (
+      <aside className="company-detail-panel glass-panel">
+        <Building2 size={34} />
+        <h2>Компания не выбрана</h2>
+        <p>Создайте компанию или выберите существующую.</p>
+      </aside>
+    );
+  }
+  const activeSubscription = subscription?.status === "active" ? subscription : null;
+  const usedMinutes = totalMinutes(calls);
+  const limitMinutes = activeSubscription?.plan.monthly_minutes_limit ?? 0;
+  const minutesProgress = limitMinutes > 0 ? Math.min(100, Math.round((usedMinutes / limitMinutes) * 100)) : 0;
+  const memberLimit = activeSubscription?.plan.members_per_company_limit ?? company.member_limit;
+
+  return (
+    <aside className="company-detail-panel glass-panel">
+      <h2>{company.name}</h2>
+      <span className={`status-chip ${manager ? "ok" : "warn"}`}>
+        {manager ? "Менеджер компании" : "Участник компании"}
+      </span>
+      <p>Текущая активная компания команды продаж. Подписка и лимиты отображаются по данным компании.</p>
+      <LimitLine
+        label="Расшифровка звонков"
+        value={limitMinutes > 0 ? `${formatMinutes(usedMinutes)} / ${formatMinutes(limitMinutes)}` : "Нет активного лимита"}
+        progress={minutesProgress}
+      />
+      <LimitLine
+        label="AI-отчеты"
+        value={activeSubscription?.plan.export_enabled ? `Экспорт доступен · ${activeSubscription.plan.analysis_level}` : "Экспорт недоступен"}
+        progress={activeSubscription?.plan.export_enabled ? 100 : 0}
+      />
+      <LimitLine label="Участники" value={`${departments.length} отделов · лимит ${memberLimit}`} progress={Math.min(100, departments.length * 18)} />
+      <button className="primary-button" type="button" onClick={() => onOpenCompany(company.id)}>
+        Открыть компанию
+        <ChevronRight size={16} />
+      </button>
+    </aside>
+  );
+}
+
+function LimitLine({
+  label,
+  value,
+  progress
+}: {
+  label: string;
+  value: string;
+  progress: number;
+}) {
+  return (
+    <div className="company-detail-limit">
+      <div>
+        <strong>{label}</strong>
+        <span>{value}</span>
+      </div>
+      <div className="limit-progress-track">
+        <span style={{ width: `${progress}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function totalMinutes(calls: CallResponse[]) {
+  return Math.ceil(calls.reduce((sum, call) => sum + call.duration_seconds, 0) / 60);
+}
+
+function formatMinutes(minutes: number) {
+  if (minutes < 60) return `${minutes} мин`;
+  const hours = minutes / 60;
+  const rounded = Number.isInteger(hours) ? hours.toString() : hours.toFixed(1).replace(".", ",");
+  return `${rounded} ч`;
 }
 
 export function CompanyWorkspace({
@@ -180,7 +386,7 @@ export function CompanyWorkspace({
             <h1>Компания не найдена</h1>
             <p>Проверьте ссылку или вернитесь к списку компаний.</p>
           </div>
-          <button className="ghost-button" type="button" onClick={() => onNavigate("companies")}>
+          <button className="ghost-button" type="button" onClick={() => onNavigate("settingsCompanies")}>
             К списку компаний
           </button>
         </div>
@@ -193,7 +399,7 @@ export function CompanyWorkspace({
   return (
     <section className="company-workspace-layout">
       <div className="company-workspace-hero glass">
-        <button className="text-button" type="button" onClick={() => onNavigate("companies")}>
+        <button className="text-button" type="button" onClick={() => onNavigate("settingsCompanies")}>
           Назад к компаниям
         </button>
         <div className="company-workspace-title">
@@ -229,7 +435,7 @@ export function CompanyWorkspace({
               {departments.map((department) => (
                 <a
                   className="company-mini-card department-link"
-                  href={`/app/companies/${encodeURIComponent(company.id)}/departments/${encodeURIComponent(department.id)}`}
+                  href={`/app/settings/companies/${encodeURIComponent(company.id)}/departments/${encodeURIComponent(department.id)}`}
                   key={department.id}
                   onClick={(event) => {
                     event.preventDefault();
@@ -355,7 +561,7 @@ export function DepartmentWorkspace({
             <h1>Отдел не найден</h1>
             <p>Проверьте ссылку или вернитесь к списку компаний.</p>
           </div>
-          <button className="ghost-button" type="button" onClick={() => onNavigate("companies")}>
+          <button className="ghost-button" type="button" onClick={() => onNavigate("settingsCompanies")}>
             К списку компаний
           </button>
         </div>
@@ -370,7 +576,7 @@ export function DepartmentWorkspace({
           <button className="text-button" type="button" onClick={() => onOpenCompany(company.id)}>
             Назад к компании
           </button>
-          <button className="ghost-button small" type="button" onClick={() => onNavigate("companies")}>
+          <button className="ghost-button small" type="button" onClick={() => onNavigate("settingsCompanies")}>
             Все компании
           </button>
         </div>
@@ -393,7 +599,7 @@ export function DepartmentWorkspace({
         <div className="panel-heading">
           <div>
             <h2>Работники отдела</h2>
-            <p>Имена показываются, когда backend передаёт профиль работника.</p>
+            <p>Имена показываются для участников с доступными профилями.</p>
           </div>
         </div>
         {error && <div className="form-error">{error}</div>}
@@ -609,7 +815,7 @@ export function CompanySubscriptionStatus({
         </p>
       </div>
       {!active && (
-        <button className="primary-button small" type="button" onClick={() => onNavigate("tariffs")}>
+        <button className="primary-button small" type="button" onClick={() => onNavigate("settingsTariffs")}>
           <ShieldCheck size={16} />
           Выбрать бизнес-тариф
         </button>
@@ -618,7 +824,13 @@ export function CompanySubscriptionStatus({
   );
 }
 
-export function CreateCompanyForm({ onCreated }: { onCreated: (company: CompanyResponse) => void | Promise<void>; }) {
+export function CreateCompanyForm({
+  onCreated,
+  compact = false
+}: {
+  onCreated: (company: CompanyResponse) => void | Promise<void>;
+  compact?: boolean;
+}) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -648,7 +860,7 @@ export function CreateCompanyForm({ onCreated }: { onCreated: (company: CompanyR
   }
 
   return (
-    <form className="create-company-form" onSubmit={submit}>
+    <form className={`create-company-form ${compact ? "compact" : ""}`} onSubmit={submit}>
       <label>
         Название компании
         <input value={name} onChange={(event) => setName(event.target.value)} />

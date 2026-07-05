@@ -62,11 +62,25 @@ export function Landing({
       sections.forEach((section) => {
         const rect = section.getBoundingClientRect();
         const progress = Math.min(1, Math.max(0, (viewportHeight - rect.top) / (viewportHeight + rect.height)));
-        const shine = -18 + progress * 186;
+        const shine = -36 + progress * 125;
         const light = 0.42 + Math.sin(progress * Math.PI) * 0.28;
+        const bandY = viewportHeight * 0.34;
+        const bandSoftness = 150;
 
         section.style.setProperty("--workflow-scroll-shine", `${shine.toFixed(2)}px`);
         section.style.setProperty("--workflow-scroll-light", light.toFixed(3));
+
+        section.querySelectorAll<HTMLElement>(".landing-emblem, .workflow-emblem").forEach((target) => {
+          const targetRect = target.getBoundingClientRect();
+          const rawLocalY = bandY - targetRect.top;
+          const localY = targetRect.height / 2 + (rawLocalY - targetRect.height / 2) * 0.55;
+          const centerDistance = Math.abs(localY - targetRect.height / 2);
+          const influence = Math.max(targetRect.height / 2 + bandSoftness, 1);
+          const strength = Math.max(0, Math.min(1, 1 - centerDistance / influence));
+
+          target.style.setProperty("--emblem-shine-local-y", `${localY.toFixed(2)}px`);
+          target.style.setProperty("--emblem-shine-strength", strength.toFixed(3));
+        });
       });
     };
 
@@ -103,7 +117,8 @@ export function Landing({
 
       shineTargets().forEach((target) => {
         const rect = target.getBoundingClientRect();
-        const localY = bandY - rect.top;
+        const rawLocalY = bandY - rect.top;
+        const localY = rect.height / 2 + (rawLocalY - rect.height / 2) * 0.55;
         const centerDistance = Math.abs(localY - rect.height / 2);
         const influence = Math.max(rect.height / 2 + bandSoftness, 1);
         const strength = Math.max(0, Math.min(1, 1 - centerDistance / influence));
@@ -496,7 +511,11 @@ export function WorkflowStep({ emblem, title, text }: { emblem: WorkflowEmblemVa
 
 export function WorkflowEmblem({ variant }: { variant: WorkflowEmblemVariant; }) {
   if (variant === "brain") {
-    return <BrainIcon className="workflow-emblem brain" aria-hidden="true" />;
+    return (
+      <span className="workflow-emblem brain" aria-hidden="true">
+        <BrainIcon className="workflow-brain-icon" />
+      </span>
+    );
   }
 
   return (

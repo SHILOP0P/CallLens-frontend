@@ -27,7 +27,7 @@ export function StatusTimeline({
   current: CallStatus;
   statuses?: CallStatus[];
 }) {
-  const steps = statuses?.length ? statuses : timelineFromStatus(current);
+  const steps = visibleTimelineSteps(current, statuses);
   const currentIndex = steps.indexOf(current);
 
   return (
@@ -37,8 +37,7 @@ export function StatusTimeline({
     >
       {steps.map((step, index) => (
         <div
-          className={`timeline-step ${index < currentIndex ? "done" : ""} ${current === step ? "current" : ""
-            } ${step === "failed" ? "danger" : ""}`}
+          className={`timeline-step ${timelineStepClass(step, index, current, currentIndex)}`}
           key={step}
         >
           <span>
@@ -49,11 +48,44 @@ export function StatusTimeline({
             {step === "failed" && <X size={19} />}
           </span>
           <strong>{statusMeta[step].label}</strong>
-          <small>{step === current ? "сейчас" : index < currentIndex ? "готово" : "—"}</small>
+          <small>{timelineStepCaption(step, index, current, currentIndex)}</small>
         </div>
       ))}
     </div>
   );
+}
+
+function visibleTimelineSteps(current: CallStatus, statuses?: CallStatus[]) {
+  if (!statuses?.length) return timelineFromStatus(current);
+
+  const currentIndex = statuses.indexOf(current);
+  if (currentIndex >= 0) return statuses.slice(0, currentIndex + 1);
+
+  return timelineFromStatus(current);
+}
+
+function timelineStepClass(
+  step: CallStatus,
+  index: number,
+  current: CallStatus,
+  currentIndex: number
+) {
+  if (step === "failed") return "danger";
+  if (step === "processing" && step === current) return "processing current";
+  if (index <= currentIndex || currentIndex === -1) return "ready";
+  return "";
+}
+
+function timelineStepCaption(
+  step: CallStatus,
+  index: number,
+  current: CallStatus,
+  currentIndex: number
+) {
+  if (step === "failed") return "ошибка";
+  if (step === "processing" && step === current) return "в обработке";
+  if (index <= currentIndex || currentIndex === -1) return "готово";
+  return "";
 }
 
 export function InfoCard({

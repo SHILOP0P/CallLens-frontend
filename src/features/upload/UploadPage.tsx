@@ -46,7 +46,7 @@ export function UploadPage({
   onNavigate: (page: AppPage) => void;
   onUploaded: (call: CallResponse) => void;
 }) {
-  const [title, setTitle] = useState("Обсуждение условий договора с клиентом");
+  const [title, setTitle] = useState("");
   const [audio, setAudio] = useState<File | null>(null);
   const [scope, setScope] = useState<VisibilityScope>("personal");
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
@@ -163,7 +163,8 @@ export function UploadPage({
       title: title.trim(),
       audio,
       companyUuid: scope === "company" || scope === "department" ? companyId : undefined,
-      departmentUuid: scope === "department" ? departmentId : undefined
+      departmentUuid: scope === "department" ? departmentId : undefined,
+      useCustomInstructions: selectedInstructionIds.length > 0
     };
 
     if ((scope === "company" || scope === "department") && !companyId) {
@@ -211,6 +212,8 @@ export function UploadPage({
             <input
               value={title}
               maxLength={255}
+              required
+              placeholder="Например: обсуждение условий договора с клиентом"
               onChange={(event) => setTitle(event.target.value)}
             />
             <span>{title.length} / 255</span>
@@ -285,7 +288,7 @@ export function UploadPage({
             <strong>Инструкции для выбранного контекста</strong>
             <small>{instructionContextHint(scope)}</small>
           </div>
-          <button className="ghost-button small" type="button" onClick={() => onNavigate("instructions")}>
+          <button className="ghost-button small" type="button" onClick={() => onNavigate("settingsInstructions")}>
             <Pencil size={15} />
             Изменить инструкцию
           </button>

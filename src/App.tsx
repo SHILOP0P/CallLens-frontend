@@ -12,6 +12,7 @@ import type {
   DepartmentResponse,
   Invitation,
   SessionState,
+  Subscription,
   TranscriptionResponse,
   UserResponse
 } from "./types";
@@ -38,8 +39,11 @@ import { InstructionsPage } from "./features/instructions/InstructionsPage";
 import { InvitationsPage } from "./features/invitations/InvitationsPage";
 import { Landing } from "./features/landing/Landing";
 import { AuthenticatedShell } from "./features/layout/AuthenticatedShell";
+import { MonitoringPage } from "./features/monitoring/MonitoringPage";
 import { OverviewPage } from "./features/overview/OverviewPage";
-import { ProfilePage } from "./features/profile/ProfilePage";
+import { DevicesPage, ProfileEditPage, ProfilePage } from "./features/profile/ProfilePage";
+import { AiReportsPage } from "./features/reports/AiReportsPage";
+import { SettingsPage } from "./features/settings/SettingsPage";
 import { TariffsPage } from "./features/tariffs/TariffsPage";
 import { UploadPage } from "./features/upload/UploadPage";
 import {
@@ -71,6 +75,8 @@ function App() {
   const [departmentMembers, setDepartmentMembers] = useState<DepartmentMemberResponse[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [instructions, setInstructions] = useState<AnalysisInstruction[]>([]);
+  const [personalSubscription, setPersonalSubscription] = useState<Subscription | null>(null);
+  const [companySubscriptions, setCompanySubscriptions] = useState<Record<string, Subscription | null>>({});
   const [transcriptions, setTranscriptions] = useState<Record<string, TranscriptionResponse>>({});
   const [analyses, setAnalyses] = useState<Record<string, AnalysisResponse>>({});
   const [callTimelines, setCallTimelines] = useState<Record<string, CallStatus[]>>({});
@@ -166,14 +172,16 @@ function App() {
       setLoadingWorkspace(true);
 
       try {
-        const [loadedCalls, loadedCompanies, loadedInvitations] = await Promise.all([
+        const [loadedCallsResponse, loadedCompanies, loadedInvitations, loadedPersonalSubscription] = await Promise.all([
           api.listCalls(),
           api.listCompanies(),
-          api.listMyInvitations().catch(() => [])
+          api.listMyInvitations().catch(() => []),
+          api.getSubscription().catch(() => null)
         ]);
 
         if (cancelled) return;
 
+        const loadedCalls = callItems(loadedCallsResponse);
         const loadedDepartments = (
           await Promise.all(
             loadedCompanies.map((company) =>
@@ -204,6 +212,14 @@ function App() {
             )
           )
         ).flat();
+        const loadedCompanySubscriptions = Object.fromEntries(
+          await Promise.all(
+            loadedCompanies.map(async (company) => [
+              company.id,
+              await api.getCompanySubscription(company.id).catch(() => null)
+            ])
+          )
+        ) as Record<string, Subscription | null>;
 
         if (cancelled) return;
 
@@ -219,6 +235,8 @@ function App() {
         setDepartmentMembers(loadedDepartmentMembers);
         setInvitations(loadedInvitations);
         setInstructions(loadedInstructions);
+        setPersonalSubscription(loadedPersonalSubscription);
+        setCompanySubscriptions(loadedCompanySubscriptions);
         setSelectedCallId((current) => current || loadedCalls[0]?.id || "");
         setWorkspaceReady(true);
       } catch (error) {
@@ -343,21 +361,21 @@ function App() {
 
   function openCompany(companyId: string) {
     setShowPublicLanding(false);
-    setPage("companies");
+    setPage("settingsCompanies");
     setSelectedCompanyId(companyId);
     setSelectedDepartmentId("");
-    window.history.pushState({}, "", `/app/companies/${encodeURIComponent(companyId)}`);
+    window.history.pushState({}, "", `/app/settings/companies/${encodeURIComponent(companyId)}`);
   }
 
   function openDepartment(companyId: string, departmentId: string) {
     setShowPublicLanding(false);
-    setPage("companies");
+    setPage("settingsCompanies");
     setSelectedCompanyId(companyId);
     setSelectedDepartmentId(departmentId);
     window.history.pushState(
       {},
       "",
-      `/app/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`
+      `/app/settings/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`
     );
   }
 
@@ -378,6 +396,19 @@ function App() {
   async function logout() {
     if (session) {
       await api.logout().catch(() => undefined);
+    }
+    persistSession(null);
+    setSession(null);
+    clearWorkspaceState();
+    setWorkspaceReady(true);
+    setShowPublicLanding(true);
+    window.history.pushState({}, "", "/");
+    setPage("calls");
+  }
+
+  async function logoutAllSessions() {
+    if (session) {
+      await api.logoutAll().catch(() => undefined);
     }
     persistSession(null);
     setSession(null);
@@ -449,6 +480,8 @@ function App() {
     setDepartmentMembers([]);
     setInvitations([]);
     setInstructions([]);
+    setPersonalSubscription(null);
+    setCompanySubscriptions({});
     setTranscriptions({});
     setAnalyses({});
     setCallTimelines({});
@@ -497,11 +530,20 @@ function App() {
         )
       )
     ).flat();
+    const loadedCompanySubscriptions = Object.fromEntries(
+      await Promise.all(
+        loadedCompanies.map(async (company) => [
+          company.id,
+          await api.getCompanySubscription(company.id).catch(() => null)
+        ])
+      )
+    ) as Record<string, Subscription | null>;
 
     setCompanies(loadedCompanies);
     setDepartments(loadedDepartments);
     setDepartmentMembers(loadedDepartmentMembers);
     setInstructions(loadedInstructions);
+    setCompanySubscriptions(loadedCompanySubscriptions);
   }
 
   async function deleteCall(callId: string) {
@@ -565,8 +607,17 @@ function App() {
       activePage={page}
       session={session}
       theme={activeTheme}
+      calls={calls}
+      companies={companies}
+      personalSubscription={personalSubscription}
+      companySubscriptions={companySubscriptions}
       invitationCount={invitations.filter((invitation) => invitation.status === "pending").length}
       onNavigate={navigate}
+      onOpenCall={(callId) => {
+        setSelectedCallId(callId);
+        navigate("calls");
+      }}
+      onOpenCompany={openCompany}
       onOpenLanding={openLanding}
       onToggleTheme={toggleTheme}
       onLogout={logout}
@@ -582,6 +633,9 @@ function App() {
           selectedCallTimeline={selectedCallTimeline}
           transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
           analysis={selectedCall ? analyses[selectedCall.id] : undefined}
+          analyses={analyses}
+          selectedCallId={selectedCallId}
+          onSelectCall={setSelectedCallId}
           onNavigate={navigate}
         />
       )}
@@ -596,6 +650,7 @@ function App() {
           selectedCallTimeline={selectedCallTimeline}
           transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
           analysis={selectedCall ? analyses[selectedCall.id] : undefined}
+          session={session}
           onSelectCall={setSelectedCallId}
           onNavigate={navigate}
           onDeleteCall={deleteCall}
@@ -650,7 +705,13 @@ function App() {
         />
       )}
 
-      {page === "instructions" && (
+      {page === "reports" && <AiReportsPage calls={calls} analyses={analyses} />}
+
+      {page === "monitoring" && <MonitoringPage calls={calls} />}
+
+      {page === "settings" && <SettingsPage onNavigate={navigate} />}
+
+      {page === "settingsInstructions" && (
         <InstructionsPage
           session={session}
           instructions={instructions}
@@ -658,19 +719,21 @@ function App() {
           departments={departments}
           departmentMembers={departmentMembers}
           loading={loadingWorkspace}
+          onBackToSettings={() => navigate("settings")}
           onInstructionCreated={(instruction) =>
             setInstructions((current) => [instruction, ...current])
           }
         />
       )}
 
-      {page === "invitations" && (
+      {page === "settingsInvitations" && (
         <InvitationsPage
           invitations={invitations}
           companies={companies}
           departments={departments}
           session={session}
           loading={loadingWorkspace}
+          onBackToSettings={() => navigate("settings")}
           onInvitationCreated={(invitation) =>
             setInvitations((current) =>
               invitation.invited_user_uuid === session.user.id ? [invitation, ...current] : current
@@ -686,12 +749,15 @@ function App() {
         />
       )}
 
-      {page === "companies" && (
+      {page === "settingsCompanies" && (
         <CompaniesPage
           session={session}
           companies={companies}
           departments={departments}
+          calls={calls}
+          companySubscriptions={companySubscriptions}
           loading={loadingWorkspace}
+          onBackToSettings={() => navigate("settings")}
           selectedCompanyId={selectedCompanyId}
           selectedDepartmentId={selectedDepartmentId}
           onCompanyCreated={async (company) => {
@@ -710,10 +776,11 @@ function App() {
         />
       )}
 
-      {page === "profile" && (
+      {page === "settingsProfile" && (
         <ProfilePage
           session={session}
           companies={companies}
+          onBackToSettings={() => navigate("settings")}
           onUserUpdated={updateSessionUser}
           onCompanyCreated={async (company) => {
             setCompanies((current) => [company, ...current]);
@@ -723,9 +790,44 @@ function App() {
         />
       )}
 
-      {page === "tariffs" && <TariffsPage session={session} companies={companies} />}
+      {page === "settingsProfileEdit" && (
+        <ProfileEditPage
+          session={session}
+          onUserUpdated={updateSessionUser}
+          onNavigate={navigate}
+        />
+      )}
+
+      {page === "settingsDevices" && (
+        <DevicesPage
+          onBackToSettings={() => navigate("settings")}
+          onLogoutAll={logoutAllSessions}
+        />
+      )}
+
+      {page === "settingsTariffs" && (
+        <TariffsPage
+          session={session}
+          companies={companies}
+          personalSubscription={personalSubscription}
+          companySubscriptions={companySubscriptions}
+          onPersonalSubscriptionChanged={setPersonalSubscription}
+          onCompanySubscriptionChanged={(subscription) => {
+            if (!subscription.company_uuid) return;
+            setCompanySubscriptions((current) => ({
+              ...current,
+              [subscription.company_uuid as string]: subscription
+            }));
+          }}
+          onBackToSettings={() => navigate("settings")}
+        />
+      )}
     </AuthenticatedShell>
   );
 }
 
 export default App;
+
+function callItems(response: CallResponse[] | { items: CallResponse[] }) {
+  return Array.isArray(response) ? response : response.items;
+}

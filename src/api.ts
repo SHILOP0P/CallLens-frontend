@@ -2,26 +2,49 @@ import type {
   AnalysisInstruction,
   AnalysisResponse,
   AuthResponse,
+  AnalyticsOverviewResponse,
+  AvatarResponse,
+  CallFilterOptionsResponse,
   CallResponse,
+  CallStatus,
+  CallsListResponse,
   CompanyResponse,
+  CompanyMemberListItemResponse,
+  CompanyMembersResponse,
   DepartmentMemberResponse,
+  CreateGlobalReportRequest,
   CreateReportRequest,
   DepartmentResponse,
+  GlobalReportsResponse,
   Invitation,
   InvitationDepartmentRole,
   InvitationStatus,
   InstructionScope,
   LoginRequest,
+  NotificationResponse,
+  NotificationsResponse,
   Plan,
   PlanCode,
   PlanType,
   PlansResponse,
+  ProcessingMonitoringResponse,
   RegisterRequest,
+  ReportFormat,
   ReportResponse,
+  ReportStatus,
   ReportsResponse,
+  SearchResponse,
   Subscription,
+  SubscriptionUsageResponse,
   TranscriptionResponse,
-  UserResponse
+  UpdatePasswordRequest,
+  UpdatePasswordResponse,
+  UpdatePreferencesRequest,
+  UpdateProfileRequest,
+  UserPreferencesResponse,
+  UserResponse,
+  UserSessionsResponse,
+  VisibilityScope
 } from "./types";
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
@@ -86,15 +109,27 @@ const apiErrorMessages: Record<string, string> = {
   export_access_denied: "Экспорт отчетов недоступен на текущем тарифе.",
   unsupported_report_format: "Этот формат экспорта не поддерживается.",
   report_not_found: "Отчет не найден.",
-  report_file_not_found: "Файл отчета не найден. Создайте экспорт заново.",
+  report_file_not_found: "Файл отчета недоступен",
   report_not_ready: "Отчет еще формируется.",
-  report_expired: "Срок хранения отчета истек. Создайте экспорт заново.",
+  report_expired: "Срок хранения отчета истек",
   failed_to_create_report: "Не удалось создать отчет",
   failed_to_list_reports: "Не удалось загрузить отчеты",
   failed_to_download_report: "Не удалось скачать отчет",
   failed_to_delete_report: "Не удалось удалить отчет",
   team_analytics_access_denied: "Командная аналитика недоступна на текущем тарифе",
-  api_access_denied: "API-доступ недоступен на текущем тарифе"
+  api_access_denied: "API-доступ недоступен на текущем тарифе",
+  invalid_search_input: "Введите минимум 2 символа для поиска",
+  notification_not_found: "Уведомление не найдено",
+  failed_to_list_notifications: "Не удалось загрузить уведомления",
+  failed_to_mark_notification_read: "Не удалось отметить уведомление",
+  failed_to_mark_all_notifications_read: "Не удалось отметить уведомления",
+  failed_to_get_subscription_usage: "Не удалось загрузить лимиты подписки",
+  failed_to_list_call_filters: "Не удалось загрузить фильтры звонков",
+  failed_to_get_analytics_overview: "Не удалось загрузить аналитику",
+  failed_to_get_processing_monitoring: "Не удалось загрузить мониторинг",
+  not_implemented: "Эта возможность пока не реализована на backend",
+  audio_file_not_found: "Аудиофайл недоступен",
+  instruction_file_not_found: "Файл инструкции недоступен"
 };
 
 type ApiPayload = Record<string, unknown>;
@@ -105,6 +140,14 @@ type RawPlan = Partial<Plan> & {
   members_limit?: number | null;
   call_history_days?: number;
   export_reports_enabled?: boolean;
+};
+
+type RawSubscription = Omit<Partial<Subscription>, "plan"> & {
+  plan?: RawPlan;
+};
+
+type RawSubscriptionUsageResponse = Omit<Partial<SubscriptionUsageResponse>, "subscription"> & {
+  subscription?: RawSubscription;
 };
 
 function isRecord(value: unknown): value is ApiPayload {
@@ -167,6 +210,40 @@ function normalizePlan(plan: RawPlan): Plan {
     export_enabled: booleanOrFallback(plan.export_enabled ?? plan.export_reports_enabled),
     team_analytics_enabled: booleanOrFallback(plan.team_analytics_enabled),
     api_access_enabled: booleanOrFallback(plan.api_access_enabled)
+  };
+}
+
+function normalizeSubscription(subscription: RawSubscription): Subscription {
+  return {
+    id: typeof subscription.id === "string" ? subscription.id : "",
+    plan: normalizePlan(subscription.plan ?? {}),
+    user_uuid: typeof subscription.user_uuid === "string" ? subscription.user_uuid : null,
+    company_uuid: typeof subscription.company_uuid === "string" ? subscription.company_uuid : null,
+    status: subscription.status === "canceled" ? "canceled" : subscription.status === "active" ? "active" : "expired",
+    starts_at: typeof subscription.starts_at === "string" ? subscription.starts_at : "",
+    ends_at: typeof subscription.ends_at === "string" ? subscription.ends_at : null,
+    created_at: typeof subscription.created_at === "string" ? subscription.created_at : "",
+    updated_at: typeof subscription.updated_at === "string" ? subscription.updated_at : ""
+  };
+}
+
+function normalizeSubscriptionUsage(usage: RawSubscriptionUsageResponse): SubscriptionUsageResponse {
+  return {
+    subscription: normalizeSubscription(usage.subscription ?? {}),
+    period_start: typeof usage.period_start === "string" ? usage.period_start : "",
+    period_end: typeof usage.period_end === "string" ? usage.period_end : "",
+    used_minutes: numberOrFallback(usage.used_minutes),
+    limit_minutes: numberOrFallback(usage.limit_minutes),
+    remaining_minutes: numberOrFallback(usage.remaining_minutes),
+    percent: numberOrFallback(usage.percent),
+    members_limit: typeof usage.members_limit === "number" ? usage.members_limit : undefined,
+    members_used: typeof usage.members_used === "number" ? usage.members_used : undefined,
+    departments_limit: typeof usage.departments_limit === "number" ? usage.departments_limit : undefined,
+    departments_used: typeof usage.departments_used === "number" ? usage.departments_used : undefined,
+    active_instructions_limit:
+      typeof usage.active_instructions_limit === "number" ? usage.active_instructions_limit : undefined,
+    active_instructions_used:
+      typeof usage.active_instructions_used === "number" ? usage.active_instructions_used : undefined
   };
 }
 
@@ -253,6 +330,86 @@ async function requestBlob(path: string, options: { retryOnUnauthorized?: boolea
   return response.blob();
 }
 
+async function requestAssetBlob(url: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
+  const response = await fetch(url, {
+    credentials: "include"
+  });
+
+  if (!response.ok) {
+    const contentType = response.headers.get("Content-Type") ?? "";
+    const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+    const code = getApiErrorCode(payload);
+    const message = getApiErrorMessage(payload, response.status, url, {});
+
+    if (response.status === 401 && options.retryOnUnauthorized !== false) {
+      try {
+        await refreshSessionRequest();
+        return requestAssetBlob(url, { retryOnUnauthorized: false });
+      } catch {
+        // Keep the original unauthorized error for the caller.
+      }
+    }
+
+    throw new ApiError(response.status, message, code);
+  }
+
+  return response.blob();
+}
+
+function absoluteApiAssetUrl(value: string) {
+  if (/^https?:\/\//i.test(value)) return value;
+  if (value.startsWith("/")) return `${configuredBase}${value}`;
+  return value;
+}
+
+function queryString(input: Record<string, unknown> = {}) {
+  const params = new URLSearchParams();
+
+  Object.entries(input).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === "") return;
+    if (Array.isArray(value)) {
+      if (value.length > 0) params.set(key, value.join(","));
+      return;
+    }
+    params.set(key, String(value));
+  });
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+function apiPathFromUrl(pathOrUrl: string) {
+  if (pathOrUrl.startsWith("/api/v1/")) return pathOrUrl.slice("/api/v1".length);
+  return pathOrUrl;
+}
+
+export function getCallAudioUrl(call: CallResponse) {
+  const callWithAudioLinks = call as CallResponse & {
+    audio_url?: string | null;
+    audio_download_url?: string | null;
+    file_url?: string | null;
+    media_url?: string | null;
+    recording_url?: string | null;
+    download_url?: string | null;
+  };
+  const directUrl = [
+    callWithAudioLinks.audio_url,
+    callWithAudioLinks.audio_download_url,
+    callWithAudioLinks.file_url,
+    callWithAudioLinks.media_url,
+    callWithAudioLinks.recording_url,
+    callWithAudioLinks.download_url
+  ].find((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+  if (directUrl) return absoluteApiAssetUrl(directUrl);
+
+  return `${apiRoot}/calls/${encodeURIComponent(call.id)}/audio`;
+}
+
+export function getCallAudioBlob(call: CallResponse) {
+  return requestAssetBlob(getCallAudioUrl(call));
+}
+
 export const api = {
   login(input: LoginRequest) {
     return request<AuthResponse>("/auth/login", {
@@ -277,6 +434,10 @@ export const api = {
     return request<void>("/auth/logout", { method: "POST" });
   },
 
+  logoutAll() {
+    return request<void>("/auth/logout-all", { method: "POST" });
+  },
+
   refreshSession() {
     return refreshSessionRequest();
   },
@@ -288,13 +449,74 @@ export const api = {
     });
   },
 
+  updateProfile(input: UpdateProfileRequest) {
+    return request<UserResponse>("/auth/me/profile", {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  uploadAvatar(file: File) {
+    const body = new FormData();
+    body.append("avatar", file);
+    return request<AvatarResponse>("/auth/me/avatar", { method: "POST", body });
+  },
+
+  deleteAvatar() {
+    return request<void>("/auth/me/avatar", { method: "DELETE" });
+  },
+
+  getPreferences() {
+    return request<UserPreferencesResponse>("/auth/me/preferences");
+  },
+
+  updatePreferences(input: UpdatePreferencesRequest) {
+    return request<UserPreferencesResponse>("/auth/me/preferences", {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  updatePassword(input: UpdatePasswordRequest) {
+    return request<UpdatePasswordResponse>("/auth/me/password", {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  listSessions() {
+    return request<UserSessionsResponse>("/auth/me/sessions");
+  },
+
+  deleteSession(sessionId: string) {
+    return request<void>(`/auth/me/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+  },
+
   lookupUserByUsername(username: string) {
     const query = new URLSearchParams({ username }).toString();
     return request<UserResponse>(`/users/lookup?${query}`);
   },
 
-  listCalls() {
-    return request<CallResponse[]>("/calls");
+  listCalls(filters?: {
+    q?: string;
+    status?: CallStatus;
+    scope?: VisibilityScope;
+    company_uuid?: string;
+    department_uuid?: string;
+    uploaded_by_user_uuid?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return request<CallResponse[] | CallsListResponse>(`/calls${queryString(filters)}`);
+  },
+
+  getCallFilterOptions(input?: {
+    company_uuid?: string;
+    department_uuid?: string;
+  }) {
+    return request<CallFilterOptionsResponse>(`/calls/filters${queryString(input)}`);
   },
 
   createCall(
@@ -303,6 +525,7 @@ export const api = {
       audio: File;
       companyUuid?: string;
       departmentUuid?: string;
+      useCustomInstructions?: boolean;
     }
   ) {
     const body = new FormData();
@@ -310,6 +533,9 @@ export const api = {
     body.append("audio", input.audio);
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
     if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
+    if (typeof input.useCustomInstructions === "boolean") {
+      body.append("use_custom_instructions", String(input.useCustomInstructions));
+    }
 
     return request<CallResponse>("/calls", { method: "POST", body });
   },
@@ -329,12 +555,41 @@ export const api = {
     });
   },
 
-  getCompanySubscription(companyId: string) {
-    return request<Subscription>(`/companies/${encodeURIComponent(companyId)}/subscription`);
+  getCompany(companyId: string) {
+    return request<CompanyResponse>(`/companies/${encodeURIComponent(companyId)}`);
   },
 
-  getSubscription() {
-    return request<Subscription>("/subscription");
+  updateCompany(companyId: string, name: string) {
+    return request<CompanyResponse>(`/companies/${encodeURIComponent(companyId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name })
+    });
+  },
+
+  deleteCompany(companyId: string) {
+    return request<void>(`/companies/${encodeURIComponent(companyId)}`, { method: "DELETE" });
+  },
+
+  async getCompanySubscription(companyId: string) {
+    const subscription = await request<RawSubscription>(`/companies/${encodeURIComponent(companyId)}/subscription`);
+    return normalizeSubscription(subscription);
+  },
+
+  async getSubscription() {
+    const subscription = await request<RawSubscription>("/subscription");
+    return normalizeSubscription(subscription);
+  },
+
+  async getSubscriptionUsage(period?: string) {
+    const usage = await request<RawSubscriptionUsageResponse>(`/subscription/usage${queryString({ period })}`);
+    return normalizeSubscriptionUsage(usage);
+  },
+
+  async getCompanySubscriptionUsage(companyId: string, period?: string) {
+    const usage = await request<RawSubscriptionUsageResponse>(
+      `/companies/${encodeURIComponent(companyId)}/subscription/usage${queryString({ period })}`
+    );
+    return normalizeSubscriptionUsage(usage);
   },
 
   listDepartments(companyId: string) {
@@ -346,6 +601,50 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name })
     });
+  },
+
+  updateDepartment(companyId: string, departmentId: string, name: string) {
+    return request<DepartmentResponse>(
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ name })
+      }
+    );
+  },
+
+  deleteDepartment(companyId: string, departmentId: string) {
+    return request<void>(
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`,
+      { method: "DELETE" }
+    );
+  },
+
+  listCompanyMembers(companyId: string, filters?: {
+    status?: "active" | "suspended" | "left";
+    role?: "employee" | "company_manager" | "department_leader";
+    department_uuid?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return request<CompanyMembersResponse>(
+      `/companies/${encodeURIComponent(companyId)}/members${queryString(filters)}`
+    );
+  },
+
+  updateCompanyMemberStatus(
+    companyId: string,
+    userId: string,
+    status: "active" | "suspended" | "left"
+  ) {
+    return request<CompanyMemberListItemResponse>(
+      `/companies/${encodeURIComponent(companyId)}/members/${encodeURIComponent(userId)}/status`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status })
+      }
+    );
   },
 
   listDepartmentMembers(companyId: string, departmentId: string) {
@@ -456,6 +755,29 @@ export const api = {
     });
   },
 
+  listGlobalReports(filters?: {
+    format?: ReportFormat;
+    status?: ReportStatus;
+    company_uuid?: string;
+    department_uuid?: string;
+    call_uuid?: string;
+    from?: string;
+    to?: string;
+    sort?: "created_at" | "updated_at";
+    order?: "desc" | "asc";
+    limit?: number;
+    offset?: number;
+  }) {
+    return request<GlobalReportsResponse>(`/reports${queryString(filters)}`);
+  },
+
+  createGlobalReport(input: CreateGlobalReportRequest) {
+    return request<ReportResponse>("/reports", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
   listReports(callId: string) {
     return request<ReportsResponse>(`/calls/${encodeURIComponent(callId)}/reports`);
   },
@@ -469,19 +791,117 @@ export const api = {
     return request<void>(`/reports/${encodeURIComponent(reportId)}`, { method: "DELETE" });
   },
 
+  getAnalyticsOverview(filters?: {
+    from?: string;
+    to?: string;
+    scope?: VisibilityScope;
+    company_uuid?: string;
+    department_uuid?: string;
+  }) {
+    return request<AnalyticsOverviewResponse>(`/analytics/overview${queryString(filters)}`);
+  },
+
+  getProcessingMonitoring(filters?: {
+    company_uuid?: string;
+    from?: string;
+    to?: string;
+  }) {
+    return request<ProcessingMonitoringResponse>(`/monitoring/processing${queryString(filters)}`);
+  },
+
+  search(input: {
+    q: string;
+    types?: ("calls" | "companies" | "reports" | "instructions")[];
+    limit?: number;
+  }) {
+    return request<SearchResponse>(`/search${queryString(input)}`);
+  },
+
+  listNotifications(input?: {
+    unread_only?: boolean;
+    limit?: number;
+    offset?: number;
+  }) {
+    return request<NotificationsResponse>(`/notifications${queryString(input)}`);
+  },
+
+  markNotificationRead(notificationId: string) {
+    return request<void>(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
+  },
+
+  markAllNotificationsRead() {
+    return request<void>("/notifications/read-all", { method: "POST" });
+  },
+
   callEventsUrl(callId: string) {
     return `${apiRoot}/calls/${encodeURIComponent(callId)}/events`;
   },
 
   listInstructions(
-    scope: InstructionScope,
+    inputOrScope: InstructionScope | {
+      scope: InstructionScope;
+      company_uuid?: string;
+      department_uuid?: string;
+      include_inactive?: boolean;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    },
     companyUuid?: string,
     departmentUuid?: string
   ) {
-    const params = new URLSearchParams({ scope });
-    if (companyUuid) params.set("company_uuid", companyUuid);
-    if (departmentUuid) params.set("department_uuid", departmentUuid);
-    return request<AnalysisInstruction[]>(`/instructions?${params.toString()}`);
+    const input =
+      typeof inputOrScope === "string"
+        ? { scope: inputOrScope, company_uuid: companyUuid, department_uuid: departmentUuid }
+        : inputOrScope;
+    return request<AnalysisInstruction[]>(`/instructions${queryString(input)}`);
+  },
+
+  getInstruction(id: string) {
+    return request<AnalysisInstruction>(`/instructions/${encodeURIComponent(id)}`);
+  },
+
+  updateInstruction(id: string, input: {
+    title?: string;
+    is_active?: boolean;
+    sort_order?: number;
+  }) {
+    return request<AnalysisInstruction>(`/instructions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  replaceInstructionFile(id: string, file: File) {
+    const body = new FormData();
+    body.append("file", file);
+    return request<AnalysisInstruction>(`/instructions/${encodeURIComponent(id)}/file`, {
+      method: "PUT",
+      body
+    });
+  },
+
+  downloadInstruction(idOrDownloadUrl: string) {
+    const path = idOrDownloadUrl.startsWith("/") || idOrDownloadUrl.startsWith("/api/v1/")
+      ? apiPathFromUrl(idOrDownloadUrl)
+      : `/instructions/${encodeURIComponent(idOrDownloadUrl)}/download`;
+    return requestBlob(path);
+  },
+
+  reorderInstructions(input: {
+    scope: InstructionScope;
+    company_uuid?: string;
+    department_uuid?: string;
+    items: { id: string; sort_order: number }[];
+  }) {
+    return request<AnalysisInstruction[] | void>("/instructions/reorder", {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  deleteInstruction(id: string) {
+    return request<void>(`/instructions/${encodeURIComponent(id)}`, { method: "DELETE" });
   },
 
   async listPlans() {

@@ -4,6 +4,10 @@
     padding: 0 24px;
   }
 
+  .landing-header {
+    width: min(100% - 32px, 1720px);
+  }
+
   .landing-header nav,
   .app-header nav {
     gap: 20px;
@@ -102,11 +106,21 @@
 }
 
 @media (max-width: 760px) {
+  .landing {
+    --landing-header-offset: 10px;
+    --landing-header-space: 178px;
+  }
+
   .landing-header,
   .app-header {
     height: auto;
     flex-wrap: wrap;
     padding: 18px;
+  }
+
+  .landing-header {
+    width: calc(100% - 20px);
+    border-radius: 24px;
   }
 
   .workspace-frame {
@@ -123,6 +137,11 @@
     width: auto;
     overflow-x: auto;
     padding: 10px;
+    scrollbar-width: none;
+  }
+
+  .app-sidebar::-webkit-scrollbar {
+    display: none;
   }
 
   .app-sidebar button,

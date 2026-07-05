@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Bell,
   BriefcaseBusiness,
   Check,
@@ -26,6 +27,7 @@ export function InvitationsPage({
   departments,
   session,
   loading,
+  onBackToSettings,
   onInvitationCreated,
   onInvitationAccepted,
   onInvitationDeclined
@@ -35,6 +37,7 @@ export function InvitationsPage({
   departments: DepartmentResponse[];
   session: SessionState;
   loading: boolean;
+  onBackToSettings: () => void;
   onInvitationCreated: (invitation: Invitation) => void;
   onInvitationAccepted: (invitation: Invitation) => Promise<void>;
   onInvitationDeclined: (invitation: Invitation) => void;
@@ -42,12 +45,23 @@ export function InvitationsPage({
   const pendingInvitations = invitations.filter((invitation) => invitation.status === "pending");
 
   return (
-    <section className="invitations-layout">
+    <section className="invitations-layout app-page settings-subpage-layout">
+      <div className="settings-back-row">
+        <button className="ghost-button small" type="button" onClick={onBackToSettings}>
+          <ArrowLeft size={16} />
+          Назад
+        </button>
+      </div>
       <div className="invitations-list glass">
         <div className="panel-heading large">
-          <div>
-            <h1>Приглашения</h1>
-            <p>Входящие заявки в компанию или отдел.</p>
+          <div className="app-page-heading settings-heading compact-heading">
+            <span className="settings-heading-icon" aria-hidden="true">
+              <Bell size={26} />
+            </span>
+            <div>
+              <h1>Приглашения</h1>
+              <p>Входящие заявки в компанию или отдел.</p>
+            </div>
           </div>
           <span className="status-chip warn">{pendingInvitations.length}</span>
         </div>

@@ -108,7 +108,7 @@ export function AnalysisPage({
     <section className="analysis-layout">
       <aside className="calls-sidebar glass">
         <div className="panel-heading">
-          <h2>AI-анализ</h2>
+          <h2>AI-аналитика</h2>
           <button className="primary-button small" onClick={() => onNavigate("upload")}>
             <Plus size={16} />
             Звонок
@@ -139,8 +139,8 @@ export function AnalysisPage({
       <section className="analysis-detail glass">
         <div className="panel-heading large">
           <div>
-            <h1>{selectedCall?.title ?? "Выберите звонок"}</h1>
-            <p>Сводка, темы, вопросы клиента, качество менеджера и следующие шаги по выбранному звонку.</p>
+            <h1>AI-аналитика</h1>
+            <p>Качество разговоров, ключевые темы, сигналы по выбранному звонку и рекомендации AI.</p>
           </div>
           <div className="panel-actions">
             <button className="primary-button" onClick={runAnalysis} disabled={!selectedCall || busy}>

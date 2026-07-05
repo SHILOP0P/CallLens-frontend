@@ -1,13 +1,18 @@
 export type AppPage =
   | "overview"
   | "calls"
-  | "upload"
   | "analysis"
-  | "instructions"
-  | "invitations"
-  | "companies"
-  | "profile"
-  | "tariffs";
+  | "reports"
+  | "monitoring"
+  | "settings"
+  | "settingsTariffs"
+  | "settingsCompanies"
+  | "settingsInstructions"
+  | "settingsInvitations"
+  | "settingsProfile"
+  | "settingsProfileEdit"
+  | "settingsDevices"
+  | "upload";
 export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
 export type VisibilityScope = "personal" | "company" | "department";
 export type InstructionScope = "personal" | "company" | "department";
@@ -38,6 +43,9 @@ export interface UserResponse {
   username: string;
   role: string;
   post?: string | null;
+  phone?: string | null;
+  timezone?: string | null;
+  avatar_url?: string | null;
   created_at: string;
 }
 
@@ -59,6 +67,58 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface UpdatePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export interface UpdatePasswordResponse {
+  updated_at: string;
+}
+
+export interface UserSessionResponse {
+  id: string;
+  current: boolean;
+  user_agent: string | null;
+  ip: string | null;
+  created_at: string;
+  last_seen_at: string | null;
+}
+
+export interface UserSessionsResponse {
+  sessions: UserSessionResponse[];
+}
+
+export interface UpdateProfileRequest {
+  full_name?: string;
+  full_surname?: string;
+  post?: string | null;
+  phone?: string | null;
+  timezone?: string | null;
+}
+
+export interface AvatarResponse {
+  avatar_url: string;
+  updated_at: string;
+}
+
+export interface PreferencesDateRange {
+  from?: string | null;
+  to?: string | null;
+}
+
+export interface UserPreferencesResponse {
+  active_company_uuid: string | null;
+  theme: "system" | "light" | "dark";
+  date_range: PreferencesDateRange;
+}
+
+export interface UpdatePreferencesRequest {
+  active_company_uuid?: string | null;
+  theme?: "system" | "light" | "dark";
+  date_range?: PreferencesDateRange;
+}
+
 export interface CallResponse {
   id: string;
   title: string;
@@ -67,11 +127,36 @@ export interface CallResponse {
   mime_type: string;
   size_bytes: number;
   duration_seconds: number;
+  audio_url?: string | null;
+  audio_download_url?: string | null;
+  file_url?: string | null;
+  media_url?: string | null;
+  recording_url?: string | null;
+  download_url?: string | null;
   uploaded_by_user_uuid?: string | null;
   company_uuid?: string | null;
   department_uuid?: string | null;
   visibility_scope: VisibilityScope;
+  use_custom_instructions?: boolean;
   created_at: string;
+}
+
+export interface CallsListResponse {
+  items: CallResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CallFilterOptionsResponse {
+  statuses: string[];
+  scopes: string[];
+  managers: Array<{
+    id: string;
+    full_name: string;
+    full_surname: string;
+    username: string;
+  }>;
 }
 
 export interface CallStatusEvent {
@@ -118,6 +203,17 @@ export interface CreateReportRequest {
   format: ReportFormat;
 }
 
+export interface CreateGlobalReportRequest {
+  format: ReportFormat;
+  scope: "call" | "company" | "department" | "manager" | "period";
+  call_uuid?: string | null;
+  company_uuid?: string | null;
+  department_uuid?: string | null;
+  manager_user_uuid?: string | null;
+  period_from?: string | null;
+  period_to?: string | null;
+}
+
 export interface ReportResponse {
   id: string;
   call_uuid: string;
@@ -137,6 +233,26 @@ export interface ReportResponse {
 
 export interface ReportsResponse {
   reports: ReportResponse[];
+}
+
+export interface ReportCallSummaryResponse {
+  id: string;
+  title: string;
+  status: string;
+  created_at: string;
+  company_uuid: string | null;
+  department_uuid: string | null;
+}
+
+export type ReportWithCallResponse = ReportResponse & {
+  call: ReportCallSummaryResponse;
+};
+
+export interface GlobalReportsResponse {
+  reports: ReportWithCallResponse[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface CompanyResponse {
@@ -188,7 +304,7 @@ export interface AnalysisInstruction {
   department_uuid?: string | null;
   title: string;
   original_filename: string;
-  file_path: string;
+  download_url: string;
   mime_type: string;
   size_bytes: number;
   content_sha256: string;
@@ -197,6 +313,104 @@ export interface AnalysisInstruction {
   created_by_user_uuid: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface SubscriptionUsageResponse {
+  subscription: Subscription;
+  period_start: string;
+  period_end: string;
+  used_minutes: number;
+  limit_minutes: number;
+  remaining_minutes: number;
+  percent: number;
+  members_limit?: number;
+  members_used?: number;
+  departments_limit?: number;
+  departments_used?: number;
+  active_instructions_limit?: number;
+  active_instructions_used?: number;
+}
+
+export interface AnalyticsOverviewResponse {
+  calls_total: number;
+  calls_new: number;
+  calls_processing: number;
+  calls_transcribed: number;
+  calls_analyzed: number;
+  calls_failed: number;
+  average_duration_seconds: number | null;
+  average_quality_score: number | null;
+  quality_score_scale: number;
+  top_topics: Array<{ title: string; count: number }>;
+  risks_count: number | null;
+  recommendations_count: number | null;
+  charts: {
+    calls_by_day: Array<{ date: string; count: number }>;
+    analyzed_by_day: Array<{ date: string; count: number }>;
+    quality_by_day: Array<{ date: string; average_quality_score: number }>;
+    duration_by_day: Array<{ date: string; average_duration_seconds: number }>;
+    risks_by_day: Array<{ date: string; count: number }>;
+  };
+}
+
+export interface ProcessingMonitoringResponse {
+  queue: {
+    pending: number;
+    running: number;
+    done: number;
+    failed: number;
+    retry: number;
+  };
+  average_processing_seconds: number | null;
+}
+
+export interface CompanyMemberDepartmentResponse {
+  department_uuid: string;
+  department_name: string;
+  role: string;
+  status: string;
+}
+
+export interface CompanyMemberListItemResponse {
+  user_uuid: string;
+  email: string;
+  username: string;
+  full_name: string;
+  full_surname: string;
+  company_role: string;
+  status: string;
+  departments: CompanyMemberDepartmentResponse[];
+  created_at: string;
+}
+
+export interface CompanyMembersResponse {
+  members: CompanyMemberListItemResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SearchResponse {
+  calls: Array<{ id: string; title: string; status: string; created_at: string }>;
+  companies: Array<{ id: string; name: string }>;
+  reports: Array<{ id: string; call_uuid: string; file_name: string; status: string }>;
+  instructions: Array<{ id: string; title: string; scope: string }>;
+}
+
+export interface NotificationResponse {
+  id: string;
+  type: "invitation" | "report_ready" | "subscription" | "processing_failed" | string;
+  title: string;
+  body: string;
+  entity_type: string | null;
+  entity_uuid: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export interface NotificationsResponse {
+  notifications: NotificationResponse[];
+  unread_count: number;
 }
 
 export interface Plan {

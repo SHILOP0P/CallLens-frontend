@@ -20,6 +20,7 @@ import type {
 import { analysisNextStep, isAnalysisDone } from "../../shared/lib/analysis";
 import { contextLabel, formatDate, formatDuration } from "../../shared/lib/formatters";
 import { AnalysisPreview } from "../../shared/ui/analysis";
+import { CallAudioPlayer } from "../../shared/ui/audio";
 import { InfoCard, StatusChip, StatusTimeline, TranscriptPreview } from "../../shared/ui/call";
 import { CallDetailSkeleton } from "../../shared/ui/loading";
 import { ReportExportPanel } from "../reports/ReportExportPanel";
@@ -117,16 +118,16 @@ export function CallDetailPanel({
         <div className="play-large">
           <Play size={22} fill="currentColor" />
         </div>
-        <div>
-          <span>Выбранный звонок</span>
+        <div className="selected-call-main">
+          <StatusChip status={call.status} />
           <strong>{call.title}</strong>
           <small>
             {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)} ·{" "}
             {contextLabel(call, companies, departments)}
           </small>
         </div>
-        <StatusChip status={call.status} />
       </div>
+      <CallAudioPlayer call={call} />
       <StatusTimeline current={call.status} statuses={timelineStatuses} />
       {showReports && <ReportExportPanel call={call} analysis={analysis} />}
       <div className="detail-grid">
