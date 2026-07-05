@@ -354,10 +354,7 @@ function totalMinutes(calls: CallResponse[]) {
 }
 
 function formatMinutes(minutes: number) {
-  if (minutes < 60) return `${minutes} мин`;
-  const hours = minutes / 60;
-  const rounded = Number.isInteger(hours) ? hours.toString() : hours.toFixed(1).replace(".", ",");
-  return `${rounded} ч`;
+  return `${minutes} мин`;
 }
 
 export function CompanyWorkspace({

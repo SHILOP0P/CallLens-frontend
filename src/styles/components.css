@@ -4961,9 +4961,9 @@ label small {
   --tariff-card-chip-bg: rgba(255, 106, 72, 0.13);
   --tariff-card-chip-border: rgba(255, 106, 72, 0.2);
   --tariff-card-chip-text: #c64724;
-  align-content: start;
   display: grid;
   gap: 18px;
+  grid-template-rows: auto 1fr auto;
   position: relative;
   overflow: hidden;
   color: var(--tariff-card-text);
@@ -5054,6 +5054,7 @@ label small {
 }
 
 .tariff-feature-list {
+  align-self: start;
   display: grid;
   gap: 12px;
   margin: 0;

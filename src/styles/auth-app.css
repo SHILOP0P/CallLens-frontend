@@ -3293,6 +3293,28 @@ html[data-theme="light"] .progress-ring::before {
   box-shadow: none !important;
 }
 
+html[data-theme="dark"] .app-shell .analysis-full-text,
+html[data-theme="dark"] .app-shell .analysis-content-grid > .info-card:first-child .analysis-user-summary,
+html[data-theme="dark"] .app-shell .analysis-content-grid > .info-card:first-child .analysis-full-text {
+  background: transparent !important;
+  background-image: none !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="dark"] .app-shell .analysis-full-text {
+  display: grid;
+  gap: 18px;
+}
+
+html[data-theme="dark"] .app-shell .analysis-structured {
+  display: contents;
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
 .app-shell .analysis-kv-grid,
 .app-shell .analysis-columns {
   gap: 12px;
@@ -3305,6 +3327,14 @@ html[data-theme="light"] .progress-ring::before {
   background: rgba(255, 250, 245, 0.03);
   border: 1px solid var(--app-border);
   border-radius: 8px;
+}
+
+html[data-theme="dark"] .app-shell .analysis-section,
+html[data-theme="dark"] .app-shell .analysis-kv,
+html[data-theme="dark"] .app-shell .analysis-question,
+html[data-theme="dark"] .app-shell .analysis-columns > div {
+  background: rgba(30, 27, 24, 0.72);
+  border-color: rgba(255, 250, 245, 0.12);
 }
 
 .app-shell .topic-list {
@@ -3793,6 +3823,24 @@ html[data-theme="light"] .app-shell .analysis-section:first-child {
   box-shadow: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+}
+
+html[data-theme="dark"] .app-shell .analysis-section,
+html[data-theme="dark"] .app-shell .analysis-section:first-child,
+html[data-theme="dark"] .app-shell .analysis-kv,
+html[data-theme="dark"] .app-shell .analysis-question,
+html[data-theme="dark"] .app-shell .analysis-columns > div {
+  background: rgba(30, 27, 24, 0.72);
+  border-color: rgba(255, 250, 245, 0.12);
+}
+
+html[data-theme="dark"] .app-shell .analysis-content-grid > .info-card:first-child {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
 }
 
 .app-shell :is(.call-row, .dashboard-call-row) .status-chip,

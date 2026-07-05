@@ -64,7 +64,7 @@ export function AuthenticatedShell({
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [selectedCompanyId, setSelectedCompanyId] = useState(companies[0]?.id ?? "");
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -81,29 +81,42 @@ export function AuthenticatedShell({
   const activeSidebarPage = isSettingsPage(activePage) ? "settings" : activePage;
   const fullName = `${session.user.full_name} ${session.user.full_surname}`.trim();
   const avatarInitial = profileInitial(session.user.full_surname || session.user.full_name || session.user.username);
-  const selectedCompany = companies.find((company) => company.id === selectedCompanyId) ?? companies[0];
+  const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
   const hasCompanies = companies.length > 0;
   const hasMultipleCompanies = companies.length > 1;
-  const teamLabel = selectedCompany?.name ?? "";
+  const teamLabel = selectedCompany?.name ?? "Личный кабинет";
   const selectedCompanySubscription = selectedCompany?.id ? companySubscriptions[selectedCompany.id] : null;
   const selectedCompanyUsage = selectedCompany?.id ? companyUsage[selectedCompany.id] : undefined;
   const activeUsage = selectedCompany ? selectedCompanyUsage ?? null : personalUsage;
-  const subscription =
-    activeUsage?.subscription ??
-    (selectedCompany
-      ? selectedCompanySubscription?.status === "active"
-        ? selectedCompanySubscription
-        : null
-      : personalSubscription?.status === "active"
-        ? personalSubscription
-        : null);
+  const usageSubscription =
+    activeUsage?.subscription.status === "active" && activeUsage.subscription.id
+      ? activeUsage.subscription
+      : null;
+  const fallbackSubscription = selectedCompany
+    ? selectedCompanySubscription?.status === "active"
+      ? selectedCompanySubscription
+      : null
+    : personalSubscription?.status === "active"
+      ? personalSubscription
+      : null;
+  const subscription = usageSubscription ?? fallbackSubscription;
   const usageLoading =
     Boolean(subscription) &&
     (selectedCompany ? selectedCompanyUsage === undefined : personalUsage === null);
   const usedMinutes = activeUsage?.used_minutes ?? 0;
-  const limitMinutes = activeUsage?.limit_minutes ?? subscription?.plan.monthly_minutes_limit ?? 0;
-  const remainingMinutes = activeUsage?.remaining_minutes ?? Math.max(0, limitMinutes - usedMinutes);
-  const progress = Math.min(100, Math.max(0, Math.round(activeUsage?.percent ?? (limitMinutes > 0 ? (usedMinutes / limitMinutes) * 100 : 0))));
+  const limitMinutes = activeUsage?.limit_minutes ?? 0;
+  const remainingMinutes = activeUsage?.remaining_minutes ?? 0;
+  const progress = Math.min(
+    100,
+    Math.max(
+      0,
+      Math.round(
+        activeUsage
+          ? activeUsage.percent
+          : 0
+      )
+    )
+  );
   const hasSearchResults = Boolean(
     searchResults &&
       (searchResults.calls.length > 0 ||
@@ -119,12 +132,8 @@ export function AuthenticatedShell({
       return;
     }
 
-    if (!companies.some((company) => company.id === selectedCompanyId)) {
-      setSelectedCompanyId(companies[0].id);
-    }
-
-    if (companies.length < 2) {
-      setTeamOpen(false);
+    if (selectedCompanyId && !companies.some((company) => company.id === selectedCompanyId)) {
+      setSelectedCompanyId("");
     }
   }, [companies, selectedCompanyId]);
 
@@ -138,13 +147,19 @@ export function AuthenticatedShell({
           companies.map(async (company) => [
             company.id,
             await api.getCompanySubscriptionUsage(company.id).catch(() => null)
-          ])
+          ] as const)
         )
       ]);
 
       if (cancelled) return;
-      setPersonalUsage(loadedPersonalUsage);
-      setCompanyUsage(Object.fromEntries(loadedCompanyUsage) as Record<string, SubscriptionUsageResponse | null>);
+      setPersonalUsage((current) => loadedPersonalUsage ?? current);
+      setCompanyUsage((current) => {
+        const next = { ...current };
+        for (const [companyId, usage] of loadedCompanyUsage) {
+          if (usage) next[companyId] = usage;
+        }
+        return next;
+      });
     }
 
     loadUsage();
@@ -164,7 +179,7 @@ export function AuthenticatedShell({
 
       if (cancelled) return;
       if (preferences) {
-        setSelectedCompanyId(preferences.active_company_uuid ?? companies[0]?.id ?? "");
+        setSelectedCompanyId(preferences.active_company_uuid ?? "");
         setDateFrom(preferences.date_range.from ?? "");
         setDateTo(preferences.date_range.to ?? "");
       }
@@ -295,23 +310,31 @@ export function AuthenticatedShell({
               <button
                 className={`team-switcher ${teamOpen ? "active" : ""} ${!hasMultipleCompanies ? "single" : ""}`}
                 type="button"
-                aria-haspopup={hasMultipleCompanies ? "listbox" : undefined}
-                aria-expanded={hasMultipleCompanies ? teamOpen : undefined}
-                onClick={() => {
-                  if (!selectedCompany) return;
-                  if (hasMultipleCompanies) {
-                    setTeamOpen((open) => !open);
-                    return;
-                  }
-
-                  onOpenCompany(selectedCompany.id);
-                }}
+                aria-haspopup="listbox"
+                aria-expanded={teamOpen}
+                onClick={() => setTeamOpen((open) => !open)}
               >
                 <span>{teamLabel}</span>
-                {hasMultipleCompanies && <ChevronDown size={15} />}
+                <ChevronDown size={15} />
               </button>
-              {hasMultipleCompanies && teamOpen && (
+              {teamOpen && (
                 <div className="header-popover team-popover" role="listbox">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={!selectedCompany}
+                    className={!selectedCompany ? "active" : ""}
+                    onClick={() => {
+                      setSelectedCompanyId("");
+                      setTeamOpen(false);
+                      persistPreferences({ active_company_uuid: null });
+                    }}
+                  >
+                    <span>
+                      <strong>Личный кабинет</strong>
+                      <small>{personalSubscription?.plan.name ?? "Личный тариф не активирован"}</small>
+                    </span>
+                  </button>
                   {companies.map((company) => {
                     const companySubscription = companySubscriptions[company.id];
                     return (
@@ -593,10 +616,7 @@ function totalMinutes(calls: CallResponse[]) {
 }
 
 function formatMinutes(minutes: number) {
-  if (minutes < 60) return `${minutes} мин`;
-  const hours = minutes / 60;
-  const rounded = Number.isInteger(hours) ? hours.toString() : hours.toFixed(1).replace(".", ",");
-  return `${rounded} ч`;
+  return `${minutes} мин`;
 }
 
 function formatShortDate(value: string) {

@@ -2,7 +2,7 @@ import {
   ChevronRight,
   CloudUpload,
   Headphones,
-  Play,
+  PhoneCall,
   Trash2,
   WandSparkles
 } from "lucide-react";
@@ -116,7 +116,7 @@ export function CallDetailPanel({
       {deleteError && <div className="form-error">{deleteError}</div>}
       <div className="selected-call-card">
         <div className="play-large">
-          <Play size={22} fill="currentColor" />
+          <PhoneCall size={22} />
         </div>
         <div className="selected-call-main">
           <StatusChip status={call.status} />
