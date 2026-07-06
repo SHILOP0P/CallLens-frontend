@@ -1,5 +1,8 @@
 import type {
-AnalysisResponse
+  AnalysisResponse,
+  AnalysisV2CriteriaResult,
+  AnalysisV2Question,
+  AnalysisV2Result
 } from "../../types";
 
 export type AnalysisQuestion = {
@@ -51,10 +54,59 @@ export const coverageStatusLabels: Record<string, string> = {
   unclear: "Неясно"
 };
 
+export const criteriaStatusLabels: Record<string, string> = {
+  met: "Выполнено",
+  partially_met: "Частично",
+  missed: "Пропущено",
+  not_applicable: "Не применимо",
+  unclear: "Неясно"
+};
+
+export const businessOutcomeLabels: Record<string, string> = {
+  success: "Успех",
+  follow_up_needed: "Нужен следующий контакт",
+  no_decision: "Без решения",
+  lost: "Потеряно",
+  support_resolved: "Поддержка решена",
+  not_call: "Не звонок",
+  unclear: "Неясно"
+};
+
+export const lostReasonLabels: Record<string, string> = {
+  price: "Цена",
+  timing: "Сроки",
+  no_need: "Нет потребности",
+  competitor: "Конкурент",
+  no_next_step: "Нет следующего шага",
+  unclear_value: "Ценность не раскрыта",
+  bad_fit: "Не подходит",
+  not_applicable: "Не применимо",
+  unclear: "Неясно"
+};
+
 export const confidenceLabels: Record<string, string> = {
   low: "Низкая",
   medium: "Средняя",
   high: "Высокая"
+};
+
+export const priorityLabels: Record<string, string> = {
+  low: "Низкий",
+  medium: "Средний",
+  high: "Высокий"
+};
+
+export const severityLabels: Record<string, string> = {
+  low: "Низкая",
+  medium: "Средняя",
+  high: "Высокая"
+};
+
+export const signalLevelLabels: Record<string, string> = {
+  high: "Высокий",
+  medium: "Средний",
+  low: "Низкий",
+  unclear: "Неясно"
 };
 
 export function isAnalysisDone(analysis?: AnalysisResponse) {
@@ -68,6 +120,122 @@ export function analysisRecord(analysis?: AnalysisResponse) {
   }
 
   return result;
+}
+
+export function analysisV2Result(analysis?: AnalysisResponse): AnalysisV2Result | null {
+  const record = analysisRecord(analysis);
+  const criteria = criteriaResultList(record.criteria_results);
+  const schemaVersion = numberValue(record.schema_version);
+  const scoreScale = numberValue(record.score_scale);
+  const looksLikeV2 = schemaVersion === 2 || (scoreScale === 100 && criteria.length > 0);
+
+  if (!looksLikeV2) return null;
+
+  const dialogueTone = recordField(record, "dialogue_tone");
+  const questionCoverage = recordField(record, "question_coverage");
+  const managerQuality = recordField(record, "manager_quality");
+  const scoreBreakdown = recordField(record, "score_breakdown");
+  const nextStepQuality = recordField(record, "next_step_quality");
+  const businessOutcome = recordField(record, "business_outcome");
+  const customerSignals = recordField(record, "customer_signals");
+
+  return {
+    schema_version: 2,
+    summary: stringValue(record.summary) ?? "",
+    topics: stringList(record.topics),
+    dialogue_tone: {
+      overall: stringValue(dialogueTone?.overall) ?? "",
+      manager: stringValue(dialogueTone?.manager) ?? "",
+      client: stringValue(dialogueTone?.client) ?? "",
+      evidence_quotes: stringList(dialogueTone?.evidence_quotes)
+    },
+    client_questions: v2QuestionList(record.client_questions),
+    question_coverage: {
+      status: stringValue(questionCoverage?.status) ?? "",
+      summary: stringValue(questionCoverage?.summary) ?? "",
+      unanswered_questions: stringList(questionCoverage?.unanswered_questions)
+    },
+    manager_quality: {
+      strengths: stringList(managerQuality?.strengths),
+      issues: stringList(managerQuality?.issues),
+      recommendations: stringList(managerQuality?.recommendations)
+    },
+    call_outcome: stringValue(record.call_outcome) ?? "",
+    score: numberValue(record.score) ?? 0,
+    score_scale: scoreScale ?? 100,
+    score_breakdown: {
+      points_awarded: numberValue(scoreBreakdown?.points_awarded) ?? 0,
+      points_possible: numberValue(scoreBreakdown?.points_possible) ?? 0,
+      applicable_criteria_count: numberValue(scoreBreakdown?.applicable_criteria_count) ?? 0,
+      total_criteria_count: numberValue(scoreBreakdown?.total_criteria_count) ?? criteria.length
+    },
+    criteria_results: criteria,
+    customer_objections: stringList(record.customer_objections),
+    risks: stringList(record.risks),
+    next_steps: stringList(record.next_steps),
+    next_step: stringValue(record.next_step) ?? "",
+    next_step_quality: {
+      has_next_step: booleanValue(nextStepQuality?.has_next_step),
+      specific: booleanValue(nextStepQuality?.specific),
+      has_deadline: booleanValue(nextStepQuality?.has_deadline),
+      has_responsible_person: booleanValue(nextStepQuality?.has_responsible_person)
+    },
+    business_outcome: {
+      status: stringValue(businessOutcome?.status) ?? "",
+      summary: stringValue(businessOutcome?.summary) ?? "",
+      lost_reason: stringValue(businessOutcome?.lost_reason) ?? ""
+    },
+    customer_signals: {
+      intent: stringValue(customerSignals?.intent) ?? "",
+      urgency: stringValue(customerSignals?.urgency) ?? "",
+      budget_discussed: booleanValue(customerSignals?.budget_discussed),
+      decision_maker_present: booleanValue(customerSignals?.decision_maker_present)
+    },
+    issue_codes: stringList(record.issue_codes),
+    evidence_quotes: stringList(record.evidence_quotes),
+    confidence: stringValue(record.confidence) ?? ""
+  };
+}
+
+export function analysisScore100(analysis?: AnalysisResponse): {
+  score: number | null;
+  scale: number;
+  label: string;
+  percent: number;
+} {
+  const v2 = analysisV2Result(analysis);
+  const v2Score = v2 ? finiteNumber(v2.score) : null;
+  const v2Scale = v2 ? finiteNumber(v2.score_scale) ?? 100 : 100;
+
+  if (v2 && v2Score !== null) {
+    const scale = v2Scale > 0 ? v2Scale : 100;
+    return {
+      score: v2Score,
+      scale,
+      label: `${formatScore(v2Score)} / ${scale}`,
+      percent: clampPercent((v2Score / scale) * 100)
+    };
+  }
+
+  const record = analysisRecord(analysis);
+  const rawScore = firstNumber(record, ["quality_score", "score", "overall_score", "manager_score"]);
+
+  if (rawScore === null) {
+    return {
+      score: null,
+      scale: 100,
+      label: "Нет данных",
+      percent: 0
+    };
+  }
+
+  const normalized = rawScore <= 5 ? rawScore * 20 : rawScore;
+  return {
+    score: normalized,
+    scale: 100,
+    label: `${formatScore(normalized)} / 100`,
+    percent: clampPercent(normalized)
+  };
 }
 
 export function analysisSummary(analysis?: AnalysisResponse) {
@@ -187,4 +355,81 @@ export function stringList(value: unknown) {
 export function enumLabel(value: string | undefined, labels: Record<string, string>) {
   if (!value) return undefined;
   return labels[value] ?? value;
+}
+
+export function formatScore(value: number) {
+  return Number.isInteger(value) ? value.toString() : value.toFixed(1).replace(".", ",");
+}
+
+function v2QuestionList(value: unknown): AnalysisV2Question[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!isPlainRecord(item)) return [];
+
+    const question = {
+      question: stringValue(item.question) ?? "",
+      manager_answer: stringValue(item.manager_answer) ?? "",
+      answer_status: stringValue(item.answer_status) ?? "",
+      evidence_quotes: stringList(item.evidence_quotes)
+    };
+
+    if (
+      !question.question &&
+      !question.manager_answer &&
+      !question.answer_status &&
+      question.evidence_quotes.length === 0
+    ) {
+      return [];
+    }
+
+    return [question];
+  });
+}
+
+function criteriaResultList(value: unknown): AnalysisV2CriteriaResult[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((item) => {
+    if (!isPlainRecord(item)) return [];
+
+    const result = {
+      code: stringValue(item.code) ?? "",
+      title: stringValue(item.title) ?? stringValue(item.code) ?? "Критерий",
+      status: stringValue(item.status) ?? "unclear",
+      points_awarded: numberValue(item.points_awarded) ?? 0,
+      points_max: numberValue(item.points_max) ?? 0,
+      evidence_quotes: stringList(item.evidence_quotes),
+      issue: stringValue(item.issue) ?? "",
+      recommendation: stringValue(item.recommendation) ?? ""
+    };
+
+    if (!result.code && !result.title && !result.status) return [];
+    return [result];
+  });
+}
+
+function firstNumber(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = finiteNumber(record[key]);
+    if (value !== null) return value;
+  }
+
+  return null;
+}
+
+function numberValue(value: unknown) {
+  return finiteNumber(value);
+}
+
+function finiteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function booleanValue(value: unknown) {
+  return typeof value === "boolean" ? value : false;
+}
+
+function clampPercent(value: number) {
+  return Math.max(0, Math.min(100, value));
 }

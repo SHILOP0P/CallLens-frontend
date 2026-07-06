@@ -167,6 +167,10 @@ export function AnalysisPage({
             </div>
             {loadingDetails || (loading && !selectedCall) ? (
               <AnalysisResultSkeleton />
+            ) : !isAnalysisDone(analysis) ? (
+              <div className="empty-state compact analysis-result-empty">
+                {selectedCall ? "Для этого звонка еще нет готового AI-анализа." : "Выберите звонок, чтобы увидеть результат анализа."}
+              </div>
             ) : (
               <div className="analysis-user-summary">
                 <div className={`analysis-full-text expandable-content ${showFullAnalysis ? "expanded" : "collapsed"}`}>

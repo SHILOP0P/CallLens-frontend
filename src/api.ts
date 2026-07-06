@@ -1,10 +1,15 @@
 import type {
+  AggregateAnalysisResponse,
+  AggregateAnalysisStatus,
+  AggregateReportResponse,
   AnalysisInstruction,
   AnalysisResponse,
   AuthResponse,
   AnalyticsOverviewResponse,
   AvatarResponse,
   CallFilterOptionsResponse,
+  CallFoldersListResponse,
+  CallFolderResponse,
   CallResponse,
   CallStatus,
   CallsListResponse,
@@ -12,14 +17,20 @@ import type {
   CompanyMemberListItemResponse,
   CompanyMembersResponse,
   DepartmentMemberResponse,
+  CreateCallFolderRequest,
+  CreateDeepAnalysisRequest,
+  CreateAggregateReportRequest,
   CreateGlobalReportRequest,
   CreateReportRequest,
+  DeepAnalysisScope,
   DepartmentResponse,
   GlobalReportsResponse,
   Invitation,
   InvitationDepartmentRole,
   InvitationStatus,
   InstructionScope,
+  ListAggregateAnalysesResponse,
+  ListAggregateReportsResponse,
   LoginRequest,
   NotificationResponse,
   NotificationsResponse,
@@ -37,6 +48,7 @@ import type {
   Subscription,
   SubscriptionUsageResponse,
   TranscriptionResponse,
+  UpdateCallFolderRequest,
   UpdatePasswordRequest,
   UpdatePasswordResponse,
   UpdatePreferencesRequest,
@@ -129,7 +141,31 @@ const apiErrorMessages: Record<string, string> = {
   failed_to_get_processing_monitoring: "Не удалось загрузить мониторинг",
   not_implemented: "Эта возможность пока не реализована на backend",
   audio_file_not_found: "Аудиофайл недоступен",
-  instruction_file_not_found: "Файл инструкции недоступен"
+  instruction_file_not_found: "Файл инструкции недоступен",
+  invalid_call_folder_input: "Некорректные данные папки звонков",
+  call_folder_not_found: "Папка звонков не найдена",
+  call_folder_scope_mismatch: "Звонок не подходит для выбранной папки по области доступа.",
+  failed_to_create_call_folder: "Не удалось создать папку звонков",
+  failed_to_list_call_folders: "Не удалось загрузить папки звонков",
+  failed_to_update_call_folder: "Не удалось обновить папку звонков",
+  failed_to_delete_call_folder: "Не удалось удалить папку звонков",
+  failed_to_assign_call_folder: "Не удалось добавить звонок в папку",
+  failed_to_remove_call_folder: "Не удалось убрать звонок из папки",
+  invalid_deep_analysis_input: "Некорректные параметры глубокого анализа",
+  aggregate_analysis_not_found: "Глубокий анализ не найден",
+  no_analyzed_calls_for_deep_analysis: "За выбранный период нет звонков с готовым анализом.",
+  deep_analysis_limit_exceeded: "Лимит глубокого анализа на эту неделю исчерпан.",
+  failed_to_create_deep_analysis: "Не удалось создать глубокий анализ",
+  failed_to_list_deep_analyses: "Не удалось загрузить глубокие анализы",
+  failed_to_get_deep_analysis: "Не удалось получить глубокий анализ",
+  aggregate_report_not_found: "Отчет глубокого анализа не найден",
+  invalid_aggregate_report_input: "Некорректные параметры отчета глубокого анализа",
+  invalid_aggregate_analysis_status: "Отчет можно создать только после готового глубокого анализа.",
+  aggregate_report_file_not_found: "Файл отчета глубокого анализа недоступен или срок хранения истек.",
+  failed_to_create_aggregate_report: "Не удалось создать отчет глубокого анализа",
+  failed_to_list_aggregate_reports: "Не удалось загрузить отчеты глубокого анализа",
+  failed_to_download_aggregate_report: "Не удалось скачать отчет глубокого анализа",
+  failed_to_delete_aggregate_report: "Не удалось удалить отчет глубокого анализа"
 };
 
 type ApiPayload = Record<string, unknown>;
@@ -380,6 +416,7 @@ function queryString(input: Record<string, unknown> = {}) {
 
 function apiPathFromUrl(pathOrUrl: string) {
   if (pathOrUrl.startsWith("/api/v1/")) return pathOrUrl.slice("/api/v1".length);
+  if (!pathOrUrl.startsWith("/")) return `/${pathOrUrl}`;
   return pathOrUrl;
 }
 
@@ -504,6 +541,7 @@ export const api = {
     company_uuid?: string;
     department_uuid?: string;
     uploaded_by_user_uuid?: string;
+    folder_uuid?: string;
     from?: string;
     to?: string;
     limit?: number;
@@ -542,6 +580,57 @@ export const api = {
 
   deleteCall(callId: string) {
     return request<void>(`/calls/${encodeURIComponent(callId)}`, { method: "DELETE" });
+  },
+
+  listCallFolders(input?: {
+    scope?: VisibilityScope;
+    company_uuid?: string;
+    department_uuid?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    return request<CallFoldersListResponse>(`/call-folders${queryString(input)}`);
+  },
+
+  createCallFolder(input: CreateCallFolderRequest) {
+    return request<CallFolderResponse>("/call-folders", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
+  getCallFolder(folderId: string) {
+    return request<CallFolderResponse>(`/call-folders/${encodeURIComponent(folderId)}`);
+  },
+
+  updateCallFolder(folderId: string, input: UpdateCallFolderRequest) {
+    return request<CallFolderResponse>(`/call-folders/${encodeURIComponent(folderId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  deleteCallFolder(folderId: string) {
+    return request<void>(`/call-folders/${encodeURIComponent(folderId)}`, { method: "DELETE" });
+  },
+
+  listCallFolderCalls(folderId: string, input?: { limit?: number; offset?: number }) {
+    return request<CallsListResponse>(`/call-folders/${encodeURIComponent(folderId)}/calls${queryString(input)}`);
+  },
+
+  assignCallToFolder(folderId: string, callId: string) {
+    return request<void>(`/call-folders/${encodeURIComponent(folderId)}/calls`, {
+      method: "POST",
+      body: JSON.stringify({ call_uuid: callId })
+    });
+  },
+
+  removeCallFromFolder(folderId: string, callId: string) {
+    return request<void>(
+      `/call-folders/${encodeURIComponent(folderId)}/calls/${encodeURIComponent(callId)}`,
+      { method: "DELETE" }
+    );
   },
 
   listCompanies() {
@@ -797,8 +886,75 @@ export const api = {
     scope?: VisibilityScope;
     company_uuid?: string;
     department_uuid?: string;
+    folder_uuid?: string;
   }) {
     return request<AnalyticsOverviewResponse>(`/analytics/overview${queryString(filters)}`);
+  },
+
+  createDeepAnalysis(input: CreateDeepAnalysisRequest) {
+    return request<AggregateAnalysisResponse>("/analytics/deep-analyses", {
+      method: "POST",
+      body: JSON.stringify(input)
+    });
+  },
+
+  listDeepAnalyses(input?: {
+    scope?: DeepAnalysisScope;
+    company_uuid?: string;
+    department_uuid?: string;
+    folder_uuid?: string;
+    from?: string;
+    to?: string;
+    status?: AggregateAnalysisStatus;
+    limit?: number;
+    offset?: number;
+  }) {
+    return request<ListAggregateAnalysesResponse>(`/analytics/deep-analyses${queryString(input)}`);
+  },
+
+  getDeepAnalysis(id: string) {
+    return request<AggregateAnalysisResponse>(`/analytics/deep-analyses/${encodeURIComponent(id)}`);
+  },
+
+  createAggregateReport(analysisId: string, format: ReportFormat) {
+    const input: CreateAggregateReportRequest = { format };
+    return request<AggregateReportResponse>(
+      `/analytics/deep-analyses/${encodeURIComponent(analysisId)}/reports`,
+      {
+        method: "POST",
+        body: JSON.stringify(input)
+      }
+    );
+  },
+
+  listAggregateReports(analysisId: string) {
+    return request<ListAggregateReportsResponse>(
+      `/analytics/deep-analyses/${encodeURIComponent(analysisId)}/reports`
+    );
+  },
+
+  downloadAggregateReport(report: AggregateReportResponse) {
+    if (report.status !== "ready") {
+      throw new ApiError(409, "Отчет глубокого анализа еще формируется", "report_not_ready");
+    }
+
+    if (report.download_url) {
+      const downloadUrl = report.download_url;
+      if (/^https?:\/\//i.test(downloadUrl) || downloadUrl.startsWith("/")) {
+        return requestAssetBlob(absoluteApiAssetUrl(downloadUrl));
+      }
+
+      return requestBlob(apiPathFromUrl(downloadUrl));
+    }
+
+    return requestBlob(`/analytics/deep-analysis-reports/${encodeURIComponent(report.id)}/download`);
+  },
+
+  deleteAggregateReport(reportId: string) {
+    return request<void>(
+      `/analytics/deep-analysis-reports/${encodeURIComponent(reportId)}`,
+      { method: "DELETE" }
+    );
   },
 
   getProcessingMonitoring(filters?: {

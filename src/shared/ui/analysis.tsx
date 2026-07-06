@@ -2,7 +2,21 @@ import type {
   AnalysisResponse
 } from "../../types";
 
-import { analysisDetails, AnalysisQuestion, answerStatusLabels, confidenceLabels, coverageStatusLabels, enumLabel } from "../lib/analysis";
+import {
+  analysisDetails,
+  AnalysisQuestion,
+  analysisScore100,
+  analysisV2Result,
+  answerStatusLabels,
+  businessOutcomeLabels,
+  confidenceLabels,
+  coverageStatusLabels,
+  criteriaStatusLabels,
+  enumLabel,
+  formatScore,
+  lostReasonLabels,
+  signalLevelLabels
+} from "../lib/analysis";
 import { TextBlockSkeleton } from "./loading";
 
 export function AnalysisPreview({
@@ -32,6 +46,11 @@ export function AnalysisPreview({
 export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisResponse; }) {
   if (!analysis) {
     return <p className="muted">Запустите анализ после готовой расшифровки.</p>;
+  }
+
+  const v2 = analysisV2Result(analysis);
+  if (v2) {
+    return <AnalysisV2View analysis={analysis} />;
   }
 
   const details = analysisDetails(analysis);
@@ -120,6 +139,134 @@ export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisRespon
   );
 }
 
+function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
+  const result = analysisV2Result(analysis);
+  const score = analysisScore100(analysis);
+
+  if (!result) return null;
+
+  return (
+    <div className="analysis-structured analysis-v2">
+      <AnalysisSection title="Резюме">
+        <div className="analysis-score-summary">
+          <div className="analysis-score-meter" style={{ "--analysis-score": score.percent } as React.CSSProperties}>
+            <strong>{score.score === null ? "—" : formatScore(score.score)}</strong>
+            <span>/ {score.scale}</span>
+          </div>
+          <div>
+            <p>{result.summary || "Резюме не указано."}</p>
+            <small>
+              Баллы: {formatScore(result.score_breakdown.points_awarded)} /{" "}
+              {formatScore(result.score_breakdown.points_possible)} · применимо{" "}
+              {result.score_breakdown.applicable_criteria_count} из{" "}
+              {result.score_breakdown.total_criteria_count} критериев
+            </small>
+          </div>
+        </div>
+      </AnalysisSection>
+
+      <AnalysisSection title="Критерии качества">
+        {result.criteria_results.length === 0 ? (
+          <p className="analysis-empty">Критерии не указаны.</p>
+        ) : (
+          <div className="analysis-criteria-list">
+            {result.criteria_results.map((criterion, index) => (
+              <div className="analysis-criterion" key={`${criterion.code}-${index}`}>
+                <div className="analysis-question-heading">
+                  <strong>{criterion.title || criterion.code || "Критерий"}</strong>
+                  <span className={`analysis-status ${criterionStatusTone(criterion.status)}`}>
+                    {enumLabel(criterion.status, criteriaStatusLabels)}
+                  </span>
+                </div>
+                <small>
+                  {formatScore(criterion.points_awarded)} / {formatScore(criterion.points_max)} баллов
+                </small>
+                {criterion.issue && <p><b>Проблема:</b> {criterion.issue}</p>}
+                {criterion.recommendation && <p><b>Рекомендация:</b> {criterion.recommendation}</p>}
+                <EvidenceQuotes quotes={criterion.evidence_quotes} />
+              </div>
+            ))}
+          </div>
+        )}
+      </AnalysisSection>
+
+      <AnalysisSection title="Итог и сигналы клиента">
+        <div className="analysis-kv-grid">
+          <AnalysisKeyValue
+            label="Итог"
+            value={enumLabel(result.business_outcome.status, businessOutcomeLabels)}
+          />
+          <AnalysisKeyValue label="Описание" value={result.business_outcome.summary} />
+          {result.business_outcome.lost_reason && result.business_outcome.lost_reason !== "not_applicable" && (
+            <AnalysisKeyValue
+              label="Причина потери"
+              value={enumLabel(result.business_outcome.lost_reason, lostReasonLabels)}
+            />
+          )}
+          <AnalysisKeyValue
+            label="Интерес"
+            value={enumLabel(result.customer_signals.intent, signalLevelLabels)}
+          />
+          <AnalysisKeyValue
+            label="Срочность"
+            value={enumLabel(result.customer_signals.urgency, signalLevelLabels)}
+          />
+          <AnalysisKeyValue
+            label="Бюджет обсуждался"
+            value={booleanLabel(result.customer_signals.budget_discussed)}
+          />
+          <AnalysisKeyValue
+            label="ЛПР присутствовал"
+            value={booleanLabel(result.customer_signals.decision_maker_present)}
+          />
+          <AnalysisKeyValue label="Уверенность" value={enumLabel(result.confidence, confidenceLabels)} />
+        </div>
+      </AnalysisSection>
+
+      <AnalysisSection title="Следующий шаг">
+        <div className="analysis-kv-grid">
+          <AnalysisKeyValue label="Следующий шаг" value={result.next_step || result.next_steps[0]} />
+          <AnalysisKeyValue label="Есть шаг" value={booleanLabel(result.next_step_quality.has_next_step)} />
+          <AnalysisKeyValue label="Конкретный" value={booleanLabel(result.next_step_quality.specific)} />
+          <AnalysisKeyValue label="Есть срок" value={booleanLabel(result.next_step_quality.has_deadline)} />
+          <AnalysisKeyValue
+            label="Есть ответственный"
+            value={booleanLabel(result.next_step_quality.has_responsible_person)}
+          />
+        </div>
+        <AnalysisStringList items={result.next_steps} emptyLabel="Следующие шаги не указаны." />
+      </AnalysisSection>
+
+      <AnalysisSection title="Темы, риски и возражения">
+        <div className="analysis-columns">
+          <div>
+            <strong>Темы</strong>
+            <AnalysisStringList items={result.topics} emptyLabel="Темы не указаны" />
+          </div>
+          <div>
+            <strong>Риски</strong>
+            <AnalysisStringList items={result.risks} emptyLabel="Риски не указаны" />
+          </div>
+          <div>
+            <strong>Возражения</strong>
+            <AnalysisStringList items={result.customer_objections} emptyLabel="Возражения не указаны" />
+          </div>
+        </div>
+      </AnalysisSection>
+
+      <AnalysisSection title="Проблемные коды">
+        <div className="topic-list">
+          {result.issue_codes.length > 0 ? (
+            result.issue_codes.map((code) => <span key={code}>{code}</span>)
+          ) : (
+            <span>Коды не указаны</span>
+          )}
+        </div>
+      </AnalysisSection>
+    </div>
+  );
+}
+
 export function AnalysisSection({ title, children }: { title: string; children: React.ReactNode; }) {
   return (
     <section className="analysis-section">
@@ -186,4 +333,15 @@ export function AnalysisQuestionList({ questions }: { questions: AnalysisQuestio
       ))}
     </div>
   );
+}
+
+function booleanLabel(value: boolean) {
+  return value ? "Да" : "Нет";
+}
+
+function criterionStatusTone(status: string) {
+  if (status === "met") return "ok";
+  if (status === "missed") return "bad";
+  if (status === "partially_met" || status === "unclear") return "warn";
+  return "neutral";
 }

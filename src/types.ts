@@ -34,6 +34,29 @@ export type AnalysisLevel = "basic" | "plus" | "pro" | "priority";
 export type SubscriptionStatus = "active" | "canceled" | "expired";
 export type ReportFormat = "pdf" | "docx" | "md" | "xlsx";
 export type ReportStatus = "pending" | "ready" | "failed";
+export type CriteriaStatus = "met" | "partially_met" | "missed" | "not_applicable" | "unclear";
+export type BusinessOutcomeStatus =
+  | "success"
+  | "follow_up_needed"
+  | "no_decision"
+  | "lost"
+  | "support_resolved"
+  | "not_call"
+  | "unclear";
+export type LostReason =
+  | "price"
+  | "timing"
+  | "no_need"
+  | "competitor"
+  | "no_next_step"
+  | "unclear_value"
+  | "bad_fit"
+  | "not_applicable"
+  | "unclear";
+export type SignalLevel = "high" | "medium" | "low" | "unclear";
+export type AnalysisConfidence = "low" | "medium" | "high";
+export type DeepAnalysisScope = VisibilityScope | "folder";
+export type AggregateAnalysisStatus = "pending" | "processing" | "done" | "failed";
 
 export interface UserResponse {
   id: string;
@@ -199,6 +222,93 @@ export interface AnalysisResponse {
   updated_at: string;
 }
 
+export interface AnalysisV2Question {
+  question: string;
+  manager_answer: string;
+  answer_status: "answered" | "partially_answered" | "not_answered" | "unclear" | string;
+  evidence_quotes: string[];
+}
+
+export interface AnalysisV2CriteriaResult {
+  code:
+    | "greeting"
+    | "needs_discovery"
+    | "question_quality"
+    | "answer_quality"
+    | "solution_relevance"
+    | "objection_handling"
+    | "pricing_clarity"
+    | "tone_professionalism"
+    | "next_step_quality"
+    | "outcome_clarity"
+    | "custom_instruction_match"
+    | string;
+  title: string;
+  status: CriteriaStatus | string;
+  points_awarded: number;
+  points_max: number;
+  evidence_quotes: string[];
+  issue: string;
+  recommendation: string;
+}
+
+export interface AnalysisV2Result {
+  schema_version: 2;
+  summary: string;
+  topics: string[];
+  dialogue_tone: {
+    overall: string;
+    manager: string;
+    client: string;
+    evidence_quotes: string[];
+  };
+  client_questions: AnalysisV2Question[];
+  question_coverage: {
+    status: "answered" | "partially_answered" | "not_answered" | "no_questions" | "unclear" | string;
+    summary: string;
+    unanswered_questions: string[];
+  };
+  manager_quality: {
+    strengths: string[];
+    issues: string[];
+    recommendations: string[];
+  };
+  call_outcome: string;
+  score: number;
+  score_scale: number;
+  score_breakdown: {
+    points_awarded: number;
+    points_possible: number;
+    applicable_criteria_count: number;
+    total_criteria_count: number;
+  };
+  criteria_results: AnalysisV2CriteriaResult[];
+  customer_objections: string[];
+  risks: string[];
+  next_steps: string[];
+  next_step: string;
+  next_step_quality: {
+    has_next_step: boolean;
+    specific: boolean;
+    has_deadline: boolean;
+    has_responsible_person: boolean;
+  };
+  business_outcome: {
+    status: BusinessOutcomeStatus | string;
+    summary: string;
+    lost_reason: LostReason | string;
+  };
+  customer_signals: {
+    intent: SignalLevel | string;
+    urgency: SignalLevel | string;
+    budget_discussed: boolean;
+    decision_maker_present: boolean;
+  };
+  issue_codes: string[];
+  evidence_quotes: string[];
+  confidence: AnalysisConfidence | string;
+}
+
 export interface CreateReportRequest {
   format: ReportFormat;
 }
@@ -341,6 +451,42 @@ export interface AnalyticsOverviewResponse {
   average_duration_seconds: number | null;
   average_quality_score: number | null;
   quality_score_scale: number;
+  average_score?: number | null;
+  score_scale?: number;
+  score_distribution?: {
+    critical: number;
+    weak: number;
+    normal: number;
+    good: number;
+    excellent: number;
+  };
+  criteria_summary?: Array<{
+    code: string;
+    title: string;
+    average_score: number | null;
+    met: number;
+    partially_met: number;
+    missed: number;
+    unclear: number;
+    not_applicable: number;
+    calls_count: number;
+  }>;
+  top_weak_criteria?: Array<{
+    code: string;
+    title: string;
+    average_score: number | null;
+    missed_count: number;
+    partially_met_count: number;
+  }>;
+  top_issue_codes?: Array<{ code: string; count: number }>;
+  business_outcomes?: Array<{ status: string; count: number }>;
+  next_step_summary?: {
+    with_next_step: number;
+    specific: number;
+    with_deadline: number;
+    with_responsible_person: number;
+    missing: number;
+  };
   top_topics: Array<{ title: string; count: number }>;
   risks_count: number | null;
   recommendations_count: number | null;
@@ -348,9 +494,138 @@ export interface AnalyticsOverviewResponse {
     calls_by_day: Array<{ date: string; count: number }>;
     analyzed_by_day: Array<{ date: string; count: number }>;
     quality_by_day: Array<{ date: string; average_quality_score: number }>;
+    score_by_day?: Array<{ date: string; average_score: number }>;
     duration_by_day: Array<{ date: string; average_duration_seconds: number }>;
     risks_by_day: Array<{ date: string; count: number }>;
   };
+}
+
+export interface CallFolderResponse {
+  id: string;
+  scope: VisibilityScope | string;
+  user_uuid: string | null;
+  company_uuid: string | null;
+  department_uuid: string | null;
+  name: string;
+  description: string | null;
+  color: string | null;
+  calls_count: number;
+  created_by_user_uuid: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CallFoldersListResponse {
+  items: CallFolderResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CreateCallFolderRequest {
+  scope: VisibilityScope;
+  company_uuid?: string | null;
+  department_uuid?: string | null;
+  name: string;
+  description?: string | null;
+  color?: string | null;
+}
+
+export interface UpdateCallFolderRequest {
+  name?: string;
+  description?: string | null;
+  color?: string | null;
+}
+
+export interface AssignCallToFolderRequest {
+  call_uuid: string;
+}
+
+export interface CreateDeepAnalysisRequest {
+  scope: DeepAnalysisScope;
+  company_uuid?: string | null;
+  department_uuid?: string | null;
+  folder_uuid?: string | null;
+  period_from: string;
+  period_to: string;
+  force: boolean;
+}
+
+export interface AggregateAnalysisResult {
+  summary: string;
+  key_findings: Array<{
+    title: string;
+    description: string;
+    severity: "low" | "medium" | "high" | string;
+    evidence_call_uuids: string[];
+  }>;
+  recurring_issues: Array<{
+    code: string;
+    title: string;
+    count: number;
+    recommendation: string;
+  }>;
+  strengths: string[];
+  risks: string[];
+  priority_actions: Array<{
+    title: string;
+    priority: "low" | "medium" | "high" | string;
+    expected_effect: string;
+  }>;
+  manager_recommendations: string[];
+  confidence: AnalysisConfidence | string;
+}
+
+export interface AggregateAnalysisResponse {
+  id: string;
+  scope: DeepAnalysisScope | string;
+  user_uuid?: string | null;
+  company_uuid: string | null;
+  department_uuid: string | null;
+  folder_uuid: string | null;
+  period_from: string;
+  period_to: string;
+  status: AggregateAnalysisStatus | string;
+  provider: string;
+  model: string | null;
+  source_calls_count: number;
+  result_json: AggregateAnalysisResult | Record<string, unknown> | unknown[] | null;
+  result_text: string | null;
+  error_message: string | null;
+  created_by_user_uuid: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ListAggregateAnalysesResponse {
+  items: AggregateAnalysisResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface CreateAggregateReportRequest {
+  format: ReportFormat;
+}
+
+export interface AggregateReportResponse {
+  id: string;
+  aggregate_analysis_uuid: string;
+  requested_by_user_uuid: string;
+  format: ReportFormat | string;
+  status: ReportStatus | string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  error_message: string | null;
+  download_url: string | null;
+  created_at: string;
+  updated_at: string;
+  expires_at: string;
+}
+
+export interface ListAggregateReportsResponse {
+  reports: AggregateReportResponse[];
 }
 
 export interface ProcessingMonitoringResponse {

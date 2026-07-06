@@ -17,6 +17,7 @@
   .calls-layout,
   .upload-layout,
   .analysis-layout,
+  .deep-analysis-grid,
   .instructions-layout,
   .invitations-layout,
   .overview-layout,
@@ -48,6 +49,7 @@
   .benefit-grid,
   .landing-showcase-grid,
   .metrics-row,
+  .analytics-insight-grid,
   .report-format-grid,
   .tariff-grid,
   .workflow-grid {
@@ -106,6 +108,25 @@
 }
 
 @media (max-width: 760px) {
+  html,
+  body {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  #root,
+  .app-shell,
+  .app-header,
+  .workspace-frame {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .app-shell {
+    overflow-x: clip;
+  }
+
   .landing {
     --landing-header-offset: 10px;
     --landing-header-space: 178px;
@@ -201,6 +222,8 @@
 
   .detail-grid,
   .analysis-content-grid,
+  .analytics-insight-grid,
+  .deep-analysis-grid,
   .preview-grid,
   .analysis-kv-grid,
   .analysis-columns,
@@ -239,6 +262,8 @@
   }
 
   .selected-call-card,
+  .analysis-score-summary,
+  .analytics-list-row.criteria,
   .invitation-card,
   .preview-selected-call,
   .preview-next-step,
@@ -257,6 +282,35 @@
 
   .report-actions {
     justify-content: flex-start;
+  }
+
+  .call-folder-heading,
+  .call-folder-form-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .report-tabs {
+    width: 100%;
+  }
+
+  .report-tabs button {
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.25;
+  }
+
+  .call-folder-row.with-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .call-folder-actions {
+    justify-content: flex-start;
+    padding: 0 10px 9px;
+  }
+
+  .deep-analysis-row {
+    grid-template-columns: 1fr;
   }
 
   .preview-timeline {

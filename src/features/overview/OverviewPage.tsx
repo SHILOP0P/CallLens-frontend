@@ -1,333 +1,254 @@
 import {
+  Activity,
   BarChart3,
+  CheckCircle2,
   Clock3,
-  CloudUpload,
-  Headphones,
+  FileText,
   Phone,
-  Search,
-  Sparkles,
   Star,
   TriangleAlert
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import type {
-  AnalysisResponse,
-  AnalyticsOverviewResponse,
-  AppPage,
-  CallResponse,
-  CallStatus,
-  CompanyResponse,
-  DepartmentResponse,
-  TranscriptionResponse,
-  VisibilityScope
+  AnalyticsOverviewResponse
 } from "../../types";
 
-import { analysisDetails, isAnalysisDone } from "../../shared/lib/analysis";
-import { contextLabel, formatDate, formatDuration } from "../../shared/lib/formatters";
-import { AnalysisPreview } from "../../shared/ui/analysis";
-import { CallAudioPlayer } from "../../shared/ui/audio";
-import { StatusChip, StatusTimeline, TranscriptPreview } from "../../shared/ui/call";
-import { CallListSkeleton } from "../../shared/ui/loading";
-import { SelectControl } from "../../shared/ui/primitives";
+import {
+  businessOutcomeLabels,
+  enumLabel,
+  formatScore
+} from "../../shared/lib/analysis";
+import { formatDuration } from "../../shared/lib/formatters";
 
-export function OverviewPage({
-  calls,
-  companies,
-  departments,
-  selectedCall,
-  selectedCallId,
-  selectedCallTimeline,
-  transcription,
-  analysis,
-  analyses,
-  loading,
-  loadingDetails,
-  onSelectCall,
-  onNavigate
-}: {
-  calls: CallResponse[];
-  companies: CompanyResponse[];
-  departments: DepartmentResponse[];
-  selectedCall?: CallResponse;
-  selectedCallId: string;
-  selectedCallTimeline?: CallStatus[];
-  transcription?: TranscriptionResponse;
-  analysis?: AnalysisResponse;
-  analyses: Record<string, AnalysisResponse>;
-  loading: boolean;
-  loadingDetails: boolean;
-  onSelectCall: (callId: string) => void;
-  onNavigate: (page: AppPage) => void;
-}) {
-  const [activeDetailTab, setActiveDetailTab] = useState<"transcript" | "analysis" | "details">("transcript");
-  const [statusFilter, setStatusFilter] = useState<CallStatus | "all">("all");
-  const [scopeFilter, setScopeFilter] = useState<VisibilityScope | "all">("all");
-  const [searchQuery, setSearchQuery] = useState("");
+export function OverviewPage() {
   const [analyticsOverview, setAnalyticsOverview] = useState<AnalyticsOverviewResponse | null>(null);
-  const [latestReportNote, setLatestReportNote] = useState("нет готового экспорта");
   const avgDuration = analyticsOverview?.average_duration_seconds === null || analyticsOverview === null
     ? "Нет данных"
     : formatDuration(Math.round(analyticsOverview.average_duration_seconds));
-  const score = qualityScore(analysis);
-  const details = analysisDetails(analysis);
-  const analyticsScore = analyticsOverview?.average_quality_score ?? null;
-  const qualityScale = analyticsOverview?.quality_score_scale ?? 5;
+  const analyticsScore = overviewScore(analyticsOverview);
   const riskValue = analyticsOverview?.risks_count ?? null;
-  const topics = details.topics.slice(0, 4);
+  const recommendationValue = analyticsOverview?.recommendations_count ?? null;
   const chartSeries = buildOverviewChartSeries(analyticsOverview);
-  const qualityDonutPercent = analyticsScore === null ? 0 : (analyticsScore / qualityScale) * 100;
-  const qualityDonutLabel = analyticsScore === null
+  const qualityDonutPercent = analyticsScore.score === null ? 0 : (analyticsScore.score / analyticsScore.scale) * 100;
+  const qualityDonutLabel = analyticsScore.score === null
     ? "нет данных"
-    : `${analyticsScore.toFixed(1).replace(".", ",")} / ${qualityScale}`;
-  const filteredCalls = calls.filter((call) => {
-    const query = searchQuery.trim().toLowerCase();
-    const matchesStatus = statusFilter === "all" || call.status === statusFilter;
-    const matchesScope = scopeFilter === "all" || call.visibility_scope === scopeFilter;
-    const matchesSearch = !query || callSearchText(call).includes(query);
-
-    return matchesStatus && matchesScope && matchesSearch;
-  });
-
-  useEffect(() => {
-    setActiveDetailTab("transcript");
-  }, [selectedCall?.id]);
+    : `${formatScore(analyticsScore.score)} / ${analyticsScore.scale}`;
 
   useEffect(() => {
     let cancelled = false;
+    let intervalId = 0;
 
-    Promise.all([
-      api.getAnalyticsOverview().catch(() => null),
-      api.listGlobalReports({ limit: 1, sort: "created_at", order: "desc" }).catch(() => null)
-    ]).then(([overview, reports]) => {
-      if (cancelled) return;
-      setAnalyticsOverview(overview);
-      const latestReport = reports?.reports[0];
-      setLatestReportNote(latestReport ? `${publicReportName(latestReport.file_name)} · ${formatDate(latestReport.created_at)}` : "нет готового экспорта");
-    });
+    async function loadOverview() {
+      const overview = await api.getAnalyticsOverview().catch(() => null);
+      if (!cancelled) setAnalyticsOverview(overview);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") void loadOverview();
+    }
+
+    void loadOverview();
+    intervalId = window.setInterval(loadOverview, 15000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
 
     return () => {
       cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
     };
   }, []);
 
   return (
     <section className="dashboard-page app-page">
       <div className="dashboard-kpi-grid">
-        <MetricCard icon={<BarChart3 size={20} />} title="Всего звонков" value={analyticsOverview ? analyticsOverview.calls_total.toString() : "Нет данных"} points={chartSeries.totalCalls} />
-        <MetricCard icon={<Phone size={20} />} title="С анализом" value={analyticsOverview ? analyticsOverview.calls_analyzed.toString() : "Нет данных"} tone="success" points={chartSeries.analyzedCalls} />
+        <MetricCard icon={<BarChart3 size={20} />} title="Всего звонков" value={metricCount(analyticsOverview?.calls_total)} points={chartSeries.totalCalls} note="загружено за период" />
+        <MetricCard icon={<Phone size={20} />} title="Новые" value={metricCount(analyticsOverview?.calls_new)} note="ожидают обработки" />
+        <MetricCard icon={<Activity size={20} />} title="В обработке" value={metricCount(analyticsOverview?.calls_processing)} note={`${analyticsOverview?.calls_failed ?? 0} ошибок`} />
+        <MetricCard icon={<FileText size={20} />} title="Расшифрованы" value={metricCount(analyticsOverview?.calls_transcribed)} note="готовы к AI-анализу" />
+        <MetricCard icon={<CheckCircle2 size={20} />} title="С анализом" value={metricCount(analyticsOverview?.calls_analyzed)} tone="success" points={chartSeries.analyzedCalls} note="готовый AI-результат" />
         <MetricCard icon={<Clock3 size={20} />} title="Средняя длительность" value={avgDuration} points={chartSeries.duration} />
         <MetricCard icon={<TriangleAlert size={20} />} title="Риски" value={riskValue === null ? "Нет данных" : riskValue.toString()} tone="warning" points={chartSeries.risks} />
         <MetricCard
           icon={<Star size={20} />}
-          title="Оценка качества"
-          value={analyticsScore === null ? "Нет данных" : `${analyticsScore.toFixed(1).replace(".", ",")} / ${qualityScale}`}
+          title="Средняя оценка"
+          value={analyticsScore.score === null ? "Нет данных" : `${formatScore(analyticsScore.score)} / ${analyticsScore.scale}`}
           tone="success"
           points={chartSeries.quality}
           donutPercent={qualityDonutPercent}
           donutLabel={qualityDonutLabel}
         />
+        <MetricCard icon={<FileText size={20} />} title="Рекомендации" value={recommendationValue === null ? "Нет данных" : recommendationValue.toString()} note="по результатам AI" />
+        <MetricCard icon={<TriangleAlert size={20} />} title="Ошибки" value={metricCount(analyticsOverview?.calls_failed)} tone="warning" note="требуют внимания" />
       </div>
 
-      <div className="dashboard-workspace-grid">
-        <aside className="dashboard-call-list glass-panel">
-          <div className="panel-heading large">
-            <div>
-              <h2>Звонки</h2>
-              <p>{calls.length} всего · последний экспорт: {latestReportNote}</p>
-            </div>
-            <button className="primary-button small" type="button" onClick={() => onNavigate("upload")}>
-              <CloudUpload size={16} />
-              Загрузить
-            </button>
-          </div>
-          <div className="dashboard-filter-row">
-            <SelectControl
-              aria-label="Статус звонков"
-              value={statusFilter}
-              onChange={(event) => setStatusFilter(event.target.value as CallStatus | "all")}
-            >
-              <option value="all">Все статусы</option>
-              <option value="new">Новые</option>
-              <option value="processing">В обработке</option>
-              <option value="transcribed">Расшифрованы</option>
-              <option value="analyzed">Анализ готов</option>
-              <option value="failed">Ошибки</option>
-            </SelectControl>
-            <SelectControl
-              aria-label="Контекст звонков"
-              value={scopeFilter}
-              onChange={(event) => setScopeFilter(event.target.value as VisibilityScope | "all")}
-            >
-              <option value="all">Все звонки</option>
-              <option value="personal">Личные</option>
-              <option value="company">Компания</option>
-              <option value="department">Отдел</option>
-            </SelectControl>
-          </div>
-          <div className="dashboard-call-search">
-            <Search size={17} />
-            <input
-              placeholder="Поиск по названию"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
-          </div>
-          <div className="dashboard-call-stack">
-            {loading ? (
-              <CallListSkeleton count={5} compact />
-            ) : filteredCalls.length === 0 ? (
-              <div className="empty-panel compact">
-                <Headphones size={30} />
-                <p>{calls.length === 0 ? "Звонков пока нет." : "Звонков по фильтрам не найдено."}</p>
-              </div>
-            ) : (
-              filteredCalls.slice(0, 8).map((call) => (
-                <button
-                  className={`dashboard-call-row ${selectedCallId === call.id ? "selected" : ""}`}
-                  type="button"
-                  key={call.id}
-                  onClick={() => onSelectCall(call.id)}
-                >
-                  <span className="dashboard-call-icon">
-                    <Phone size={16} />
-                  </span>
-                  <span className="dashboard-call-main">
-                    <StatusChip status={call.status} />
-                    <strong>{call.title}</strong>
-                    <small>{formatDate(call.created_at)} · {formatDuration(call.duration_seconds)} · {contextLabel(call, companies, departments)}</small>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-        </aside>
-
-        <section className="dashboard-detail-panel glass-panel">
-          {selectedCall ? (
-            <>
-              <div className="dashboard-detail-head">
-                <div>
-                  <h2>{selectedCall.title}</h2>
-                  <p>
-                    {formatDate(selectedCall.created_at)} · {formatDuration(selectedCall.duration_seconds)} ·{" "}
-                    {contextLabel(selectedCall, companies, departments)}
-                  </p>
-                </div>
-                <StatusChip status={selectedCall.status} />
-              </div>
-              <div className="dashboard-tabs" aria-label="Разделы звонка">
-                <button
-                  className={activeDetailTab === "transcript" ? "active" : ""}
-                  type="button"
-                  onClick={() => setActiveDetailTab("transcript")}
-                >
-                  Расшифровка
-                </button>
-                <button
-                  className={activeDetailTab === "analysis" ? "active" : ""}
-                  type="button"
-                  onClick={() => setActiveDetailTab("analysis")}
-                >
-                  AI-анализ
-                </button>
-                <button
-                  className={activeDetailTab === "details" ? "active" : ""}
-                  type="button"
-                  onClick={() => setActiveDetailTab("details")}
-                >
-                  Детали
-                </button>
-              </div>
-              {activeDetailTab === "transcript" && (
-                <div className="dashboard-transcript-card">
-                  <TranscriptPreview transcription={transcription} expanded loading={loadingDetails} />
-                </div>
-              )}
-              {activeDetailTab === "analysis" && (
-                <div className="dashboard-transcript-card">
-                  <AnalysisPreview analysis={analysis} expanded loading={loadingDetails} />
-                </div>
-              )}
-              {activeDetailTab === "details" && (
-                <div className="dashboard-transcript-card dashboard-details-card">
-                  <DetailItem label="Файл" value={selectedCall.original_filename} />
-                  <DetailItem label="Тип файла" value={selectedCall.mime_type} />
-                  <DetailItem label="Размер" value={formatBytes(selectedCall.size_bytes)} />
-                  <DetailItem label="Длительность" value={formatDuration(selectedCall.duration_seconds)} />
-                  <DetailItem label="Контекст" value={contextLabel(selectedCall, companies, departments)} />
-                </div>
-              )}
-              <CallAudioPlayer call={selectedCall} />
-            </>
-          ) : (
-            <div className="empty-panel">
-              <Headphones size={38} />
-              <h2>Выберите звонок</h2>
-              <p>После загрузки здесь появится расшифровка и аудио-плеер.</p>
-            </div>
-          )}
-        </section>
-
-        <aside className="dashboard-ai-column">
-          <section className="dashboard-ai-card glass-panel">
-            <div className="card-title">
-              <h2>AI-анализ</h2>
-              <Sparkles size={21} />
-            </div>
-            <div className="ai-score-row">
-              <ProgressRing percent={score.percent} label={score.ringValue} />
-              <div>
-                <strong>{isAnalysisDone(analysis) ? "Качество разговора" : "Анализ ожидается"}</strong>
-                <p>{details.summary}</p>
-              </div>
-            </div>
-            <div className="ai-chip-list">
-              <span>Интерес к продукту</span>
-              <span>Вопросы по интеграции</span>
-              <span>Обучение</span>
-            </div>
-            <div className="ai-topic-list">
-              <strong>Ключевые темы</strong>
-              {topics.length === 0 ? (
-                <p>Темы появятся после готового анализа.</p>
-              ) : (
-                <ul>
-                  {topics.map((topic) => (
-                    <li key={topic}>{topic}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-
-          <section className="dashboard-status-card glass-panel">
-            <h2>Статус обработки</h2>
-            {selectedCall ? (
-              <StatusTimeline current={selectedCall.status} statuses={selectedCallTimeline} />
-            ) : (
-              <p className="muted">Выберите звонок, чтобы увидеть статус обработки.</p>
-            )}
-          </section>
-        </aside>
-      </div>
+      <AnalyticsOverviewInsights overview={analyticsOverview} />
     </section>
   );
 }
 
-function DetailItem({ label, value }: { label: string; value: string; }) {
+function AnalyticsOverviewInsights({ overview }: { overview: AnalyticsOverviewResponse | null; }) {
+  const distribution = overview?.score_distribution;
+  const distributionRows = distribution
+    ? [
+      ["critical", "Критично", distribution.critical],
+      ["weak", "Слабо", distribution.weak],
+      ["normal", "Норма", distribution.normal],
+      ["good", "Хорошо", distribution.good],
+      ["excellent", "Отлично", distribution.excellent]
+    ] as Array<[string, string, number]>
+    : [];
+  const weakCriteria = overview?.top_weak_criteria ?? [];
+  const criteriaSummary = overview?.criteria_summary ?? [];
+  const issueCodes = overview?.top_issue_codes ?? [];
+  const outcomes = overview?.business_outcomes ?? [];
+  const nextSteps = overview?.next_step_summary;
+  const topics = overview?.top_topics ?? [];
+
   return (
-    <div className="dashboard-detail-item">
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div className="analytics-insight-grid">
+      <InsightCard title="Распределение оценок" note="score 0..100">
+        {distributionRows.length === 0 ? (
+          <p className="analysis-empty">Нет данных по распределению.</p>
+        ) : (
+          <div className="score-distribution-list">
+            {distributionRows.map(([key, label, count]) => (
+              <div className="score-distribution-row" key={key}>
+                <span>{label}</span>
+                <strong>{count}</strong>
+                <i style={{ "--bar": overview?.calls_analyzed ? `${Math.min(100, (count / overview.calls_analyzed) * 100)}%` : "0%" } as React.CSSProperties} />
+              </div>
+            ))}
+          </div>
+        )}
+      </InsightCard>
+
+      <InsightCard title="Слабые критерии" note="по пропускам и частичным выполнением">
+        {weakCriteria.length === 0 ? (
+          <p className="analysis-empty">Слабые критерии не найдены.</p>
+        ) : (
+          <div className="analytics-list">
+            {weakCriteria.slice(0, 5).map((item) => (
+              <div className="analytics-list-row" key={item.code}>
+                <div>
+                  <strong>{item.title || item.code}</strong>
+                  <small>
+                    {item.missed_count} пропущено · {item.partially_met_count} частично
+                  </small>
+                </div>
+                <span>{formatNullableScore(item.average_score)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </InsightCard>
+
+      <InsightCard title="Критерии" note="not applicable учитывается отдельно">
+        {criteriaSummary.length === 0 ? (
+          <p className="analysis-empty">Сводка критериев пока пустая.</p>
+        ) : (
+          <div className="analytics-list">
+            {criteriaSummary.slice(0, 6).map((item) => (
+              <div className="analytics-list-row criteria" key={item.code}>
+                <div>
+                  <strong>{item.title || item.code}</strong>
+                  <small>
+                    {item.met} выполнено · {item.partially_met} частично · {item.missed} пропущено ·{" "}
+                    {item.not_applicable} не применимо
+                  </small>
+                </div>
+                <span>{formatNullableScore(item.average_score)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </InsightCard>
+
+      <InsightCard title="Коды проблем" note="частые issue_codes">
+        {issueCodes.length === 0 ? (
+          <p className="analysis-empty">Коды проблем не указаны.</p>
+        ) : (
+          <div className="topic-list analytics-topic-list">
+            {issueCodes.slice(0, 10).map((item) => (
+              <span key={item.code}>{item.code} · {item.count}</span>
+            ))}
+          </div>
+        )}
+      </InsightCard>
+
+      <InsightCard title="Темы" note="top_topics">
+        {topics.length === 0 ? (
+          <p className="analysis-empty">Темы пока не найдены.</p>
+        ) : (
+          <div className="topic-list analytics-topic-list">
+            {topics.slice(0, 10).map((item) => (
+              <span key={item.title}>{item.title} · {item.count}</span>
+            ))}
+          </div>
+        )}
+      </InsightCard>
+
+      <InsightCard title="Итоги звонков" note="business_outcome">
+        {outcomes.length === 0 ? (
+          <p className="analysis-empty">Итоги звонков не указаны.</p>
+        ) : (
+          <div className="analytics-list compact">
+            {outcomes.slice(0, 6).map((item) => (
+              <div className="analytics-list-row" key={item.status}>
+                <strong>{enumLabel(item.status, businessOutcomeLabels) ?? item.status}</strong>
+                <span>{item.count}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </InsightCard>
+
+      <InsightCard title="Следующий шаг" note="качество договоренности">
+        {!nextSteps ? (
+          <p className="analysis-empty">Сводка следующих шагов пустая.</p>
+        ) : (
+          <div className="analytics-list compact">
+            <MetricLine label="Есть шаг" value={nextSteps.with_next_step} />
+            <MetricLine label="Конкретный" value={nextSteps.specific} />
+            <MetricLine label="Со сроком" value={nextSteps.with_deadline} />
+            <MetricLine label="С ответственным" value={nextSteps.with_responsible_person} />
+            <MetricLine label="Отсутствует" value={nextSteps.missing} />
+          </div>
+        )}
+      </InsightCard>
     </div>
   );
 }
 
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} Б`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1).replace(".", ",")} КБ`;
-  return `${(value / (1024 * 1024)).toFixed(1).replace(".", ",")} МБ`;
+function InsightCard({
+  title,
+  note,
+  children
+}: {
+  title: string;
+  note: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="analytics-insight-card glass-panel">
+      <div>
+        <h3>{title}</h3>
+        <small>{note}</small>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function MetricLine({ label, value }: { label: string; value: number; }) {
+  return (
+    <div className="analytics-list-row">
+      <strong>{label}</strong>
+      <span>{value}</span>
+    </div>
+  );
 }
 
 function MetricCard({
@@ -336,6 +257,7 @@ function MetricCard({
   value,
   tone = "accent",
   points,
+  note,
   donutPercent,
   donutLabel
 }: {
@@ -343,7 +265,8 @@ function MetricCard({
   title: string;
   value: string;
   tone?: "accent" | "success" | "warning";
-  points: ChartPoint[];
+  points?: ChartPoint[];
+  note?: string;
   donutPercent?: number;
   donutLabel?: string;
 }) {
@@ -356,8 +279,10 @@ function MetricCard({
       <strong>{value}</strong>
       {typeof donutPercent === "number" ? (
         <QualityDonut percent={donutPercent} label={donutLabel ?? value} />
-      ) : (
+      ) : points && points.length > 0 ? (
         <MiniSparkline points={points} tone={tone} />
+      ) : (
+        <span className="dashboard-kpi-note">{note ?? "нет динамики"}</span>
       )}
     </article>
   );
@@ -509,8 +434,33 @@ function buildOverviewChartSeries(overview: AnalyticsOverviewResponse | null) {
     analyzedCalls: analyzedChartPoints(charts?.analyzed_by_day),
     duration: durationChartPoints(charts?.duration_by_day),
     risks: countChartPoints(charts?.risks_by_day, "рисков"),
-    quality: qualityChartPoints(charts?.quality_by_day, overview?.quality_score_scale ?? 5)
+    quality: qualityChartPoints(charts?.score_by_day, charts?.quality_by_day)
   };
+}
+
+function overviewScore(overview: AnalyticsOverviewResponse | null) {
+  if (!overview) {
+    return { score: null, scale: 100 };
+  }
+
+  if (typeof overview.average_score === "number" && Number.isFinite(overview.average_score)) {
+    return {
+      score: overview.average_score,
+      scale: typeof overview.score_scale === "number" && overview.score_scale > 0 ? overview.score_scale : 100
+    };
+  }
+
+  if (
+    typeof overview.average_quality_score === "number" &&
+    Number.isFinite(overview.average_quality_score)
+  ) {
+    return {
+      score: overview.average_quality_score * 20,
+      scale: 100
+    };
+  }
+
+  return { score: null, scale: 100 };
 }
 
 function chartDateLabel(value: string) {
@@ -556,12 +506,26 @@ function durationChartPoints(points: Array<{ date: string; average_duration_seco
   }));
 }
 
-function qualityChartPoints(points: Array<{ date: string; average_quality_score: number }> | undefined, scale: number): ChartPoint[] {
-  return (points ?? []).map((point) => ({
-    label: chartDateLabel(point.date),
-    value: point.average_quality_score,
-    display: `${point.average_quality_score.toFixed(1).replace(".", ",")} / ${scale}`
-  }));
+function qualityChartPoints(
+  scorePoints: Array<{ date: string; average_score: number }> | undefined,
+  legacyPoints: Array<{ date: string; average_quality_score: number }> | undefined
+): ChartPoint[] {
+  if (scorePoints && scorePoints.length > 0) {
+    return scorePoints.map((point) => ({
+      label: chartDateLabel(point.date),
+      value: point.average_score,
+      display: `${formatScore(point.average_score)} / 100`
+    }));
+  }
+
+  return (legacyPoints ?? []).map((point) => {
+    const normalized = point.average_quality_score * 20;
+    return {
+      label: chartDateLabel(point.date),
+      value: normalized,
+      display: `${formatScore(normalized)} / 100`
+    };
+  });
 }
 
 function smoothPath(points: Array<ChartPoint & { x: number; y: number }>) {
@@ -577,62 +541,10 @@ function smoothPath(points: Array<ChartPoint & { x: number; y: number }>) {
   }, "");
 }
 
-function publicReportName(fileName: string) {
-  const withoutExtension = fileName.replace(/\.[^.]+$/, "");
-  return withoutExtension
-    .replace(/-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "")
-    .replace(/[-_]+/g, " ")
-    .trim() || "последний экспорт";
+function formatNullableScore(value: number | null) {
+  return value === null ? "Нет данных" : `${formatScore(value)} / 100`;
 }
 
-function callSearchText(call: CallResponse) {
-  const maybeNamedCall = call as CallResponse & { name?: unknown };
-  return [
-    call.title,
-    typeof maybeNamedCall.name === "string" ? maybeNamedCall.name : "",
-    call.original_filename
-  ].join(" ").toLowerCase();
-}
-
-function ProgressRing({ percent, label }: { percent: number; label: string; }) {
-  const clamped = Math.max(0, Math.min(percent, 100));
-  return (
-    <div className="progress-ring" style={{ "--score": clamped } as React.CSSProperties}>
-      <span>{label}</span>
-      <small>/5</small>
-    </div>
-  );
-}
-
-function qualityScore(analysis?: AnalysisResponse) {
-  const result = analysis?.result_json;
-  const record = result && typeof result === "object" && !Array.isArray(result) ? result as Record<string, unknown> : {};
-  const rawScore = firstNumber(record, ["quality_score", "score", "overall_score", "manager_score"]);
-
-  if (typeof rawScore !== "number") {
-    return {
-      value: "—",
-      ringValue: "—",
-      percent: 92,
-      note: "нет поля оценки"
-    };
-  }
-
-  const score = rawScore > 5 ? rawScore / 20 : rawScore;
-  const formattedScore = score.toFixed(1).replace(".", ",");
-  return {
-    value: `${formattedScore} / 5`,
-    ringValue: formattedScore,
-    percent: Math.max(0, Math.min(100, (score / 5) * 100)),
-    note: "из AI-анализа"
-  };
-}
-
-function firstNumber(record: Record<string, unknown>, keys: string[]) {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-  }
-
-  return undefined;
+function metricCount(value: number | null | undefined) {
+  return typeof value === "number" ? value.toString() : "Нет данных";
 }

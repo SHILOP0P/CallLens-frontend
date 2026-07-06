@@ -603,11 +603,11 @@ html[data-theme="dark"] select {
 }
 
 html[data-theme="dark"] select:hover:not(:disabled) {
-  border-color: rgba(255, 154, 109, 0.36);
+  border-color: rgba(255, 250, 245, 0.16);
   background:
-    linear-gradient(45deg, transparent 50%, #ff9a6d 50%),
-    linear-gradient(135deg, #ff9a6d 50%, transparent 50%),
-    linear-gradient(180deg, rgba(255, 250, 245, 0.16), rgba(255, 250, 245, 0.1));
+    linear-gradient(45deg, transparent 50%, #d9c8bc 50%),
+    linear-gradient(135deg, #d9c8bc 50%, transparent 50%),
+    linear-gradient(180deg, rgba(255, 250, 245, 0.12), rgba(255, 250, 245, 0.08));
 }
 
 html[data-theme="dark"] select option {

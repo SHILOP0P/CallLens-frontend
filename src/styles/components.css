@@ -2721,10 +2721,10 @@ select {
 }
 
 select:hover:not(:disabled) {
-  border-color: rgba(255, 90, 47, 0.34);
+  border-color: rgba(96, 66, 48, 0.13);
   background:
-    linear-gradient(45deg, transparent 50%, var(--accent-strong) 50%),
-    linear-gradient(135deg, var(--accent-strong) 50%, transparent 50%),
+    linear-gradient(45deg, transparent 50%, #7b6658 50%),
+    linear-gradient(135deg, #7b6658 50%, transparent 50%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 250, 245, 0.68));
 }
 

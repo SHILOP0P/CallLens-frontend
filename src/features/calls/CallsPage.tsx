@@ -1,21 +1,29 @@
 import {
+  Check,
   ChevronRight,
   CloudUpload,
   MoreVertical,
-  Play
+  Pencil,
+  Play,
+  Plus,
+  Trash2,
+  X
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import type {
   AnalysisResponse,
   AppPage,
+  CallFolderResponse,
   CallResponse,
   CallStatus,
   CallFilterOptionsResponse,
   CompanyResponse,
+  CreateCallFolderRequest,
   DepartmentResponse,
   SessionState,
   TranscriptionResponse,
+  UpdateCallFolderRequest,
   VisibilityScope
 } from "../../types";
 
@@ -64,6 +72,14 @@ export function CallsPage({
   const [serverCalls, setServerCalls] = useState<CallResponse[] | null>(null);
   const [filterOptions, setFilterOptions] = useState<CallFilterOptionsResponse | null>(null);
   const [filtersLoading, setFiltersLoading] = useState(false);
+  const [callFolders, setCallFolders] = useState<CallFolderResponse[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [folderError, setFolderError] = useState("");
+  const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [editingFolderId, setEditingFolderId] = useState("");
+  const [folderEditorOpen, setFolderEditorOpen] = useState(false);
+  const [folderBusyId, setFolderBusyId] = useState("");
+  const [folderForm, setFolderForm] = useState<FolderFormState>(() => emptyFolderForm());
   const effectiveScopeFilter =
     companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
       ? "all"
@@ -73,6 +89,7 @@ export function CallsPage({
     status: statusFilter === "all" ? undefined : statusFilter,
     scope: effectiveScopeFilter === "all" ? undefined : effectiveScopeFilter,
     uploaded_by_user_uuid: managerFilter === "all" ? undefined : managerFilter,
+    folder_uuid: selectedFolderId || undefined,
     from: periodStart(periodFilter)
   };
   const hasBackendFilters = Object.values(filterInput).some(Boolean);
@@ -88,6 +105,12 @@ export function CallsPage({
     return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod;
   });
   const managerOptions = filterOptions?.managers ?? [];
+  const visibleFolders = callFolders.filter((folder) =>
+    effectiveScopeFilter === "all" || folder.scope === effectiveScopeFilter
+  );
+  const formDepartmentOptions = departments.filter((department) => department.company_uuid === folderForm.company_uuid);
+  const companiesFolderKey = companies.map((company) => company.id).join("|");
+  const departmentsFolderKey = departments.map((department) => `${department.company_uuid}:${department.id}`).join("|");
   const scopeOptions: Array<[VisibilityScope | "all", string]> = [
     ["all", "Все"],
     ["personal", "Личные"],
@@ -103,6 +126,7 @@ export function CallsPage({
     effectiveScopeFilter !== "all" ||
     managerFilter !== "all" ||
     periodFilter !== "all" ||
+    selectedFolderId.length > 0 ||
     searchQuery.trim().length > 0;
 
   function resetFilters() {
@@ -111,7 +135,110 @@ export function CallsPage({
     setManagerFilter("all");
     setPeriodFilter("all");
     setSearchQuery("");
+    setSelectedFolderId("");
     setServerCalls(null);
+  }
+
+  async function refreshFolders() {
+    setFoldersLoading(true);
+    setFolderError("");
+    try {
+      const loadedFolders = await loadCallFoldersForContext(companies, departments);
+      setCallFolders(loadedFolders);
+      setSelectedFolderId((current) =>
+        current && loadedFolders.some((folder) => folder.id === current) ? current : ""
+      );
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : "Не удалось загрузить папки");
+      setCallFolders([]);
+      setSelectedFolderId("");
+    } finally {
+      setFoldersLoading(false);
+    }
+  }
+
+  function startFolderCreate() {
+    setEditingFolderId("");
+    setFolderError("");
+    setFolderForm(emptyFolderForm());
+    setFolderEditorOpen(true);
+  }
+
+  function startFolderEdit(folder: CallFolderResponse) {
+    setEditingFolderId(folder.id);
+    setFolderError("");
+    setFolderForm({
+      scope: folder.scope === "company" || folder.scope === "department" ? folder.scope : "personal",
+      company_uuid: folder.company_uuid ?? "",
+      department_uuid: folder.department_uuid ?? "",
+      name: folder.name,
+      description: folder.description ?? "",
+      color: folder.color ?? folderPalette[0]
+    });
+    setFolderEditorOpen(true);
+  }
+
+  function cancelFolderEdit() {
+    setEditingFolderId("");
+    setFolderError("");
+    setFolderForm(emptyFolderForm());
+    setFolderEditorOpen(false);
+  }
+
+  async function submitFolderForm() {
+    const payload = buildFolderPayload(folderForm, editingFolderId ? "update" : "create");
+    if (!payload.ok) {
+      setFolderError(payload.error);
+      return;
+    }
+
+    setFolderError("");
+    setFolderBusyId(editingFolderId || "create");
+
+    try {
+      if (editingFolderId) {
+        await api.updateCallFolder(editingFolderId, payload.value as UpdateCallFolderRequest);
+      } else {
+        await api.createCallFolder(payload.value as CreateCallFolderRequest);
+      }
+      cancelFolderEdit();
+      await refreshFolders();
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : "Не удалось сохранить папку");
+    } finally {
+      setFolderBusyId("");
+    }
+  }
+
+  async function deleteFolder(folder: CallFolderResponse) {
+    const confirmed = window.confirm(`Удалить папку "${folder.name}"? Звонки не будут удалены.`);
+    if (!confirmed) return;
+
+    setFolderError("");
+    setFolderBusyId(folder.id);
+    try {
+      await api.deleteCallFolder(folder.id);
+      if (selectedFolderId === folder.id) setSelectedFolderId("");
+      if (editingFolderId === folder.id) cancelFolderEdit();
+      await refreshFolders();
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : "Не удалось удалить папку");
+    } finally {
+      setFolderBusyId("");
+    }
+  }
+
+  async function assignCallToFolder(folderId: string, callId: string) {
+    setFolderError("");
+    setFolderBusyId(folderId);
+    try {
+      await api.assignCallToFolder(folderId, callId);
+      await refreshFolders();
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : "Не удалось добавить звонок в папку");
+    } finally {
+      setFolderBusyId("");
+    }
   }
 
   useEffect(() => {
@@ -130,6 +257,15 @@ export function CallsPage({
   }, []);
 
   useEffect(() => {
+    void refreshFolders();
+  }, [companiesFolderKey, departmentsFolderKey]);
+
+  useEffect(() => {
+    if (companies.length > 0 || folderForm.scope === "personal") return;
+    setFolderForm((current) => ({ ...current, scope: "personal", company_uuid: "", department_uuid: "" }));
+  }, [companies.length, folderForm.scope]);
+
+  useEffect(() => {
     if (!hasBackendFilters) {
       setServerCalls(null);
       setFiltersLoading(false);
@@ -144,8 +280,13 @@ export function CallsPage({
         .then((response) => {
           if (!cancelled) setServerCalls(Array.isArray(response) ? response : response.items);
         })
-        .catch(() => {
-          if (!cancelled) setServerCalls([]);
+        .catch((error) => {
+          if (cancelled) return;
+          if (error instanceof ApiError && error.code === "call_folder_not_found") {
+            setSelectedFolderId("");
+            void refreshFolders();
+          }
+          setServerCalls([]);
         })
         .finally(() => {
           if (!cancelled) setFiltersLoading(false);
@@ -156,7 +297,7 @@ export function CallsPage({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [hasBackendFilters, searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter]);
+  }, [hasBackendFilters, searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter, selectedFolderId]);
 
   return (
     <section className="calls-layout">
@@ -223,6 +364,72 @@ export function CallsPage({
             </button>
           ))}
         </div>
+        <section className="call-folder-panel">
+          <div className="call-folder-heading">
+            <div>
+              <strong>Папки</strong>
+              <small>{foldersLoading ? "Загружаю..." : `${visibleFolders.length} доступно`}</small>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label="Создать папку"
+              onClick={startFolderCreate}
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+          {folderError && <div className="form-error compact">{folderError}</div>}
+          <div className="call-folder-list">
+            <button
+              className={`call-folder-row ${!selectedFolderId ? "selected" : ""}`}
+              type="button"
+              onClick={() => setSelectedFolderId("")}
+            >
+              <span className="folder-color-dot neutral" />
+              <span>
+                <strong>Все папки</strong>
+                <small>Фильтр по папке выключен</small>
+              </span>
+            </button>
+            {visibleFolders.map((folder) => (
+              <div className={`call-folder-row with-actions ${selectedFolderId === folder.id ? "selected" : ""}`} key={folder.id}>
+                <button type="button" onClick={() => setSelectedFolderId(folder.id)}>
+                  <span
+                    className="folder-color-dot"
+                    style={{ "--folder-color": folder.color || "#ff7a43" } as React.CSSProperties}
+                  />
+                  <span>
+                    <strong title={folder.name}>{folder.name}</strong>
+                    <small>{folderScopeLabel(folder)} · {folder.calls_count} звонков</small>
+                  </span>
+                </button>
+                <div className="call-folder-actions">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    aria-label="Редактировать папку"
+                    onClick={() => startFolderEdit(folder)}
+                  >
+                    <Pencil size={15} />
+                  </button>
+                  <button
+                    className="icon-button danger"
+                    type="button"
+                    aria-label="Удалить папку"
+                    disabled={folderBusyId === folder.id}
+                    onClick={() => deleteFolder(folder)}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!foldersLoading && visibleFolders.length === 0 && (
+              <div className="empty-state compact">Папок для выбранной области пока нет.</div>
+            )}
+          </div>
+        </section>
         <p className="muted-title">Недавние звонки</p>
         <div className="call-list">
           {(loading || filtersLoading) && <CallListSkeleton count={4} />}
@@ -268,11 +475,268 @@ export function CallsPage({
           loadingDetails={loadingDetails}
           onNavigate={onNavigate}
           onDeleteCall={onDeleteCall}
+          folders={callFolders}
+          folderActionBusy={Boolean(folderBusyId)}
+          onAssignToFolder={assignCallToFolder}
           showReports
         />
       </section>
+      {folderEditorOpen && (
+        <div className="call-folder-modal-layer" role="presentation">
+          <section className="call-folder-modal" role="dialog" aria-modal="true" aria-label={editingFolderId ? "Редактировать папку" : "Новая папка"}>
+            <div className="call-folder-modal-head">
+              <div>
+                <strong>{editingFolderId ? "Редактировать папку" : "Новая папка"}</strong>
+                <small>Папка группирует звонки и используется как фильтр.</small>
+              </div>
+              <button className="icon-button" type="button" aria-label="Закрыть окно папки" onClick={cancelFolderEdit}>
+                <X size={17} />
+              </button>
+            </div>
+            {folderError && <div className="form-error compact">{folderError}</div>}
+            <div className="call-folder-form modal-form">
+              {!editingFolderId && (
+                <SelectControl
+                  aria-label="Область папки"
+                  value={folderForm.scope}
+                  onChange={(event) => {
+                    const scope = event.target.value as VisibilityScope;
+                    const nextCompanyId = scope === "personal" ? "" : folderForm.company_uuid || companies[0]?.id || "";
+                    const nextDepartmentId =
+                      scope === "department"
+                        ? folderForm.department_uuid || departments.find((department) => department.company_uuid === nextCompanyId)?.id || ""
+                        : "";
+                    setFolderForm((current) => ({
+                      ...current,
+                      scope,
+                      company_uuid: nextCompanyId,
+                      department_uuid: nextDepartmentId
+                    }));
+                  }}
+                >
+                  <option value="personal">Личная</option>
+                  {companies.length > 0 && <option value="company">Компания</option>}
+                  {companies.length > 0 && <option value="department">Отдел</option>}
+                </SelectControl>
+              )}
+              {!editingFolderId && folderForm.scope !== "personal" && (
+                <SelectControl
+                  aria-label="Компания папки"
+                  value={folderForm.company_uuid}
+                  onChange={(event) => {
+                    const companyId = event.target.value;
+                    const departmentId = departments.find((department) => department.company_uuid === companyId)?.id ?? "";
+                    setFolderForm((current) => ({
+                      ...current,
+                      company_uuid: companyId,
+                      department_uuid: current.scope === "department" ? departmentId : ""
+                    }));
+                  }}
+                >
+                  <option value="">Выберите компанию</option>
+                  {companies.map((company) => (
+                    <option key={company.id} value={company.id}>{company.name}</option>
+                  ))}
+                </SelectControl>
+              )}
+              {!editingFolderId && folderForm.scope === "department" && (
+                <SelectControl
+                  aria-label="Отдел папки"
+                  value={folderForm.department_uuid}
+                  onChange={(event) => setFolderForm((current) => ({ ...current, department_uuid: event.target.value }))}
+                >
+                  <option value="">Выберите отдел</option>
+                  {formDepartmentOptions.map((department) => (
+                    <option key={department.id} value={department.id}>{department.name}</option>
+                  ))}
+                </SelectControl>
+              )}
+              <input
+                aria-label="Название папки"
+                placeholder="Название папки"
+                value={folderForm.name}
+                maxLength={120}
+                onChange={(event) => setFolderForm((current) => ({ ...current, name: event.target.value }))}
+              />
+              <input
+                aria-label="Описание папки"
+                placeholder="Описание"
+                value={folderForm.description}
+                maxLength={1000}
+                onChange={(event) => setFolderForm((current) => ({ ...current, description: event.target.value }))}
+              />
+              <div className="call-folder-color-picker" aria-label="Цвет папки">
+                <div className="call-folder-color-picker-head">
+                  <span>Цвет папки</span>
+                  <span
+                    className="folder-color-dot preview"
+                    style={{ "--folder-color": folderForm.color || folderPalette[0] } as React.CSSProperties}
+                  />
+                </div>
+                <div className="call-folder-palette" role="radiogroup" aria-label="Выбор цвета папки">
+                  {folderPalette.map((color) => (
+                    <button
+                      className={folderForm.color === color ? "active" : ""}
+                      key={color}
+                      type="button"
+                      role="radio"
+                      aria-label={`Цвет ${color}`}
+                      aria-checked={folderForm.color === color}
+                      onClick={() => setFolderForm((current) => ({ ...current, color }))}
+                      style={{ "--folder-color": color } as React.CSSProperties}
+                    >
+                      <span />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="call-folder-form-actions">
+                <button
+                  className="primary-button small"
+                  type="button"
+                  disabled={folderBusyId === "create" || (Boolean(editingFolderId) && folderBusyId === editingFolderId)}
+                  onClick={submitFolderForm}
+                >
+                  <Check size={15} />
+                  {editingFolderId ? "Сохранить" : "Создать"}
+                </button>
+                <button className="ghost-button small" type="button" onClick={cancelFolderEdit}>
+                  Отмена
+                </button>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
+}
+
+type FolderFormState = {
+  scope: VisibilityScope;
+  company_uuid: string;
+  department_uuid: string;
+  name: string;
+  description: string;
+  color: string;
+};
+
+const folderPalette = [
+  "#FF7A43",
+  "#F45B69",
+  "#B45CFF",
+  "#5B7CFA",
+  "#2F9BFF",
+  "#21A6A1",
+  "#5EBC6E",
+  "#F0B84A",
+  "#A88768",
+  "#8B98A8"
+];
+
+type FolderPayloadResult =
+  | { ok: true; value: CreateCallFolderRequest | UpdateCallFolderRequest }
+  | { ok: false; error: string };
+
+function emptyFolderForm(): FolderFormState {
+  return {
+    scope: "personal",
+    company_uuid: "",
+    department_uuid: "",
+    name: "",
+    description: "",
+    color: folderPalette[0]
+  };
+}
+
+function buildFolderPayload(
+  form: FolderFormState,
+  mode: "create" | "update"
+): FolderPayloadResult {
+  const name = form.name.trim();
+  const description = form.description.trim();
+  const color = form.color.trim();
+
+  if (!name) return { ok: false, error: "Введите название папки." };
+  if (name.length > 120) return { ok: false, error: "Название папки должно быть до 120 символов." };
+  if (description.length > 1000) return { ok: false, error: "Описание папки должно быть до 1000 символов." };
+  if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
+    return { ok: false, error: "Цвет должен быть в формате #RRGGBB." };
+  }
+
+  if (mode === "update") {
+    return {
+      ok: true,
+      value: {
+        name,
+        description: description || null,
+        color: color || null
+      }
+    };
+  }
+
+  if (form.scope === "company" && !form.company_uuid) {
+    return { ok: false, error: "Для папки компании выберите компанию." };
+  }
+
+  if (form.scope === "department" && (!form.company_uuid || !form.department_uuid)) {
+    return { ok: false, error: "Для папки отдела выберите компанию и отдел." };
+  }
+
+  return {
+    ok: true,
+    value: {
+      scope: form.scope,
+      company_uuid: form.scope === "personal" ? null : form.company_uuid,
+      department_uuid: form.scope === "department" ? form.department_uuid : null,
+      name,
+      description: description || null,
+      color: color || null
+    }
+  };
+}
+
+function folderScopeLabel(folder: CallFolderResponse) {
+  if (folder.scope === "personal") return "Личная";
+  if (folder.scope === "company") return "Компания";
+  if (folder.scope === "department") return "Отдел";
+  return folder.scope || "Область";
+}
+
+async function loadCallFoldersForContext(
+  companies: CompanyResponse[],
+  departments: DepartmentResponse[]
+) {
+  const requests = [
+    api.listCallFolders({ scope: "personal", limit: 100, offset: 0 }),
+    ...companies.map((company) =>
+      api.listCallFolders({
+        scope: "company",
+        company_uuid: company.id,
+        limit: 100,
+        offset: 0
+      })
+    ),
+    ...departments.map((department) =>
+      api.listCallFolders({
+        scope: "department",
+        company_uuid: department.company_uuid,
+        department_uuid: department.id,
+        limit: 100,
+        offset: 0
+      })
+    )
+  ];
+  const responses = await Promise.all(
+    requests.map((request) => request.catch(() => ({ items: [] as CallFolderResponse[] })))
+  );
+  const folders = new Map<string, CallFolderResponse>();
+
+  responses.forEach((response) => {
+    response.items.forEach((folder) => folders.set(folder.id, folder));
+  });
+
+  return Array.from(folders.values());
 }
 
 function managerLabel(

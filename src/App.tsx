@@ -80,7 +80,7 @@ function App() {
   const [transcriptions, setTranscriptions] = useState<Record<string, TranscriptionResponse>>({});
   const [analyses, setAnalyses] = useState<Record<string, AnalysisResponse>>({});
   const [callTimelines, setCallTimelines] = useState<Record<string, CallStatus[]>>({});
-  const [selectedCallId, setSelectedCallId] = useState<string>("");
+  const [selectedCallId, setSelectedCallId] = useState<string>(() => callIdFromLocation());
   const [loadingWorkspace, setLoadingWorkspace] = useState(() => Boolean(session));
   const [loadingCallDetails, setLoadingCallDetails] = useState<Record<string, boolean>>({});
   const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
@@ -150,6 +150,7 @@ function App() {
       setPage(pageFromPath(window.location.pathname));
       setSelectedCompanyId(companyIdFromPath(window.location.pathname));
       setSelectedDepartmentId(departmentIdFromPath(window.location.pathname));
+      setSelectedCallId(callIdFromLocation());
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -237,7 +238,11 @@ function App() {
         setInstructions(loadedInstructions);
         setPersonalSubscription(loadedPersonalSubscription);
         setCompanySubscriptions(loadedCompanySubscriptions);
-        setSelectedCallId((current) => current || loadedCalls[0]?.id || "");
+        setSelectedCallId((current) =>
+          current && loadedCalls.some((call) => call.id === current)
+            ? current
+            : loadedCalls[0]?.id ?? ""
+        );
         setWorkspaceReady(true);
       } catch (error) {
         if (cancelled) return;
@@ -356,7 +361,23 @@ function App() {
     setPage(nextPage);
     setSelectedCompanyId("");
     setSelectedDepartmentId("");
-    window.history.pushState({}, "", pageRoutes[nextPage]);
+    window.history.pushState({}, "", pageUrl(nextPage, selectedCallId));
+  }
+
+  function selectCall(callId: string) {
+    setSelectedCallId(callId);
+    if (page === "calls" || page === "analysis") {
+      window.history.replaceState({}, "", pageUrl(page, callId));
+    }
+  }
+
+  function openCallPage(callId: string, nextPage: AppPage = "calls") {
+    setShowPublicLanding(false);
+    setPage(nextPage);
+    setSelectedCompanyId("");
+    setSelectedDepartmentId("");
+    setSelectedCallId(callId);
+    window.history.pushState({}, "", pageUrl(nextPage, callId));
   }
 
   function openCompany(companyId: string) {
@@ -551,9 +572,14 @@ function App() {
 
     setCalls((current) => {
       const nextCalls = current.filter((call) => call.id !== callId);
-      setSelectedCallId((selectedId) =>
-        selectedId === callId ? nextCalls[0]?.id ?? "" : selectedId
-      );
+      setSelectedCallId((selectedId) => {
+        if (selectedId !== callId) return selectedId;
+        const nextCallId = nextCalls[0]?.id ?? "";
+        if (page === "calls" || page === "analysis") {
+          window.history.replaceState({}, "", pageUrl(page, nextCallId));
+        }
+        return nextCallId;
+      });
       return nextCalls;
     });
     setTranscriptions((current) => {
@@ -614,8 +640,7 @@ function App() {
       invitationCount={invitations.filter((invitation) => invitation.status === "pending").length}
       onNavigate={navigate}
       onOpenCall={(callId) => {
-        setSelectedCallId(callId);
-        navigate("calls");
+        openCallPage(callId);
       }}
       onOpenCompany={openCompany}
       onOpenLanding={openLanding}
@@ -623,21 +648,7 @@ function App() {
       onLogout={logout}
     >
       {page === "overview" && (
-        <OverviewPage
-          calls={calls}
-          companies={companies}
-          departments={departments}
-          loading={loadingWorkspace}
-          loadingDetails={selectedCallDetailsLoading}
-          selectedCall={selectedCall}
-          selectedCallTimeline={selectedCallTimeline}
-          transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
-          analysis={selectedCall ? analyses[selectedCall.id] : undefined}
-          analyses={analyses}
-          selectedCallId={selectedCallId}
-          onSelectCall={setSelectedCallId}
-          onNavigate={navigate}
-        />
+        <OverviewPage />
       )}
 
       {page === "calls" && (
@@ -651,7 +662,7 @@ function App() {
           transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
           analysis={selectedCall ? analyses[selectedCall.id] : undefined}
           session={session}
-          onSelectCall={setSelectedCallId}
+          onSelectCall={selectCall}
           onNavigate={navigate}
           onDeleteCall={deleteCall}
           loading={loadingWorkspace}
@@ -674,8 +685,7 @@ function App() {
               ...current,
               [call.id]: timelineFromStatus(call.status)
             }));
-            setSelectedCallId(call.id);
-            navigate("calls");
+            openCallPage(call.id);
           }}
         />
       )}
@@ -693,7 +703,7 @@ function App() {
           departments={departments}
           loading={loadingWorkspace}
           loadingDetails={selectedCallDetailsLoading}
-          onSelectCall={setSelectedCallId}
+          onSelectCall={selectCall}
           onAnalysisReady={(callId, analysis) =>
             setAnalyses((current) => ({
               ...current,
@@ -705,7 +715,14 @@ function App() {
         />
       )}
 
-      {page === "reports" && <AiReportsPage calls={calls} analyses={analyses} />}
+      {page === "reports" && (
+        <AiReportsPage
+          calls={calls}
+          analyses={analyses}
+          companies={companies}
+          departments={departments}
+        />
+      )}
 
       {page === "monitoring" && <MonitoringPage calls={calls} />}
 
@@ -830,4 +847,16 @@ export default App;
 
 function callItems(response: CallResponse[] | { items: CallResponse[] }) {
   return Array.isArray(response) ? response : response.items;
+}
+
+function callIdFromLocation() {
+  return new URLSearchParams(window.location.search).get("call") ?? "";
+}
+
+function pageUrl(page: AppPage, callId: string) {
+  const base = pageRoutes[page];
+  if ((page === "calls" || page === "analysis") && callId) {
+    return `${base}?call=${encodeURIComponent(callId)}`;
+  }
+  return base;
 }

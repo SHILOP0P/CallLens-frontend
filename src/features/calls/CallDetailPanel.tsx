@@ -1,15 +1,18 @@
 import {
   ChevronRight,
   CloudUpload,
+  FolderPlus,
   Headphones,
   PhoneCall,
   Trash2,
   WandSparkles
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import type {
   AnalysisResponse,
   AppPage,
+  CallFolderResponse,
   CallResponse,
   CallStatus,
   CompanyResponse,
@@ -17,7 +20,7 @@ import type {
   TranscriptionResponse
 } from "../../types";
 
-import { analysisNextStep, isAnalysisDone } from "../../shared/lib/analysis";
+import { analysisNextStep, analysisScore100, formatScore, isAnalysisDone } from "../../shared/lib/analysis";
 import { contextLabel, formatDate, formatDuration } from "../../shared/lib/formatters";
 import { AnalysisPreview } from "../../shared/ui/analysis";
 import { CallAudioPlayer } from "../../shared/ui/audio";
@@ -36,6 +39,9 @@ export function CallDetailPanel({
   loadingDetails,
   onNavigate,
   onDeleteCall,
+  folders = [],
+  folderActionBusy = false,
+  onAssignToFolder,
   showReports = false
 }: {
   call?: CallResponse;
@@ -48,17 +54,23 @@ export function CallDetailPanel({
   loadingDetails?: boolean;
   onNavigate: (page: AppPage) => void;
   onDeleteCall?: (callId: string) => Promise<void>;
+  folders?: CallFolderResponse[];
+  folderActionBusy?: boolean;
+  onAssignToFolder?: (folderId: string, callId: string) => Promise<void>;
   showReports?: boolean;
 }) {
   const [showFullTranscript, setShowFullTranscript] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false);
+  const score = analysisScore100(analysis);
 
   useEffect(() => {
     setShowFullTranscript(false);
     setShowFullAnalysis(false);
     setDeleteError("");
+    setFolderMenuOpen(false);
   }, [call?.id]);
 
   if (loading && !call) {
@@ -105,6 +117,48 @@ export function CallDetailPanel({
             <CloudUpload size={16} />
             Загрузить звонок
           </button>
+          {onAssignToFolder && (
+            <div className="call-folder-action-menu">
+              <button
+                className="ghost-button small"
+                type="button"
+                disabled={folderActionBusy || folders.length === 0}
+                aria-expanded={folderMenuOpen}
+                onClick={() => setFolderMenuOpen((current) => !current)}
+              >
+                <FolderPlus size={16} />
+                Добавить в папку
+              </button>
+              {folderMenuOpen && (
+                <div className="call-folder-dropdown">
+                  {folders.length === 0 ? (
+                    <div className="empty-state compact">Сначала создайте папку.</div>
+                  ) : (
+                    folders.map((folder) => (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        disabled={folderActionBusy}
+                        onClick={async () => {
+                          await onAssignToFolder(folder.id, call.id);
+                          setFolderMenuOpen(false);
+                        }}
+                      >
+                        <span
+                          className="folder-color-dot"
+                          style={{ "--folder-color": folder.color || "#ff7a43" } as CSSProperties}
+                        />
+                        <span>
+                          <strong>{folder.name}</strong>
+                          <small>{folder.calls_count} звонков</small>
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {onDeleteCall && (
             <button className="ghost-button small danger-button" onClick={deleteSelectedCall} disabled={deleting}>
               <Trash2 size={16} />
@@ -125,6 +179,9 @@ export function CallDetailPanel({
             {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)} ·{" "}
             {contextLabel(call, companies, departments)}
           </small>
+          {score.score !== null && (
+            <span className="call-score-chip">Оценка {formatScore(score.score)} / {score.scale}</span>
+          )}
         </div>
       </div>
       <CallAudioPlayer call={call} />
