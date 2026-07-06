@@ -4377,14 +4377,32 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
 
 .deep-analysis-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 0.72fr) minmax(320px, 0.9fr) minmax(380px, 1.16fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 24px;
 }
 
+.deep-analysis-content-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.78fr) minmax(520px, 1.42fr);
+  align-items: start;
+  gap: 24px;
+  min-width: 0;
+}
+
+.deep-analysis-form-panel,
+.deep-analysis-export-panel {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  padding: 24px;
+}
+
 .deep-analysis-form {
   display: grid;
-  gap: 13px;
+  grid-template-columns: repeat(auto-fit, minmax(178px, 1fr));
+  align-items: end;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -4417,6 +4435,7 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
   grid-template-columns: 24px minmax(0, 1fr);
   align-items: start;
   gap: 10px;
+  align-self: stretch;
   padding: 14px;
   background: rgba(255, 250, 245, 0.045);
   border: 1px solid var(--app-border);
@@ -4477,6 +4496,15 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
   font-weight: 500;
 }
 
+.deep-analysis-form .primary-button {
+  align-self: stretch;
+  min-height: 48px;
+}
+
+.deep-analysis-history-panel {
+  min-width: 0;
+}
+
 .deep-analysis-history {
   max-height: 620px;
   overflow: auto;
@@ -4521,9 +4549,37 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
   display: grid;
   gap: 14px;
   min-width: 0;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--app-border);
+}
+
+.deep-analysis-export-panel .report-format-actions {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.deep-analysis-export-panel .report-list {
+  min-width: 0;
+}
+
+@media (max-width: 1180px) {
+  .reports-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .deep-analysis-content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .reports-kpi-grid,
+  .deep-analysis-form,
+  .deep-period-grid,
+  .deep-analysis-export-panel .report-format-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deep-analysis-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .pipeline-list {

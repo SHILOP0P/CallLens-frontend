@@ -105,6 +105,7 @@ export function AiReportsPage({
   const activeDeepCount = deepAnalyses.filter((analysis) =>
     analysis.status === "pending" || analysis.status === "processing"
   ).length;
+
   const formDepartmentOptions = departments.filter((department) => department.company_uuid === deepForm.company_uuid);
   const companiesFolderKey = companies.map((company) => company.id).join("|");
   const departmentsFolderKey = departments.map((department) => `${department.company_uuid}:${department.id}`).join("|");
@@ -147,6 +148,7 @@ export function AiReportsPage({
     if (activeTab !== "deep") return;
     void loadDeepAnalyses();
   }, [activeTab, deepStatusFilter]);
+
 
   useEffect(() => {
     if (activeTab !== "deep") return;
@@ -382,8 +384,8 @@ export function AiReportsPage({
           <div className="reports-kpi-grid">
             <ReportMetric value={deepAnalyses.length.toString()} label="Глубоких анализов" note="в текущей истории" />
             <ReportMetric value={doneDeepCount.toString()} label="Готово" note="можно экспортировать" />
-            <ReportMetric value={activeDeepCount.toString()} label="Формируется" note="pending/processing" />
-            <ReportMetric value={deepFolders.length.toString()} label="Папок доступно" note={loadingDeepFolders ? "загружаю" : "для scope folder"} />
+            <ReportMetric value={activeDeepCount.toString()} label="Формируется" note="ожидают завершения" />
+            <ReportMetric value={deepFolders.length.toString()} label="Папок доступно" note={loadingDeepFolders ? "загружаю" : "для анализа папок"} />
           </div>
           <DeepAnalysisSection
             companies={companies}
@@ -662,16 +664,20 @@ function DeepAnalysisSection({
   onDownloadAggregateReport: (report: AggregateReportResponse) => void;
   onDeleteAggregateReport: (report: AggregateReportResponse) => void;
 }) {
+  const selectedContext = selectedAnalysis
+    ? deepAnalysisContext(selectedAnalysis, companies, departments, folders)
+    : null;
+
   return (
     <div className="deep-analysis-grid">
-      <section className="glass-panel entity-detail-panel deep-analysis-form-panel">
+      <section className="glass-panel deep-analysis-form-panel">
         <div className="panel-heading large">
           <div>
             <h2>Создать глубокий анализ</h2>
-            <p>Backend использует сохраненные результаты анализов звонков, без передачи транскрипций на frontend.</p>
+            <p>Соберите сводку по готовым анализам звонков за выбранный период.</p>
           </div>
         </div>
-        {actionError && <div className="form-error">{actionError}</div>}
+        {actionError && <div className="form-error">{friendlyDeepActionError(actionError)}</div>}
         <div className="deep-analysis-form">
           <label>
             Область
@@ -787,7 +793,7 @@ function DeepAnalysisSection({
             </span>
             <span>
               <strong>Создать заново и потратить недельный лимит</strong>
-              <small>По умолчанию backend вернет существующий non-failed анализ за тот же период.</small>
+              <small>Если за этот период уже есть успешный анализ, он будет использован повторно.</small>
             </span>
           </label>
           <button className="primary-button" type="button" disabled={busy} onClick={onCreateAnalysis}>
@@ -797,116 +803,134 @@ function DeepAnalysisSection({
         </div>
       </section>
 
-      <section className="glass-panel entity-list-panel">
-        <div className="panel-heading large">
-          <div>
-            <h2>История глубокого анализа</h2>
-            <p>Pending/processing можно обновлять вручную.</p>
+      <div className="deep-analysis-content-grid">
+        <section className="glass-panel entity-list-panel deep-analysis-history-panel">
+          <div className="panel-heading large">
+            <div>
+              <h2>История глубокого анализа</h2>
+              <p>Статусы обновляются автоматически; при необходимости обновите список вручную.</p>
+            </div>
+            <button className="ghost-button small" type="button" onClick={onRefreshAnalyses}>
+              <RefreshCcw size={16} />
+              Обновить
+            </button>
           </div>
-          <button className="ghost-button small" type="button" onClick={onRefreshAnalyses}>
-            <RefreshCcw size={16} />
-            Обновить
-          </button>
-        </div>
-        <div className="calls-filter-bar">
-          <SelectControl
-            aria-label="Статус глубокого анализа"
-            value={statusFilter}
-            onChange={(event) => onStatusFilterChange(event.target.value as AggregateAnalysisStatus | "all")}
-          >
-            <option value="all">Все статусы</option>
-            <option value="pending">В очереди</option>
-            <option value="processing">Формируется</option>
-            <option value="done">Готов</option>
-            <option value="failed">Ошибка</option>
-          </SelectControl>
-        </div>
-        <div className="report-placeholder-list deep-analysis-history">
-          {loadingAnalyses ? (
-            <div className="report-placeholder-row">
-              <FileBarChart2 size={22} />
-              <div>
-                <strong>Загружаю глубокие анализы</strong>
-                <small>Запрос к /analytics/deep-analyses</small>
-              </div>
-            </div>
-          ) : analyses.length === 0 ? (
-            <div className="report-placeholder-row empty">
-              <FileBarChart2 size={22} />
-              <div>
-                <strong>История пока пустая</strong>
-                <small>Создайте анализ за период с готовыми AI-анализами звонков.</small>
-              </div>
-            </div>
-          ) : (
-            analyses.map((analysis) => (
-              <button
-                className={`deep-analysis-row ${selectedAnalysis?.id === analysis.id ? "selected" : ""}`}
-                type="button"
-                key={analysis.id}
-                onClick={() => onSelectAnalysis(analysis.id)}
-              >
-                <span className={`status-chip ${analysis.status === "done" ? "ok" : analysis.status === "failed" ? "bad" : "warn"}`}>
-                  {aggregateStatusLabel(analysis.status)}
-                </span>
+          <div className="calls-filter-bar">
+            <SelectControl
+              aria-label="Статус глубокого анализа"
+              value={statusFilter}
+              onChange={(event) => onStatusFilterChange(event.target.value as AggregateAnalysisStatus | "all")}
+            >
+              <option value="all">Все статусы</option>
+              <option value="pending">В очереди</option>
+              <option value="processing">Формируется</option>
+              <option value="done">Готов</option>
+              <option value="failed">Ошибка</option>
+            </SelectControl>
+          </div>
+          <div className="report-placeholder-list deep-analysis-history">
+            {loadingAnalyses ? (
+              <div className="report-placeholder-row">
+                <FileBarChart2 size={22} />
                 <div>
-                  <strong>{deepScopeLabel(analysis.scope)} · {analysis.source_calls_count} звонков</strong>
-                  <small>
-                    {dateOnly(analysis.period_from)} - {dateOnly(analysis.period_to)} · создан{" "}
-                    {formatDate(analysis.created_at)}
-                  </small>
-                  {analysis.provider && (
-                    <small>{analysis.provider}{analysis.model ? ` · ${analysis.model}` : ""}</small>
-                  )}
-                  {analysis.error_message && <small className="report-error">{analysis.error_message}</small>}
+                  <strong>Загружаю глубокие анализы</strong>
+                  <small>Собираю историю за выбранным фильтром.</small>
                 </div>
-              </button>
-            ))
-          )}
-        </div>
-      </section>
-
-      <section className="glass-panel entity-detail-panel deep-analysis-result-panel">
-        {selectedAnalysis ? (
-          <>
-            <div className="panel-heading large">
-              <div>
-                <h2>Результат глубокого анализа</h2>
-                <p>
-                  {deepScopeLabel(selectedAnalysis.scope)} · {dateOnly(selectedAnalysis.period_from)} -{" "}
-                  {dateOnly(selectedAnalysis.period_to)}
-                </p>
               </div>
-              <span className={`status-chip ${selectedAnalysis.status === "done" ? "ok" : selectedAnalysis.status === "failed" ? "bad" : "warn"}`}>
-                {aggregateStatusLabel(selectedAnalysis.status)}
-              </span>
-            </div>
-            {selectedAnalysis.status === "done" ? (
-              <AggregateResultView analysis={selectedAnalysis} />
-            ) : selectedAnalysis.status === "failed" ? (
-              <div className="form-error">{selectedAnalysis.error_message || "Глубокий анализ завершился ошибкой."}</div>
+            ) : analyses.length === 0 ? (
+              <div className="report-placeholder-row empty">
+                <FileBarChart2 size={22} />
+                <div>
+                  <strong>История пока пустая</strong>
+                  <small>Создайте анализ за период с готовыми AI-анализами звонков.</small>
+                </div>
+              </div>
             ) : (
-              <div className="empty-state compact">Глубокий анализ формируется. Обновите историю позже.</div>
+              analyses.map((analysis) => {
+                const context = deepAnalysisContext(analysis, companies, departments, folders);
+
+                return (
+                  <button
+                    className={`deep-analysis-row ${selectedAnalysis?.id === analysis.id ? "selected" : ""}`}
+                    type="button"
+                    key={analysis.id}
+                    onClick={() => onSelectAnalysis(analysis.id)}
+                  >
+                    <span className={`status-chip ${analysis.status === "done" ? "ok" : analysis.status === "failed" ? "bad" : "warn"}`}>
+                      {aggregateStatusLabel(analysis.status)}
+                    </span>
+                    <div>
+                      <strong>{context.title} · {callCountLabel(analysis.source_calls_count)}</strong>
+                      <small>Период: {dateOnly(analysis.period_from)} - {dateOnly(analysis.period_to)}</small>
+                      <small>Создан: {formatDate(analysis.created_at)}</small>
+                      {context.details && <small>{context.details}</small>}
+                      {analysis.error_message && (
+                        <small className="report-error">{friendlyDeepAnalysisError(analysis.error_message)}</small>
+                      )}
+                    </div>
+                  </button>
+                );
+              })
             )}
-            <AggregateReportsPanel
-              analysis={selectedAnalysis}
-              reports={aggregateReports}
-              loading={loadingReports}
-              selectedFormat={selectedAggregateFormat}
-              busyReportId={busyReportId}
-              onFormatChange={onAggregateFormatChange}
-              onCreate={onCreateAggregateReport}
-              onDownload={onDownloadAggregateReport}
-              onDelete={onDeleteAggregateReport}
-            />
-          </>
-        ) : (
-          <div className="empty-panel compact">
-            <FileBarChart2 size={28} />
-            <p>Выберите глубокий анализ из истории.</p>
           </div>
+        </section>
+
+        <section className="glass-panel entity-detail-panel deep-analysis-result-panel">
+          {selectedAnalysis && selectedContext ? (
+            <>
+              <div className="panel-heading large">
+                <div>
+                  <h2>Результат глубокого анализа</h2>
+                  <p>
+                    {selectedContext.title} · {dateOnly(selectedAnalysis.period_from)} -{" "}
+                    {dateOnly(selectedAnalysis.period_to)}
+                  </p>
+                </div>
+                <span className={`status-chip ${selectedAnalysis.status === "done" ? "ok" : selectedAnalysis.status === "failed" ? "bad" : "warn"}`}>
+                  {aggregateStatusLabel(selectedAnalysis.status)}
+                </span>
+              </div>
+              {selectedAnalysis.status === "done" ? (
+                <AggregateResultView analysis={selectedAnalysis} />
+              ) : selectedAnalysis.status === "failed" ? (
+                <div className="form-error">{friendlyDeepAnalysisError(selectedAnalysis.error_message)}</div>
+              ) : (
+                <div className="empty-state compact">Глубокий анализ формируется. Обновите историю позже.</div>
+              )}
+            </>
+          ) : (
+            <div className="empty-panel compact">
+              <FileBarChart2 size={28} />
+              <p>Выберите глубокий анализ из истории.</p>
+            </div>
+          )}
+        </section>
+      </div>
+
+      {selectedAnalysis && (
+        <AggregateReportsPanel
+          analysis={selectedAnalysis}
+          reports={aggregateReports}
+          loading={loadingReports}
+          selectedFormat={selectedAggregateFormat}
+          busyReportId={busyReportId}
+          onFormatChange={onAggregateFormatChange}
+          onCreate={onCreateAggregateReport}
+          onDownload={onDownloadAggregateReport}
+          onDelete={onDeleteAggregateReport}
+        />
+      )}
+      {!selectedAnalysis && (
+        <section className="glass-panel aggregate-report-panel deep-analysis-export-panel">
+          <div className="card-title">
+            <div>
+              <h3>Экспорт глубокого анализа</h3>
+              <p>Выберите анализ из истории, чтобы подготовить PDF, DOCX, Markdown или Excel.</p>
+            </div>
+          </div>
+          <div className="empty-state compact">Экспорт станет доступен после выбора анализа.</div>
+        </section>
         )}
-      </section>
     </div>
   );
 }
@@ -919,7 +943,7 @@ function AggregateResultView({ analysis }: { analysis: AggregateAnalysisResponse
       <div className="analysis-structured">
         <div className="analysis-section">
           <strong>Результат</strong>
-          <p>{analysis.result_text || "Backend не вернул структурированный результат."}</p>
+          <p>{analysis.result_text || "Структурированный результат пока недоступен."}</p>
         </div>
       </div>
     );
@@ -1012,11 +1036,11 @@ function AggregateReportsPanel({
   onDelete: (report: AggregateReportResponse) => void;
 }) {
   return (
-    <section className="aggregate-report-panel">
+    <section className="glass-panel aggregate-report-panel deep-analysis-export-panel">
       <div className="card-title">
         <div>
-          <h3>Отчеты глубокого анализа</h3>
-          <p>PDF, DOCX, Markdown или Excel для выбранного deep analysis.</p>
+          <h3>Экспорт глубокого анализа</h3>
+          <p>Подготовьте PDF, DOCX, Markdown или Excel для выбранного анализа.</p>
         </div>
       </div>
       <div className="report-format-actions">
@@ -1058,7 +1082,7 @@ function AggregateReportsPanel({
                 {reportFormatLabel(report.format as ReportFormat)} · {formatBytes(report.size_bytes)} · создан{" "}
                 {formatDate(report.created_at)}
               </small>
-              {report.error_message && <small className="report-error">{report.error_message}</small>}
+              {report.error_message && <small className="report-error">{friendlyAggregateReportError(report.error_message)}</small>}
             </div>
             <span className={`status-chip ${report.status === "ready" ? "ok" : report.status === "failed" ? "bad" : "warn"}`}>
               {aggregateReportStatusLabel(report.status)}
@@ -1197,6 +1221,7 @@ function buildDeepAnalysisPayload(
   };
 }
 
+
 function aggregateResult(value: AggregateAnalysisResponse["result_json"]): AggregateAnalysisResult | null {
   if (!isRecord(value)) return null;
 
@@ -1231,6 +1256,9 @@ function reportFileLabel(fileName: string) {
   return withoutExtension
     .replace(/-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "")
     .replace(/[-_]+/g, " ")
+    .replace(/\bdeep analysis\b/gi, "глубокий анализ")
+    .replace(/\bai report\b/gi, "AI-отчет")
+    .replace(/\bsummary\b/gi, "сводка")
     .trim() || "готовый экспорт";
 }
 
@@ -1240,6 +1268,102 @@ function reportCallSearchText(call: CallResponse) {
     call.original_filename,
     call.id
   ].join(" ").toLowerCase();
+}
+
+function deepAnalysisContext(
+  analysis: AggregateAnalysisResponse,
+  companies: CompanyResponse[],
+  departments: DepartmentResponse[],
+  folders: CallFolderResponse[]
+) {
+  const company = analysis.company_uuid
+    ? companies.find((item) => item.id === analysis.company_uuid)
+    : undefined;
+  const department = analysis.department_uuid
+    ? departments.find((item) => item.id === analysis.department_uuid)
+    : undefined;
+  const folder = analysis.folder_uuid
+    ? folders.find((item) => item.id === analysis.folder_uuid)
+    : undefined;
+  const folderCompany = folder?.company_uuid
+    ? companies.find((item) => item.id === folder.company_uuid)
+    : undefined;
+  const folderDepartment = folder?.department_uuid
+    ? departments.find((item) => item.id === folder.department_uuid)
+    : undefined;
+
+  if (analysis.scope === "company") {
+    return {
+      title: company ? `Компания «${company.name}»` : "Компания",
+      details: company ? "" : "Компания не найдена в текущем списке"
+    };
+  }
+
+  if (analysis.scope === "department") {
+    return {
+      title: department ? `Отдел «${department.name}»` : "Отдел",
+      details: company ? `Компания: ${company.name}` : "Компания не найдена в текущем списке"
+    };
+  }
+
+  if (analysis.scope === "folder") {
+    const ownerParts = [
+      folderDepartment ? `отдел ${folderDepartment.name}` : "",
+      folderCompany ? `компания ${folderCompany.name}` : ""
+    ].filter(Boolean);
+
+    return {
+      title: folder ? `Папка «${folder.name}»` : "Папка",
+      details: ownerParts.length > 0 ? ownerParts.join(" · ") : folder ? deepScopeLabel(folder.scope) : "Папка не найдена в текущем списке"
+    };
+  }
+
+  return {
+    title: "Личный анализ",
+    details: ""
+  };
+}
+
+function callCountLabel(count: number) {
+  const normalized = Math.abs(count);
+  const mod10 = normalized % 10;
+  const mod100 = normalized % 100;
+
+  if (mod10 === 1 && mod100 !== 11) return `${count} звонок`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} звонка`;
+  return `${count} звонков`;
+}
+
+function friendlyDeepActionError(message: string) {
+  if (
+    message.startsWith("Выберите") ||
+    message.startsWith("Для анализа") ||
+    message.startsWith("Начало периода")
+  ) {
+    return message;
+  }
+
+  return friendlyDeepAnalysisError(message);
+}
+
+function friendlyDeepAnalysisError(message?: string | null) {
+  const normalized = message?.toLowerCase() ?? "";
+
+  if (normalized.includes("429") || normalized.includes("rate")) {
+    return "Сейчас не удалось сформировать анализ из-за временного ограничения. Попробуйте позже.";
+  }
+
+  return "Не удалось сформировать анализ. Проверьте период и попробуйте снова.";
+}
+
+function friendlyAggregateReportError(message?: string | null) {
+  const normalized = message?.toLowerCase() ?? "";
+
+  if (normalized.includes("429") || normalized.includes("rate")) {
+    return "Экспорт временно недоступен. Попробуйте позже.";
+  }
+
+  return "Не удалось подготовить экспорт. Попробуйте создать его заново.";
 }
 
 function aggregateStatusLabel(status: string) {
