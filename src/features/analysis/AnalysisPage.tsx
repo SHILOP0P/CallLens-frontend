@@ -160,7 +160,7 @@ export function AnalysisPage({
         )}
         {selectedCall && <ReportExportPanel call={selectedCall} analysis={analysis} />}
         <div className="analysis-content-grid">
-          <div className="info-card">
+          <div className="info-card report-panel analysis-result-panel">
             <div className="card-title">
               <h3>Результат</h3>
               <span className="status-chip ok">{isAnalysisDone(analysis) ? "Готово" : "Нет анализа"}</span>

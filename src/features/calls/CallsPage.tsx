@@ -1,7 +1,9 @@
 import {
   Check,
+  ChevronDown,
   ChevronRight,
   CloudUpload,
+  Folder,
   MoreVertical,
   Pencil,
   Play,
@@ -79,6 +81,10 @@ export function CallsPage({
   const [editingFolderId, setEditingFolderId] = useState("");
   const [folderEditorOpen, setFolderEditorOpen] = useState(false);
   const [folderBusyId, setFolderBusyId] = useState("");
+  const [callFolderActionByCall, setCallFolderActionByCall] = useState<Record<string, string>>({});
+  const [folderCallsById, setFolderCallsById] = useState<Record<string, CallResponse[]>>({});
+  const [folderCallsLoading, setFolderCallsLoading] = useState(false);
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Record<string, boolean>>({});
   const [folderForm, setFolderForm] = useState<FolderFormState>(() => emptyFolderForm());
   const effectiveScopeFilter =
     companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
@@ -89,7 +95,6 @@ export function CallsPage({
     status: statusFilter === "all" ? undefined : statusFilter,
     scope: effectiveScopeFilter === "all" ? undefined : effectiveScopeFilter,
     uploaded_by_user_uuid: managerFilter === "all" ? undefined : managerFilter,
-    folder_uuid: selectedFolderId || undefined,
     from: periodStart(periodFilter)
   };
   const hasBackendFilters = Object.values(filterInput).some(Boolean);
@@ -111,6 +116,9 @@ export function CallsPage({
   const formDepartmentOptions = departments.filter((department) => department.company_uuid === folderForm.company_uuid);
   const companiesFolderKey = companies.map((company) => company.id).join("|");
   const departmentsFolderKey = departments.map((department) => `${department.company_uuid}:${department.id}`).join("|");
+  const visibleFolderIdsKey = visibleFolders.map((folder) => folder.id).join("|");
+  const folderCallIds = new Set(Object.values(folderCallsById).flatMap((folderCalls) => folderCalls.map((call) => call.id)));
+  const callsWithoutVisibleFolder = filteredCalls.filter((call) => !folderCallIds.has(call.id));
   const scopeOptions: Array<[VisibilityScope | "all", string]> = [
     ["all", "Все"],
     ["personal", "Личные"],
@@ -126,8 +134,18 @@ export function CallsPage({
     effectiveScopeFilter !== "all" ||
     managerFilter !== "all" ||
     periodFilter !== "all" ||
-    selectedFolderId.length > 0 ||
     searchQuery.trim().length > 0;
+  const selectedCallVisibleInFolderFilter = Boolean(
+    selectedFolderId &&
+    selectedCall &&
+    (folderCallsById[selectedFolderId] ?? []).some((call) => call.id === selectedCall.id)
+  );
+  const selectedCallActionFolderId = selectedCall
+    ? (selectedCallVisibleInFolderFilter ? selectedFolderId : callFolderActionByCall[selectedCall.id]) || ""
+    : "";
+  const selectedCallActionFolder = selectedCallActionFolderId
+    ? callFolders.find((folder) => folder.id === selectedCallActionFolderId)
+    : undefined;
 
   function resetFilters() {
     setStatusFilter("all");
@@ -233,9 +251,47 @@ export function CallsPage({
     setFolderBusyId(folderId);
     try {
       await api.assignCallToFolder(folderId, callId);
+      setCallFolderActionByCall((current) => ({ ...current, [callId]: folderId }));
+      const assignedCall = calls.find((call) => call.id === callId);
+      if (assignedCall) {
+        setFolderCallsById((current) => ({
+          ...current,
+          [folderId]: [
+            assignedCall,
+            ...(current[folderId] ?? []).filter((call) => call.id !== callId)
+          ]
+        }));
+      }
+      setExpandedFolderIds((current) => ({ ...current, [folderId]: true }));
       await refreshFolders();
     } catch (error) {
       setFolderError(error instanceof Error ? error.message : "Не удалось добавить звонок в папку");
+    } finally {
+      setFolderBusyId("");
+    }
+  }
+
+  async function removeCallFromFolder(folderId: string, callId: string) {
+    setFolderError("");
+    setFolderBusyId(folderId);
+    try {
+      await api.removeCallFromFolder(folderId, callId);
+      setCallFolderActionByCall((current) => {
+        if (current[callId] !== folderId) return current;
+        const next = { ...current };
+        delete next[callId];
+        return next;
+      });
+      setFolderCallsById((current) => ({
+        ...current,
+        [folderId]: (current[folderId] ?? []).filter((call) => call.id !== callId)
+      }));
+      if (selectedFolderId === folderId) {
+        setSelectedFolderId("");
+      }
+      await refreshFolders();
+    } catch (error) {
+      setFolderError(error instanceof Error ? error.message : "Не удалось убрать звонок из папки");
     } finally {
       setFolderBusyId("");
     }
@@ -259,6 +315,72 @@ export function CallsPage({
   useEffect(() => {
     void refreshFolders();
   }, [companiesFolderKey, departmentsFolderKey]);
+
+  useEffect(() => {
+    if (visibleFolders.length === 0) {
+      setFolderCallsById({});
+      setFolderCallsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setFolderCallsLoading(true);
+    Promise
+      .all(
+        visibleFolders.map((folder) =>
+          api
+            .listCallFolderCalls(folder.id, { limit: 100, offset: 0 })
+            .then((response) => [
+              folder.id,
+              Array.isArray(response) ? response : response.items
+            ] as const)
+            .catch(() => [folder.id, [] as CallResponse[]] as const)
+        )
+      )
+      .then((entries) => {
+        if (cancelled) return;
+        setFolderCallsById(Object.fromEntries(entries));
+      })
+      .finally(() => {
+        if (!cancelled) setFolderCallsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visibleFolderIdsKey]);
+
+  function toggleFolder(folderId: string) {
+    setExpandedFolderIds((current) => ({ ...current, [folderId]: !current[folderId] }));
+  }
+
+  function selectFolderCall(callId: string, folderId: string) {
+    setSelectedFolderId(folderId);
+    setCallFolderActionByCall((current) => ({ ...current, [callId]: folderId }));
+    onSelectCall(callId);
+  }
+
+  function selectUnfiledCall(callId: string) {
+    setSelectedFolderId("");
+    setCallFolderActionByCall((current) => {
+      if (!current[callId]) return current;
+      const next = { ...current };
+      delete next[callId];
+      return next;
+    });
+    onSelectCall(callId);
+  }
+
+  function matchesSidebarFilters(call: CallResponse) {
+    const query = searchQuery.trim().toLowerCase();
+    const matchesScope = effectiveScopeFilter === "all" || call.visibility_scope === effectiveScopeFilter;
+    const matchesStatus = statusFilter === "all" || call.status === statusFilter;
+    const matchesManager = managerFilter === "all" || call.uploaded_by_user_uuid === managerFilter;
+    const matchesSearch = !query || callSearchText(call).includes(query);
+    const matchesPeriod = isWithinPeriod(call.created_at, periodFilter);
+
+    return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod;
+  }
 
   useEffect(() => {
     if (companies.length > 0 || folderForm.scope === "personal") return;
@@ -380,65 +502,92 @@ export function CallsPage({
             </button>
           </div>
           {folderError && <div className="form-error compact">{folderError}</div>}
-          <div className="call-folder-list">
-            <button
-              className={`call-folder-row ${!selectedFolderId ? "selected" : ""}`}
-              type="button"
-              onClick={() => setSelectedFolderId("")}
-            >
-              <span className="folder-color-dot neutral" />
-              <span>
-                <strong>Все папки</strong>
-                <small>Фильтр по папке выключен</small>
-              </span>
-            </button>
-            {visibleFolders.map((folder) => (
-              <div className={`call-folder-row with-actions ${selectedFolderId === folder.id ? "selected" : ""}`} key={folder.id}>
-                <button type="button" onClick={() => setSelectedFolderId(folder.id)}>
-                  <span
-                    className="folder-color-dot"
-                    style={{ "--folder-color": folder.color || "#ff7a43" } as React.CSSProperties}
-                  />
-                  <span>
-                    <strong title={folder.name}>{folder.name}</strong>
-                    <small>{folderScopeLabel(folder)} · {folder.calls_count} звонков</small>
-                  </span>
-                </button>
-                <div className="call-folder-actions">
-                  <button
-                    className="icon-button"
-                    type="button"
-                    aria-label="Редактировать папку"
-                    onClick={() => startFolderEdit(folder)}
-                  >
-                    <Pencil size={15} />
-                  </button>
-                  <button
-                    className="icon-button danger"
-                    type="button"
-                    aria-label="Удалить папку"
-                    disabled={folderBusyId === folder.id}
-                    onClick={() => deleteFolder(folder)}
-                  >
-                    <Trash2 size={15} />
-                  </button>
+          <div className="call-folder-tree">
+            {visibleFolders.map((folder) => {
+              const expanded = Boolean(expandedFolderIds[folder.id]);
+              const folderCalls = (folderCallsById[folder.id] ?? []).filter(matchesSidebarFilters);
+              const folderLoading = folderCallsLoading && !folderCallsById[folder.id];
+
+              return (
+                <div className={`call-folder-project ${expanded ? "expanded" : ""}`} key={folder.id}>
+                  <div className="call-folder-project-head">
+                    <button
+                      className="call-folder-project-button"
+                      type="button"
+                      aria-expanded={expanded}
+                      onClick={() => toggleFolder(folder.id)}
+                    >
+                      {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                      <span
+                        className="folder-color-dot"
+                        style={{ "--folder-color": folder.color || "#ff7a43" } as React.CSSProperties}
+                      />
+                      <span>
+                        <strong title={folder.name}>{folder.name}</strong>
+                        <small>{folderScopeLabel(folder)} · {folder.calls_count} звонков</small>
+                      </span>
+                    </button>
+                    <div className="call-folder-actions">
+                      <button
+                        className="icon-button"
+                        type="button"
+                        aria-label="Редактировать папку"
+                        onClick={() => startFolderEdit(folder)}
+                      >
+                        <Pencil size={15} />
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        type="button"
+                        aria-label="Удалить папку"
+                        disabled={folderBusyId === folder.id}
+                        onClick={() => deleteFolder(folder)}
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </div>
+                  </div>
+                  {expanded && (
+                    <div className="call-folder-child-list">
+                      {folderLoading ? (
+                        <div className="call-folder-child-empty">Загружаю звонки...</div>
+                      ) : folderCalls.length === 0 ? (
+                        <div className="call-folder-child-empty">Нет звонков по текущим фильтрам.</div>
+                      ) : (
+                        folderCalls.map((call) => (
+                          <button
+                            className={`call-folder-child-call ${selectedCallId === call.id ? "selected" : ""}`}
+                            type="button"
+                            key={call.id}
+                            onClick={() => selectFolderCall(call.id, folder.id)}
+                          >
+                            <Folder size={14} />
+                            <span>
+                              <strong>{call.title}</strong>
+                              <small>{formatDate(call.created_at)} · {formatDuration(call.duration_seconds)}</small>
+                            </span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {!foldersLoading && visibleFolders.length === 0 && (
               <div className="empty-state compact">Папок для выбранной области пока нет.</div>
             )}
           </div>
         </section>
-        <p className="muted-title">Недавние звонки</p>
+        <p className="muted-title">Без папки</p>
         <div className="call-list">
-          {(loading || filtersLoading) && <CallListSkeleton count={4} />}
-          {!loading && !filtersLoading &&
-            filteredCalls.map((call) => (
+          {(loading || filtersLoading || folderCallsLoading) && <CallListSkeleton count={4} />}
+          {!loading && !filtersLoading && !folderCallsLoading &&
+            callsWithoutVisibleFolder.map((call) => (
               <button
                 key={call.id}
                 className={`call-row ${selectedCallId === call.id ? "selected" : ""}`}
-                onClick={() => onSelectCall(call.id)}
+                onClick={() => selectUnfiledCall(call.id)}
               >
                 <span className="play-dot">
                   <Play size={14} fill="currentColor" />
@@ -453,8 +602,8 @@ export function CallsPage({
                 <MoreVertical size={16} />
               </button>
             ))}
-          {!loading && !filtersLoading && filteredCalls.length === 0 && (
-            <div className="empty-state">{calls.length === 0 ? "Звонков пока нет." : "Звонков по фильтрам не найдено."}</div>
+          {!loading && !filtersLoading && !folderCallsLoading && callsWithoutVisibleFolder.length === 0 && (
+            <div className="empty-state">{calls.length === 0 ? "Звонков пока нет." : "Звонков без папки по фильтрам нет."}</div>
           )}
         </div>
         <button className="ghost-button wide calls-show-all" type="button" onClick={resetFilters} disabled={!filtersChanged}>
@@ -476,8 +625,10 @@ export function CallsPage({
           onNavigate={onNavigate}
           onDeleteCall={onDeleteCall}
           folders={callFolders}
+          activeFolder={selectedCallActionFolder}
           folderActionBusy={Boolean(folderBusyId)}
           onAssignToFolder={assignCallToFolder}
+          onRemoveFromFolder={removeCallFromFolder}
           showReports
         />
       </section>

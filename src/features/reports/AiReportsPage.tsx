@@ -1,4 +1,5 @@
 import {
+  Check,
   Download,
   FileBarChart2,
   FileDown,
@@ -466,19 +467,27 @@ function CallReportsSection({
             <p>Здесь показаны только реально созданные экспорты.</p>
           </div>
         </div>
-        <div className="calls-filter-bar">
-          <select value={formatFilter} onChange={(event) => onFormatFilterChange(event.target.value as ReportFormat | "all")}>
+        <div className="calls-filter-bar report-history-filters">
+          <SelectControl
+            aria-label="Формат AI-отчетов"
+            value={formatFilter}
+            onChange={(event) => onFormatFilterChange(event.target.value as ReportFormat | "all")}
+          >
             <option value="all">Все форматы</option>
             {reportFormats.map((item) => (
               <option key={item.format} value={item.format}>{item.label}</option>
             ))}
-          </select>
-          <select value={statusFilter} onChange={(event) => onStatusFilterChange(event.target.value as ReportStatus | "all")}>
+          </SelectControl>
+          <SelectControl
+            aria-label="Статус AI-отчетов"
+            value={statusFilter}
+            onChange={(event) => onStatusFilterChange(event.target.value as ReportStatus | "all")}
+          >
             <option value="all">Все статусы</option>
             <option value="pending">В очереди</option>
             <option value="ready">Готов</option>
             <option value="failed">Ошибка</option>
-          </select>
+          </SelectControl>
         </div>
         <div className="report-placeholder-list">
           {loadingReports ? (
@@ -766,12 +775,16 @@ function DeepAnalysisSection({
               />
             </label>
           </div>
-          <label className="deep-force-toggle">
+          <label className={`deep-force-toggle ${form.force ? "checked" : ""}`}>
             <input
+              className="deep-force-input"
               type="checkbox"
               checked={form.force}
               onChange={(event) => onFormChange({ ...form, force: event.target.checked })}
             />
+            <span className="deep-force-box" aria-hidden="true">
+              {form.force && <Check size={15} />}
+            </span>
             <span>
               <strong>Создать заново и потратить недельный лимит</strong>
               <small>По умолчанию backend вернет существующий non-failed анализ за тот же период.</small>

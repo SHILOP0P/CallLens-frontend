@@ -1,13 +1,14 @@
 import {
   ChevronRight,
   CloudUpload,
+  FolderMinus,
   FolderPlus,
   Headphones,
   PhoneCall,
   Trash2,
   WandSparkles
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import type {
   AnalysisResponse,
@@ -40,8 +41,10 @@ export function CallDetailPanel({
   onNavigate,
   onDeleteCall,
   folders = [],
+  activeFolder,
   folderActionBusy = false,
   onAssignToFolder,
+  onRemoveFromFolder,
   showReports = false
 }: {
   call?: CallResponse;
@@ -55,8 +58,10 @@ export function CallDetailPanel({
   onNavigate: (page: AppPage) => void;
   onDeleteCall?: (callId: string) => Promise<void>;
   folders?: CallFolderResponse[];
+  activeFolder?: CallFolderResponse;
   folderActionBusy?: boolean;
   onAssignToFolder?: (folderId: string, callId: string) => Promise<void>;
+  onRemoveFromFolder?: (folderId: string, callId: string) => Promise<void>;
   showReports?: boolean;
 }) {
   const [showFullTranscript, setShowFullTranscript] = useState(false);
@@ -64,6 +69,7 @@ export function CallDetailPanel({
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
+  const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const score = analysisScore100(analysis);
 
   useEffect(() => {
@@ -72,6 +78,31 @@ export function CallDetailPanel({
     setDeleteError("");
     setFolderMenuOpen(false);
   }, [call?.id]);
+
+  useEffect(() => {
+    if (!folderMenuOpen) return;
+
+    function closeOnOutsideClick(event: PointerEvent) {
+      if (!(event.target instanceof Node)) return;
+      if (!folderMenuRef.current?.contains(event.target)) {
+        setFolderMenuOpen(false);
+      }
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setFolderMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [folderMenuOpen]);
 
   if (loading && !call) {
     return <CallDetailSkeleton />;
@@ -117,19 +148,35 @@ export function CallDetailPanel({
             <CloudUpload size={16} />
             Загрузить звонок
           </button>
-          {onAssignToFolder && (
-            <div className="call-folder-action-menu">
-              <button
-                className="ghost-button small"
-                type="button"
-                disabled={folderActionBusy || folders.length === 0}
-                aria-expanded={folderMenuOpen}
-                onClick={() => setFolderMenuOpen((current) => !current)}
-              >
-                <FolderPlus size={16} />
-                Добавить в папку
-              </button>
-              {folderMenuOpen && (
+          {(onAssignToFolder || (activeFolder && onRemoveFromFolder)) && (
+            <div className="call-folder-action-menu" ref={folderMenuRef}>
+              {activeFolder && onRemoveFromFolder ? (
+                <button
+                  className="ghost-button small"
+                  type="button"
+                  disabled={folderActionBusy}
+                  title={activeFolder.name}
+                  onClick={async () => {
+                    setFolderMenuOpen(false);
+                    await onRemoveFromFolder(activeFolder.id, call.id);
+                  }}
+                >
+                  <FolderMinus size={16} />
+                  Убрать из папки
+                </button>
+              ) : (
+                <button
+                  className="ghost-button small"
+                  type="button"
+                  disabled={folderActionBusy || folders.length === 0}
+                  aria-expanded={folderMenuOpen}
+                  onClick={() => setFolderMenuOpen((current) => !current)}
+                >
+                  <FolderPlus size={16} />
+                  Добавить в папку
+                </button>
+              )}
+              {folderMenuOpen && onAssignToFolder && !activeFolder && (
                 <div className="call-folder-dropdown">
                   {folders.length === 0 ? (
                     <div className="empty-state compact">Сначала создайте папку.</div>
@@ -140,8 +187,8 @@ export function CallDetailPanel({
                         type="button"
                         disabled={folderActionBusy}
                         onClick={async () => {
-                          await onAssignToFolder(folder.id, call.id);
                           setFolderMenuOpen(false);
+                          await onAssignToFolder(folder.id, call.id);
                         }}
                       >
                         <span

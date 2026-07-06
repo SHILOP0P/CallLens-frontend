@@ -67,8 +67,8 @@ export function OverviewPage() {
         <MetricCard icon={<BarChart3 size={20} />} title="Всего звонков" value={metricCount(analyticsOverview?.calls_total)} points={chartSeries.totalCalls} note="загружено за период" />
         <MetricCard icon={<Phone size={20} />} title="Новые" value={metricCount(analyticsOverview?.calls_new)} note="ожидают обработки" />
         <MetricCard icon={<Activity size={20} />} title="В обработке" value={metricCount(analyticsOverview?.calls_processing)} note={`${analyticsOverview?.calls_failed ?? 0} ошибок`} />
-        <MetricCard icon={<FileText size={20} />} title="Расшифрованы" value={metricCount(analyticsOverview?.calls_transcribed)} note="готовы к AI-анализу" />
-        <MetricCard icon={<CheckCircle2 size={20} />} title="С анализом" value={metricCount(analyticsOverview?.calls_analyzed)} tone="success" points={chartSeries.analyzedCalls} note="готовый AI-результат" />
+        <MetricCard icon={<FileText size={20} />} title="Расшифрованы" value={metricCount(analyticsOverview?.calls_transcribed)} note="готовы к анализу" />
+        <MetricCard icon={<CheckCircle2 size={20} />} title="С анализом" value={metricCount(analyticsOverview?.calls_analyzed)} tone="success" points={chartSeries.analyzedCalls} note="готовый результат анализа" />
         <MetricCard icon={<Clock3 size={20} />} title="Средняя длительность" value={avgDuration} points={chartSeries.duration} />
         <MetricCard icon={<TriangleAlert size={20} />} title="Риски" value={riskValue === null ? "Нет данных" : riskValue.toString()} tone="warning" points={chartSeries.risks} />
         <MetricCard
@@ -80,7 +80,7 @@ export function OverviewPage() {
           donutPercent={qualityDonutPercent}
           donutLabel={qualityDonutLabel}
         />
-        <MetricCard icon={<FileText size={20} />} title="Рекомендации" value={recommendationValue === null ? "Нет данных" : recommendationValue.toString()} note="по результатам AI" />
+        <MetricCard icon={<FileText size={20} />} title="Рекомендации" value={recommendationValue === null ? "Нет данных" : recommendationValue.toString()} note="по результатам анализа" />
         <MetricCard icon={<TriangleAlert size={20} />} title="Ошибки" value={metricCount(analyticsOverview?.calls_failed)} tone="warning" note="требуют внимания" />
       </div>
 
@@ -109,7 +109,7 @@ function AnalyticsOverviewInsights({ overview }: { overview: AnalyticsOverviewRe
 
   return (
     <div className="analytics-insight-grid">
-      <InsightCard title="Распределение оценок" note="score 0..100">
+      <InsightCard title="Распределение оценок" note="шкала 0-100">
         {distributionRows.length === 0 ? (
           <p className="analysis-empty">Нет данных по распределению.</p>
         ) : (
@@ -125,15 +125,15 @@ function AnalyticsOverviewInsights({ overview }: { overview: AnalyticsOverviewRe
         )}
       </InsightCard>
 
-      <InsightCard title="Слабые критерии" note="по пропускам и частичным выполнением">
+      <InsightCard title="Слабые критерии" note="по пропущенным и частичным критериям">
         {weakCriteria.length === 0 ? (
           <p className="analysis-empty">Слабые критерии не найдены.</p>
         ) : (
           <div className="analytics-list">
-            {weakCriteria.slice(0, 5).map((item) => (
+            {weakCriteria.slice(0, 5).map((item, index) => (
               <div className="analytics-list-row" key={item.code}>
                 <div>
-                  <strong>{item.title || item.code}</strong>
+                  <strong>{item.title || `Критерий ${index + 1}`}</strong>
                   <small>
                     {item.missed_count} пропущено · {item.partially_met_count} частично
                   </small>
@@ -145,15 +145,15 @@ function AnalyticsOverviewInsights({ overview }: { overview: AnalyticsOverviewRe
         )}
       </InsightCard>
 
-      <InsightCard title="Критерии" note="not applicable учитывается отдельно">
+      <InsightCard title="Критерии" note="«Не применимо» считается отдельно">
         {criteriaSummary.length === 0 ? (
           <p className="analysis-empty">Сводка критериев пока пустая.</p>
         ) : (
           <div className="analytics-list">
-            {criteriaSummary.slice(0, 6).map((item) => (
+            {criteriaSummary.slice(0, 6).map((item, index) => (
               <div className="analytics-list-row criteria" key={item.code}>
                 <div>
-                  <strong>{item.title || item.code}</strong>
+                  <strong>{item.title || `Критерий ${index + 1}`}</strong>
                   <small>
                     {item.met} выполнено · {item.partially_met} частично · {item.missed} пропущено ·{" "}
                     {item.not_applicable} не применимо
@@ -166,19 +166,19 @@ function AnalyticsOverviewInsights({ overview }: { overview: AnalyticsOverviewRe
         )}
       </InsightCard>
 
-      <InsightCard title="Коды проблем" note="частые issue_codes">
+      <InsightCard title="Коды проблем" note="частые коды проблем">
         {issueCodes.length === 0 ? (
           <p className="analysis-empty">Коды проблем не указаны.</p>
         ) : (
           <div className="topic-list analytics-topic-list">
-            {issueCodes.slice(0, 10).map((item) => (
-              <span key={item.code}>{item.code} · {item.count}</span>
+            {issueCodes.slice(0, 10).map((item, index) => (
+              <span key={item.code}>{issueCodeLabel(item.code, index)} · {item.count}</span>
             ))}
           </div>
         )}
       </InsightCard>
 
-      <InsightCard title="Темы" note="top_topics">
+      <InsightCard title="Темы" note="самые частые темы">
         {topics.length === 0 ? (
           <p className="analysis-empty">Темы пока не найдены.</p>
         ) : (
@@ -190,14 +190,14 @@ function AnalyticsOverviewInsights({ overview }: { overview: AnalyticsOverviewRe
         )}
       </InsightCard>
 
-      <InsightCard title="Итоги звонков" note="business_outcome">
+      <InsightCard title="Итоги звонков" note="бизнес-результат разговора">
         {outcomes.length === 0 ? (
           <p className="analysis-empty">Итоги звонков не указаны.</p>
         ) : (
           <div className="analytics-list compact">
             {outcomes.slice(0, 6).map((item) => (
               <div className="analytics-list-row" key={item.status}>
-                <strong>{enumLabel(item.status, businessOutcomeLabels) ?? item.status}</strong>
+                <strong>{enumLabel(item.status, businessOutcomeLabels) ?? "Неясный итог"}</strong>
                 <span>{item.count}</span>
               </div>
             ))}
@@ -270,19 +270,25 @@ function MetricCard({
   donutPercent?: number;
   donutLabel?: string;
 }) {
+  const hasDonut = typeof donutPercent === "number";
+
   return (
-    <article className={`dashboard-kpi-card glass-panel ${tone}`}>
+    <article className={`dashboard-kpi-card glass-panel ${tone} ${hasDonut ? "with-donut" : ""}`}>
       <div>
         <span className="metric-icon">{icon}</span>
         <span>{title}</span>
       </div>
-      <strong>{value}</strong>
-      {typeof donutPercent === "number" ? (
+      {hasDonut ? (
         <QualityDonut percent={donutPercent} label={donutLabel ?? value} />
-      ) : points && points.length > 0 ? (
-        <MiniSparkline points={points} tone={tone} />
       ) : (
-        <span className="dashboard-kpi-note">{note ?? "нет динамики"}</span>
+        <>
+          <strong>{value}</strong>
+          {points && points.length > 0 ? (
+            <MiniSparkline points={points} tone={tone} />
+          ) : (
+            <span className="dashboard-kpi-note">{note ?? "нет динамики"}</span>
+          )}
+        </>
       )}
     </article>
   );
@@ -364,10 +370,12 @@ function QualityDonut({ percent, label }: { percent: number; label: string; }) {
   const [active, setActive] = useState(false);
   const clamped = Math.max(0, Math.min(100, percent));
   const drawProgress = useDrawProgress(`${clamped}:${label}`, 1600);
+  const drawnPercent = clamped * drawProgress;
   const percentLabel = `${Math.round(clamped)}%`;
   return (
     <span
       className={`quality-donut-wrap ${active ? "active" : ""}`}
+      style={{ "--quality-donut-percent": `${drawnPercent}%` } as React.CSSProperties}
       tabIndex={0}
       aria-label={`Заполнение диаграммы: ${percentLabel}`}
       onBlur={() => setActive(false)}
@@ -375,26 +383,32 @@ function QualityDonut({ percent, label }: { percent: number; label: string; }) {
       onMouseEnter={() => setActive(true)}
       onMouseLeave={() => setActive(false)}
     >
-      <svg className="quality-donut" viewBox="0 0 72 72" role="img" aria-label="Круговая диаграмма оценки качества">
-        <circle className="quality-donut-backdrop" cx="36" cy="36" r="32" />
-        <circle className="quality-donut-track" cx="36" cy="36" r="27" />
-        <circle
-          className="quality-donut-value"
-          cx="36"
-          cy="36"
-          r="27"
-          pathLength="100"
-          strokeDasharray="100 100"
-          strokeDashoffset={100 - clamped * drawProgress}
-        />
-        <circle className="quality-donut-core" cx="36" cy="36" r="18" />
-      </svg>
+      <span className="quality-donut" role="img" aria-label="Круговая диаграмма оценки качества">
+        <span className="quality-donut-core">
+          <span>{label}</span>
+        </span>
+      </span>
       <span className="chart-tooltip donut-tooltip">
         <strong>{percentLabel}</strong>
         <span>заполнение диаграммы</span>
       </span>
     </span>
   );
+}
+
+const issueCodeLabels: Record<string, string> = {
+  weak_next_step: "Слабый следующий шаг",
+  no_needs_discovery: "Потребность не выявлена",
+  low_confidence: "Низкая уверенность",
+  not_a_call: "Не звонок",
+  unclear_pricing: "Неясная цена",
+  price_risk: "Риск по цене",
+  "price-risk": "Риск по цене",
+  late_followup: "Поздний следующий контакт"
+};
+
+function issueCodeLabel(code: string, index: number) {
+  return issueCodeLabels[code] ?? `Код проблемы ${index + 1}`;
 }
 
 function useDrawProgress(key: string, durationMs: number) {
@@ -483,7 +497,7 @@ function analyzedChartPoints(points: Array<{ date: string; count: number }> | un
     label: chartDateLabel(point.date),
     value: point.count,
     display: `${point.count} ${pluralizeCalls(point.count)}`,
-    detail: `${chartDateLabel(point.date)} · получили AI-анализ`
+    detail: `${chartDateLabel(point.date)} · получили анализ`
   }));
 }
 

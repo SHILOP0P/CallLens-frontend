@@ -2,6 +2,7 @@ import {
   Activity,
   BarChart3,
   BrainCircuit,
+  Building2,
   FileBarChart2,
   LayoutDashboard,
   CloudUpload,
@@ -69,6 +70,7 @@ export const sidebarItems: Array<{ page: AppPage; label: string; icon: React.Rea
   { page: "analysis", label: "Аналитика", icon: <BarChart3 size={19} /> },
   { page: "reports", label: "AI-отчеты", icon: <FileBarChart2 size={19} /> },
   { page: "monitoring", label: "Мониторинг", icon: <Activity size={19} /> },
+  { page: "settingsCompanies", label: "Компании", icon: <Building2 size={19} /> },
   { page: "settings", label: "Настройки", icon: <Settings size={19} /> }
 ];
 

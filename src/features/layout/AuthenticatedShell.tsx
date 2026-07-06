@@ -78,7 +78,7 @@ export function AuthenticatedShell({
   const searchPopoverRef = useRef<HTMLLabelElement>(null);
   const notificationPopoverRef = useRef<HTMLDivElement>(null);
   const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
-  const activeSidebarPage = isSettingsPage(activePage) ? "settings" : activePage;
+  const activeSidebarPage = activePage === "settingsCompanies" ? "settingsCompanies" : isSettingsPage(activePage) ? "settings" : activePage;
   const fullName = `${session.user.full_name} ${session.user.full_surname}`.trim();
   const avatarInitial = profileInitial(session.user.full_surname || session.user.full_name || session.user.username);
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
@@ -348,7 +348,6 @@ export function AuthenticatedShell({
                           setSelectedCompanyId(company.id);
                           setTeamOpen(false);
                           persistPreferences({ active_company_uuid: company.id });
-                          onOpenCompany(company.id);
                         }}
                       >
                         <span>
