@@ -135,6 +135,9 @@ export function analysisV2Result(analysis?: AnalysisResponse): AnalysisV2Result 
   const questionCoverage = recordField(record, "question_coverage");
   const managerQuality = recordField(record, "manager_quality");
   const scoreBreakdown = recordField(record, "score_breakdown");
+  const pointsAwarded = numberValue(scoreBreakdown?.points_awarded) ?? 0;
+  const pointsPossible = numberValue(scoreBreakdown?.points_possible) ?? 0;
+  const scoreFromBreakdown = pointsPossible > 0 ? Math.round((pointsAwarded / pointsPossible) * 100) : null;
   const nextStepQuality = recordField(record, "next_step_quality");
   const businessOutcome = recordField(record, "business_outcome");
   const customerSignals = recordField(record, "customer_signals");
@@ -161,12 +164,12 @@ export function analysisV2Result(analysis?: AnalysisResponse): AnalysisV2Result 
       recommendations: stringList(managerQuality?.recommendations)
     },
     call_outcome: stringValue(record.call_outcome) ?? "",
-    score: numberValue(record.score) ?? 0,
+    score: numberValue(record.score) ?? scoreFromBreakdown ?? 0,
     score_scale: scoreScale ?? 100,
     score_breakdown: {
-      points_awarded: numberValue(scoreBreakdown?.points_awarded) ?? 0,
-      points_possible: numberValue(scoreBreakdown?.points_possible) ?? 0,
-      applicable_criteria_count: numberValue(scoreBreakdown?.applicable_criteria_count) ?? 0,
+      points_awarded: pointsAwarded,
+      points_possible: pointsPossible,
+      applicable_criteria_count: numberValue(scoreBreakdown?.applicable_criteria_count) ?? criteria.length,
       total_criteria_count: numberValue(scoreBreakdown?.total_criteria_count) ?? criteria.length
     },
     criteria_results: criteria,
@@ -393,10 +396,13 @@ function criteriaResultList(value: unknown): AnalysisV2CriteriaResult[] {
   return value.flatMap((item) => {
     if (!isPlainRecord(item)) return [];
 
+    const status = stringValue(item.status) ?? "unclear";
+    if (status === "not_applicable") return [];
+
     const result = {
       code: stringValue(item.code) ?? "",
       title: stringValue(item.title) ?? stringValue(item.code) ?? "Критерий",
-      status: stringValue(item.status) ?? "unclear",
+      status,
       points_awarded: numberValue(item.points_awarded) ?? 0,
       points_max: numberValue(item.points_max) ?? 0,
       evidence_quotes: stringList(item.evidence_quotes),
@@ -427,7 +433,7 @@ function finiteNumber(value: unknown) {
 }
 
 function booleanValue(value: unknown) {
-  return typeof value === "boolean" ? value : false;
+  return typeof value === "boolean" ? value : null;
 }
 
 function clampPercent(value: number) {

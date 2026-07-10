@@ -19,9 +19,9 @@ import type {
 } from "../../types";
 
 import { isAnalysisDone } from "../../shared/lib/analysis";
-import { statusMeta } from "../../shared/lib/call-status";
 import { AnalysisStructuredView } from "../../shared/ui/analysis";
-import { StatusTimeline } from "../../shared/ui/call";
+import { StatusChip, StatusTimeline } from "../../shared/ui/call";
+import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { AnalysisResultSkeleton, CallListSkeleton } from "../../shared/ui/loading";
 import { availableInstructionsForCall, contextInstructionCaption, InstructionMiniList } from "../instructions/instruction-components";
 import { ReportExportPanel } from "../reports/ReportExportPanel";
@@ -63,14 +63,17 @@ export function AnalysisPage({
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const analysis = selectedCall ? analyses[selectedCall.id] : undefined;
+  const resultState = analysisResultState(selectedCall, analysis);
   const availableInstructions = selectedCall
     ? availableInstructionsForCall(instructions, selectedCall)
     : [];
 
   useEffect(() => {
     setShowFullAnalysis(false);
+    setDeleteConfirmOpen(false);
   }, [selectedCall?.id]);
 
   async function runAnalysis() {
@@ -90,13 +93,11 @@ export function AnalysisPage({
   async function deleteSelectedCall() {
     if (!selectedCall || deleting) return;
 
-    const confirmed = window.confirm(`Удалить звонок "${selectedCall.title}"? Это действие нельзя отменить.`);
-    if (!confirmed) return;
-
     setDeleteError("");
     setDeleting(true);
     try {
       await onDeleteCall(selectedCall.id);
+      setDeleteConfirmOpen(false);
     } catch (deleteCallError) {
       setDeleteError(deleteCallError instanceof Error ? deleteCallError.message : "Не удалось удалить звонок");
     } finally {
@@ -129,7 +130,7 @@ export function AnalysisPage({
                 </span>
                 <span>
                   <strong>{call.title}</strong>
-                  <small>{statusMeta[call.status].chip}</small>
+                  <StatusChip status={call.status} analysisStatus={analyses[call.id]?.status} />
                 </span>
               </button>
             ))
@@ -147,7 +148,7 @@ export function AnalysisPage({
               <WandSparkles size={18} />
               {busy ? "Анализирую..." : "Запустить анализ"}
             </button>
-            <button className="ghost-button danger-button" onClick={deleteSelectedCall} disabled={!selectedCall || deleting}>
+            <button className="ghost-button danger-button" onClick={() => setDeleteConfirmOpen(true)} disabled={!selectedCall || deleting}>
               <Trash2 size={18} />
               {deleting ? "Удаляю..." : "Удалить"}
             </button>
@@ -156,20 +157,26 @@ export function AnalysisPage({
         {error && <div className="form-error">{error}</div>}
         {deleteError && <div className="form-error">{deleteError}</div>}
         {selectedCall && (
-          <StatusTimeline current={selectedCall.status} statuses={selectedCallTimeline} />
+          <StatusTimeline current={selectedCall.status} statuses={selectedCallTimeline} analysisStatus={analysis?.status} />
         )}
         {selectedCall && <ReportExportPanel call={selectedCall} analysis={analysis} />}
         <div className="analysis-content-grid">
           <div className="info-card report-panel analysis-result-panel">
             <div className="card-title">
               <h3>Результат</h3>
-              <span className="status-chip ok">{isAnalysisDone(analysis) ? "Готово" : "Нет анализа"}</span>
+              <span className={`status-chip ${resultState.tone} ${resultState.thinking ? "thinking-status" : ""}`}>
+                {resultState.label}
+              </span>
             </div>
             {loadingDetails || (loading && !selectedCall) ? (
               <AnalysisResultSkeleton />
             ) : !isAnalysisDone(analysis) ? (
               <div className="empty-state compact analysis-result-empty">
-                {selectedCall ? "Для этого звонка еще нет готового AI-анализа." : "Выберите звонок, чтобы увидеть результат анализа."}
+                {resultState.thinking
+                  ? "Производится анализ транскрипции. Результат появится после завершения обработки."
+                  : selectedCall
+                    ? "Для этого звонка еще нет готового AI-анализа."
+                    : "Выберите звонок, чтобы увидеть результат анализа."}
               </div>
             ) : (
               <div className="analysis-user-summary">
@@ -203,6 +210,43 @@ export function AnalysisPage({
           </div>
         </div>
       </section>
+      {selectedCall && (
+        <ConfirmDialog
+          open={deleteConfirmOpen}
+          variant="danger"
+          title="Удалить звонок?"
+          message={`Звонок «${selectedCall.title}» будет удален без возможности восстановления.`}
+          confirmLabel="Удалить"
+          busy={deleting}
+          onCancel={() => {
+            if (!deleting) setDeleteConfirmOpen(false);
+          }}
+          onConfirm={() => void deleteSelectedCall()}
+        />
+      )}
     </section>
   );
+}
+
+function analysisResultState(
+  call: CallResponse | undefined,
+  analysis: AnalysisResponse | undefined
+): {
+  label: string;
+  tone: "ok" | "warn" | "bad";
+  thinking?: boolean;
+} {
+  if (isAnalysisDone(analysis) || call?.status === "analyzed") {
+    return { label: "Готово", tone: "ok" };
+  }
+
+  if (analysis?.status === "failed" || call?.status === "failed") {
+    return { label: "Ошибка анализа", tone: "bad" };
+  }
+
+  if (call?.status === "transcribed" || analysis?.status === "pending" || analysis?.status === "processing") {
+    return { label: "Производится анализ транскрипции", tone: "warn", thinking: true };
+  }
+
+  return { label: "Ожидает", tone: "warn" };
 }

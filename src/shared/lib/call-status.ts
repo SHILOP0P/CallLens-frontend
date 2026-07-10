@@ -1,4 +1,5 @@
 import type {
+AnalysisResponse,
 CallStatus,
 CallStatusEvent
 } from "../../types";
@@ -20,6 +21,8 @@ export const statusMeta: Record<
 
 export const normalTimelineSteps: CallStatus[] = ["new", "processing", "transcribed", "analyzed"];
 
+type AnalysisStatus = AnalysisResponse["status"] | undefined;
+
 export function isCallStatus(value: unknown): value is CallStatus {
   return typeof value === "string" && value in statusMeta;
 }
@@ -40,6 +43,24 @@ export function nextTimelineStatuses(previous: CallStatus[], status: CallStatus)
   }
 
   return timelineFromStatus(status);
+}
+
+export function callStatusChip(status: CallStatus, analysisStatus?: AnalysisStatus) {
+  if (status === "failed") return statusMeta.failed.chip;
+  if (status === "transcribed" && analysisStatus !== "done") return "В обработке";
+  return statusMeta[status].chip;
+}
+
+export function callStatusTone(status: CallStatus, analysisStatus?: AnalysisStatus) {
+  if (status === "failed" || analysisStatus === "failed") return "bad";
+  if (status === "processing" || (status === "transcribed" && analysisStatus !== "done")) return "warn";
+  return "ok";
+}
+
+export function activeCallProcess(status: CallStatus, analysisStatus?: AnalysisStatus) {
+  if (status === "processing") return "transcription";
+  if (status === "transcribed" && analysisStatus !== "done" && analysisStatus !== "failed") return "analysis";
+  return null;
 }
 
 export function parseCallStatusEvent(event: Event): CallStatusEvent | null {

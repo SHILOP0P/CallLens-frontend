@@ -600,6 +600,12 @@ function App() {
     });
   }
 
+  async function updateCallTitle(callId: string, title: string) {
+    const updatedCall = await api.updateCallTitle(callId, title);
+    setCalls((current) => current.map((call) => (call.id === callId ? updatedCall : call)));
+    return updatedCall;
+  }
+
   if (!authReady) {
     return (
       <main className="landing preflight-screen" aria-label="Проверка сессии">
@@ -664,6 +670,7 @@ function App() {
           session={session}
           onSelectCall={selectCall}
           onNavigate={navigate}
+          onUpdateCallTitle={updateCallTitle}
           onDeleteCall={deleteCall}
           loading={loadingWorkspace}
           loadingDetails={selectedCallDetailsLoading}

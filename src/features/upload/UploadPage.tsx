@@ -14,6 +14,7 @@ import { api } from "../../api";
 import type {
   AnalysisInstruction,
   AppPage,
+  CallFolderResponse,
   CallResponse,
   CompanyResponse,
   DepartmentMemberResponse,
@@ -53,6 +54,10 @@ export function UploadPage({
   const [departmentId, setDepartmentId] = useState(
     departments.find((department) => department.company_uuid === companies[0]?.id)?.id ?? ""
   );
+  const [callFolders, setCallFolders] = useState<CallFolderResponse[]>([]);
+  const [folderId, setFolderId] = useState("");
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [folderError, setFolderError] = useState("");
   const [selectedInstructionIds, setSelectedInstructionIds] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -137,6 +142,42 @@ export function UploadPage({
     });
   }, [availableInstructionKey]);
 
+  useEffect(() => {
+    const filters = folderFiltersForUpload(scope, companyId, departmentId);
+    if (!filters) {
+      setCallFolders([]);
+      setFolderId("");
+      setFoldersLoading(false);
+      setFolderError("");
+      return;
+    }
+
+    let cancelled = false;
+    setFoldersLoading(true);
+    setFolderError("");
+
+    api
+      .listCallFolders({ ...filters, limit: 100, offset: 0 })
+      .then((response) => {
+        if (cancelled) return;
+        setCallFolders(response.items);
+        setFolderId((current) => response.items.some((folder) => folder.id === current) ? current : "");
+      })
+      .catch((loadError) => {
+        if (cancelled) return;
+        setCallFolders([]);
+        setFolderId("");
+        setFolderError(loadError instanceof Error ? loadError.message : "Не удалось загрузить папки.");
+      })
+      .finally(() => {
+        if (!cancelled) setFoldersLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [companyId, departmentId, scope]);
+
   function toggleInstruction(instructionId: string) {
     setSelectedInstructionIds((current) =>
       current.includes(instructionId)
@@ -180,6 +221,9 @@ export function UploadPage({
     setBusy(true);
     try {
       const created = await api.createCall(payload);
+      if (folderId) {
+        await api.assignCallToFolder(folderId, created.id);
+      }
       onUploaded(created);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Не удалось загрузить звонок");
@@ -275,6 +319,30 @@ export function UploadPage({
             )}
           </div>
         )}
+        <div className="upload-folder-field">
+          <span className="field-title">Папка</span>
+          <SelectControl
+            aria-label="Папка для звонка"
+            value={folderId}
+            disabled={foldersLoading}
+            onChange={(event) => setFolderId(event.target.value)}
+          >
+            <option value="">Без папки</option>
+            {callFolders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.name}
+              </option>
+            ))}
+          </SelectControl>
+          <small>
+            {foldersLoading
+              ? "Загружаю папки..."
+              : callFolders.length > 0
+                ? "Можно сразу положить звонок в папку выбранной области."
+                : "Для выбранной области пока нет папок."}
+          </small>
+          {folderError && <div className="form-error compact">{folderError}</div>}
+        </div>
         <div className="context-note">
           <CircleAlert size={18} />
           <span>
@@ -322,4 +390,22 @@ export function UploadPage({
 
     </section>
   );
+}
+
+function folderFiltersForUpload(
+  scope: VisibilityScope,
+  companyId: string,
+  departmentId: string
+) {
+  if (scope === "personal") {
+    return { scope };
+  }
+
+  if (scope === "company") {
+    return companyId ? { scope, company_uuid: companyId } : null;
+  }
+
+  return companyId && departmentId
+    ? { scope, company_uuid: companyId, department_uuid: departmentId }
+    : null;
 }

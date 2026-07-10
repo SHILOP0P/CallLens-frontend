@@ -3,7 +3,7 @@ import {
   ChevronDown,
   ChevronRight,
   CloudUpload,
-  Folder,
+  MoreHorizontal,
   MoreVertical,
   Pencil,
   Play,
@@ -31,6 +31,7 @@ import type {
 
 import { formatDate, formatDuration } from "../../shared/lib/formatters";
 import { StatusChip } from "../../shared/ui/call";
+import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { CallListSkeleton } from "../../shared/ui/loading";
 import { SelectControl } from "../../shared/ui/primitives";
 import { CallDetailPanel } from "./CallDetailPanel";
@@ -49,6 +50,7 @@ export function CallsPage({
   loadingDetails,
   onSelectCall,
   onNavigate,
+  onUpdateCallTitle,
   onDeleteCall
 }: {
   calls: CallResponse[];
@@ -64,6 +66,7 @@ export function CallsPage({
   loadingDetails: boolean;
   onSelectCall: (callId: string) => void;
   onNavigate: (page: AppPage) => void;
+  onUpdateCallTitle?: (callId: string, title: string) => Promise<CallResponse>;
   onDeleteCall?: (callId: string) => Promise<void>;
 }) {
   const [statusFilter, setStatusFilter] = useState<CallStatus | "all">("all");
@@ -86,6 +89,13 @@ export function CallsPage({
   const [folderCallsLoading, setFolderCallsLoading] = useState(false);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Record<string, boolean>>({});
   const [folderForm, setFolderForm] = useState<FolderFormState>(() => emptyFolderForm());
+  const [openFolderMenuId, setOpenFolderMenuId] = useState("");
+  const [openCallMenuId, setOpenCallMenuId] = useState("");
+  const [editingCall, setEditingCall] = useState<CallResponse | null>(null);
+  const [callTitleDraft, setCallTitleDraft] = useState("");
+  const [callActionError, setCallActionError] = useState("");
+  const [callBusyId, setCallBusyId] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const effectiveScopeFilter =
     companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
       ? "all"
@@ -229,9 +239,6 @@ export function CallsPage({
   }
 
   async function deleteFolder(folder: CallFolderResponse) {
-    const confirmed = window.confirm(`Удалить папку "${folder.name}"? Звонки не будут удалены.`);
-    if (!confirmed) return;
-
     setFolderError("");
     setFolderBusyId(folder.id);
     try {
@@ -244,6 +251,12 @@ export function CallsPage({
     } finally {
       setFolderBusyId("");
     }
+  }
+
+  function requestFolderDelete(folder: CallFolderResponse) {
+    setOpenFolderMenuId("");
+    setFolderError("");
+    setPendingDelete({ type: "folder", folder });
   }
 
   async function assignCallToFolder(folderId: string, callId: string) {
@@ -296,6 +309,127 @@ export function CallsPage({
       setFolderBusyId("");
     }
   }
+
+  function toggleCallMenu(callId: string) {
+    setCallActionError("");
+    setOpenFolderMenuId("");
+    setOpenCallMenuId((current) => (current === callId ? "" : callId));
+  }
+
+  function toggleFolderMenu(folderId: string) {
+    setFolderError("");
+    setOpenCallMenuId("");
+    setOpenFolderMenuId((current) => (current === folderId ? "" : folderId));
+  }
+
+  function startCallRename(call: CallResponse) {
+    setOpenCallMenuId("");
+    setCallActionError("");
+    setEditingCall(call);
+    setCallTitleDraft(call.title);
+  }
+
+  function cancelCallRename() {
+    setEditingCall(null);
+    setCallTitleDraft("");
+    setCallActionError("");
+  }
+
+  function patchCallInLocalLists(updatedCall: CallResponse) {
+    setServerCalls((current) =>
+      current ? current.map((call) => (call.id === updatedCall.id ? updatedCall : call)) : current
+    );
+    setFolderCallsById((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([folderId, folderCalls]) => [
+          folderId,
+          folderCalls.map((call) => (call.id === updatedCall.id ? updatedCall : call))
+        ])
+      )
+    );
+  }
+
+  async function submitCallRename() {
+    if (!editingCall || !onUpdateCallTitle) return;
+
+    const title = callTitleDraft.trim();
+    if (!title) {
+      setCallActionError("Введите название звонка.");
+      return;
+    }
+
+    setCallActionError("");
+    setCallBusyId(editingCall.id);
+    try {
+      const updatedCall = await onUpdateCallTitle(editingCall.id, title);
+      patchCallInLocalLists(updatedCall);
+      cancelCallRename();
+    } catch (error) {
+      setCallActionError(friendlyCallActionError(error, "Не удалось переименовать звонок."));
+    } finally {
+      setCallBusyId("");
+    }
+  }
+
+  async function deleteCallFromMenu(call: CallResponse) {
+    if (!onDeleteCall) return;
+
+    setOpenCallMenuId("");
+    setCallActionError("");
+    setCallBusyId(call.id);
+    try {
+      await onDeleteCall(call.id);
+      setServerCalls((current) => (current ? current.filter((item) => item.id !== call.id) : current));
+      setFolderCallsById((current) =>
+        Object.fromEntries(
+          Object.entries(current).map(([folderId, folderCalls]) => [
+            folderId,
+            folderCalls.filter((item) => item.id !== call.id)
+          ])
+        )
+      );
+    } catch (error) {
+      setCallActionError(friendlyCallActionError(error, "Не удалось удалить звонок."));
+    } finally {
+      setCallBusyId("");
+    }
+  }
+
+  function requestCallDelete(call: CallResponse) {
+    setOpenCallMenuId("");
+    setCallActionError("");
+    setPendingDelete({ type: "call", call });
+  }
+
+  async function confirmPendingDelete() {
+    if (!pendingDelete) return;
+
+    if (pendingDelete.type === "folder") {
+      await deleteFolder(pendingDelete.folder);
+    } else {
+      await deleteCallFromMenu(pendingDelete.call);
+    }
+    setPendingDelete(null);
+  }
+
+  useEffect(() => {
+    if (!openCallMenuId && !openFolderMenuId) return;
+
+    const closeMenu = () => {
+      setOpenCallMenuId("");
+      setOpenFolderMenuId("");
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    document.addEventListener("pointerdown", closeMenu);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeMenu);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [openCallMenuId, openFolderMenuId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -421,6 +555,97 @@ export function CallsPage({
     };
   }, [hasBackendFilters, searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter, selectedFolderId]);
 
+  function renderSidebarCallRow(call: CallResponse, folderId?: string) {
+    const selected = selectedCallId === call.id;
+    const open = openCallMenuId === call.id;
+    const selectCallFromRow = () => {
+      if (folderId) {
+        selectFolderCall(call.id, folderId);
+      } else {
+        selectUnfiledCall(call.id);
+      }
+    };
+
+    return (
+      <div
+        key={folderId ? `${folderId}-${call.id}` : call.id}
+        className={`call-row ${selected ? "selected" : ""} ${open ? "menu-open" : ""}`}
+        role="button"
+        tabIndex={0}
+        onClick={selectCallFromRow}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          selectCallFromRow();
+        }}
+      >
+        <span className="play-dot">
+          <Play size={14} fill="currentColor" />
+        </span>
+        <span className="call-row-main">
+          <StatusChip status={call.status} analysisStatus={selected ? analysis?.status : undefined} />
+          <strong>{call.title}</strong>
+          <small>
+            {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)}
+          </small>
+        </span>
+        <span
+          className="call-row-actions"
+          onClick={(event) => event.stopPropagation()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <button
+            className="icon-button call-row-menu-trigger"
+            type="button"
+            aria-label="Действия со звонком"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            disabled={callBusyId === call.id}
+            onClick={() => toggleCallMenu(call.id)}
+          >
+            <MoreVertical size={16} />
+          </button>
+          {open && (
+            <span className="call-row-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => startCallRename(call)}>
+                <Pencil size={15} />
+                Переименовать
+              </button>
+              <button
+                className="danger"
+                type="button"
+                role="menuitem"
+                disabled={!onDeleteCall || callBusyId === call.id}
+                onClick={() => requestCallDelete(call)}
+              >
+                <Trash2 size={15} />
+                Удалить
+              </button>
+            </span>
+          )}
+        </span>
+      </div>
+    );
+  }
+
+  const pendingDeleteCopy = pendingDelete
+    ? pendingDelete.type === "folder"
+      ? {
+        title: "Удалить папку?",
+        message: `Папка «${pendingDelete.folder.name}» будет удалена. Звонки останутся в системе и не будут удалены.`
+      }
+      : {
+        title: "Удалить звонок?",
+        message: `Звонок «${pendingDelete.call.title}» будет удален без возможности восстановления.`
+      }
+    : null;
+  const pendingDeleteBusy = pendingDelete
+    ? pendingDelete.type === "folder"
+      ? folderBusyId === pendingDelete.folder.id
+      : callBusyId === pendingDelete.call.id
+    : false;
+
   return (
     <section className="calls-layout">
       <aside className="calls-sidebar glass">
@@ -475,7 +700,7 @@ export function CallsPage({
             onChange={(event) => setSearchQuery(event.target.value)}
           />
         </div>
-        <div className="segmented compact">
+        <div className="call-scope-tabs segmented scope">
           {scopeOptions.map(([value, label]) => (
             <button
               key={value}
@@ -502,6 +727,7 @@ export function CallsPage({
             </button>
           </div>
           {folderError && <div className="form-error compact">{folderError}</div>}
+          {callActionError && !editingCall && <div className="form-error compact">{callActionError}</div>}
           <div className="call-folder-tree">
             {visibleFolders.map((folder) => {
               const expanded = Boolean(expandedFolderIds[folder.id]);
@@ -527,24 +753,41 @@ export function CallsPage({
                         <small>{folderScopeLabel(folder)} · {folder.calls_count} звонков</small>
                       </span>
                     </button>
-                    <div className="call-folder-actions">
+                    <div
+                      className="call-folder-actions"
+                      onClick={(event) => event.stopPropagation()}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => event.stopPropagation()}
+                    >
                       <button
-                        className="icon-button"
+                        className="icon-button call-folder-menu-trigger"
                         type="button"
-                        aria-label="Редактировать папку"
-                        onClick={() => startFolderEdit(folder)}
-                      >
-                        <Pencil size={15} />
-                      </button>
-                      <button
-                        className="icon-button danger"
-                        type="button"
-                        aria-label="Удалить папку"
+                        aria-label="Действия с папкой"
+                        aria-haspopup="menu"
+                        aria-expanded={openFolderMenuId === folder.id}
                         disabled={folderBusyId === folder.id}
-                        onClick={() => deleteFolder(folder)}
+                        onClick={() => toggleFolderMenu(folder.id)}
                       >
-                        <Trash2 size={15} />
+                        <MoreHorizontal size={17} />
                       </button>
+                      {openFolderMenuId === folder.id && (
+                        <span className="call-row-menu call-folder-menu" role="menu">
+                          <button type="button" role="menuitem" onClick={() => startFolderEdit(folder)}>
+                            <Pencil size={15} />
+                            Переименовать
+                          </button>
+                          <button
+                            className="danger"
+                            type="button"
+                            role="menuitem"
+                            disabled={folderBusyId === folder.id}
+                            onClick={() => requestFolderDelete(folder)}
+                          >
+                            <Trash2 size={15} />
+                            Удалить
+                          </button>
+                        </span>
+                      )}
                     </div>
                   </div>
                   {expanded && (
@@ -554,20 +797,7 @@ export function CallsPage({
                       ) : folderCalls.length === 0 ? (
                         <div className="call-folder-child-empty">Нет звонков по текущим фильтрам.</div>
                       ) : (
-                        folderCalls.map((call) => (
-                          <button
-                            className={`call-folder-child-call ${selectedCallId === call.id ? "selected" : ""}`}
-                            type="button"
-                            key={call.id}
-                            onClick={() => selectFolderCall(call.id, folder.id)}
-                          >
-                            <Folder size={14} />
-                            <span>
-                              <strong>{call.title}</strong>
-                              <small>{formatDate(call.created_at)} · {formatDuration(call.duration_seconds)}</small>
-                            </span>
-                          </button>
-                        ))
+                        folderCalls.map((call) => renderSidebarCallRow(call, folder.id))
                       )}
                     </div>
                   )}
@@ -583,25 +813,7 @@ export function CallsPage({
         <div className="call-list">
           {(loading || filtersLoading || folderCallsLoading) && <CallListSkeleton count={4} />}
           {!loading && !filtersLoading && !folderCallsLoading &&
-            callsWithoutVisibleFolder.map((call) => (
-              <button
-                key={call.id}
-                className={`call-row ${selectedCallId === call.id ? "selected" : ""}`}
-                onClick={() => selectUnfiledCall(call.id)}
-              >
-                <span className="play-dot">
-                  <Play size={14} fill="currentColor" />
-                </span>
-                <span className="call-row-main">
-                  <StatusChip status={call.status} />
-                  <strong>{call.title}</strong>
-                  <small>
-                    {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)}
-                  </small>
-                </span>
-                <MoreVertical size={16} />
-              </button>
-            ))}
+            callsWithoutVisibleFolder.map((call) => renderSidebarCallRow(call))}
           {!loading && !filtersLoading && !folderCallsLoading && callsWithoutVisibleFolder.length === 0 && (
             <div className="empty-state">{calls.length === 0 ? "Звонков пока нет." : "Звонков без папки по фильтрам нет."}</div>
           )}
@@ -759,9 +971,76 @@ export function CallsPage({
           </section>
         </div>
       )}
+      {editingCall && (
+        <div className="call-folder-modal-layer" role="presentation">
+          <section className="call-folder-modal call-title-modal" role="dialog" aria-modal="true" aria-label="Переименовать звонок">
+            <div className="call-folder-modal-head">
+              <div>
+                <strong>Переименовать звонок</strong>
+                <small>{editingCall.original_filename}</small>
+              </div>
+              <button className="icon-button" type="button" aria-label="Закрыть окно переименования" onClick={cancelCallRename}>
+                <X size={17} />
+              </button>
+            </div>
+            {callActionError && <div className="form-error compact">{callActionError}</div>}
+            <label className="call-title-field">
+              Название звонка
+              <div className="input-with-counter">
+                <input
+                  value={callTitleDraft}
+                  maxLength={255}
+                  autoFocus
+                  onChange={(event) => setCallTitleDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void submitCallRename();
+                    }
+                  }}
+                />
+                <span>{callTitleDraft.length} / 255</span>
+              </div>
+            </label>
+            <div className="call-title-modal-actions">
+              <button
+                className="primary-button small"
+                type="button"
+                disabled={callBusyId === editingCall.id || !callTitleDraft.trim()}
+                onClick={() => void submitCallRename()}
+              >
+                <Check size={15} />
+                Сохранить
+              </button>
+              <button className="ghost-button small" type="button" onClick={cancelCallRename}>
+                Отмена
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {pendingDeleteCopy && (
+        <ConfirmDialog
+          open
+          variant="danger"
+          title={pendingDeleteCopy.title}
+          message={pendingDeleteCopy.message}
+          confirmLabel="Удалить"
+          busy={pendingDeleteBusy}
+          onCancel={() => {
+            if (!pendingDeleteBusy) setPendingDelete(null);
+          }}
+          onConfirm={() => void confirmPendingDelete()}
+        />
+      )}
     </section>
   );
 }
+
+type PendingDelete =
+  | { type: "call"; call: CallResponse }
+  | { type: "folder"; folder: CallFolderResponse }
+  | null;
 
 type FolderFormState = {
   scope: VisibilityScope;
@@ -932,4 +1211,12 @@ function callSearchText(call: CallResponse) {
     typeof maybeNamedCall.name === "string" ? maybeNamedCall.name : "",
     call.original_filename
   ].join(" ").toLowerCase();
+}
+
+function friendlyCallActionError(error: unknown, fallback: string) {
+  if (error instanceof ApiError) {
+    if (error.code === "invalid_call_title") return "Введите название звонка.";
+    if (error.code === "call_not_found") return "Звонок не найден.";
+  }
+  return error instanceof Error ? error.message : fallback;
 }

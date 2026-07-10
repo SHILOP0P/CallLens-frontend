@@ -14,6 +14,7 @@ import {
   criteriaStatusLabels,
   enumLabel,
   formatScore,
+  isAnalysisDone,
   lostReasonLabels,
   signalLevelLabels
 } from "../lib/analysis";
@@ -22,18 +23,20 @@ import { TextBlockSkeleton } from "./loading";
 export function AnalysisPreview({
   analysis,
   expanded,
-  loading
+  loading,
+  pendingMessage
 }: {
   analysis?: AnalysisResponse;
   expanded: boolean;
   loading?: boolean;
+  pendingMessage?: string;
 }) {
   if (loading) {
     return <TextBlockSkeleton rows={4} />;
   }
 
-  if (!analysis) {
-    return <p className="muted">Запустите анализ после готовой расшифровки.</p>;
+  if (!analysis || !isAnalysisDone(analysis)) {
+    return <p className="muted">{pendingMessage ?? "Запустите анализ после готовой расшифровки."}</p>;
   }
 
   return (
@@ -145,6 +148,34 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
 
   if (!result) return null;
 
+  const outcomeItems = [
+    { label: "Итог", value: enumLabel(result.business_outcome.status, businessOutcomeLabels) },
+    { label: "Описание", value: result.business_outcome.summary },
+    {
+      label: "Причина потери",
+      value: result.business_outcome.lost_reason && result.business_outcome.lost_reason !== "not_applicable"
+        ? enumLabel(result.business_outcome.lost_reason, lostReasonLabels)
+        : undefined
+    },
+    { label: "Интерес", value: enumLabel(result.customer_signals.intent, signalLevelLabels) },
+    { label: "Срочность", value: enumLabel(result.customer_signals.urgency, signalLevelLabels) },
+    { label: "Бюджет обсуждался", value: booleanLabel(result.customer_signals.budget_discussed) },
+    { label: "ЛПР присутствовал", value: booleanLabel(result.customer_signals.decision_maker_present) },
+    { label: "Уверенность", value: enumLabel(result.confidence, confidenceLabels) }
+  ].filter((item) => hasText(item.value));
+  const nextStepItems = [
+    { label: "Следующий шаг", value: result.next_step || result.next_steps[0] },
+    { label: "Есть шаг", value: booleanLabel(result.next_step_quality.has_next_step) },
+    { label: "Конкретный", value: booleanLabel(result.next_step_quality.specific) },
+    { label: "Есть срок", value: booleanLabel(result.next_step_quality.has_deadline) },
+    { label: "Есть ответственный", value: booleanLabel(result.next_step_quality.has_responsible_person) }
+  ].filter((item) => hasText(item.value));
+  const topicGroups = [
+    { title: "Темы", items: result.topics },
+    { title: "Риски", items: result.risks },
+    { title: "Возражения", items: result.customer_objections }
+  ].filter((group) => group.items.length > 0);
+
   return (
     <div className="analysis-structured analysis-v2">
       <AnalysisSection title="Резюме">
@@ -165,10 +196,8 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
         </div>
       </AnalysisSection>
 
-      <AnalysisSection title="Критерии качества">
-        {result.criteria_results.length === 0 ? (
-          <p className="analysis-empty">Критерии не указаны.</p>
-        ) : (
+      {result.criteria_results.length > 0 && (
+        <AnalysisSection title="Критерии качества">
           <div className="analysis-criteria-list">
             {result.criteria_results.map((criterion, index) => (
               <div className="analysis-criterion" key={`${criterion.code}-${index}`}>
@@ -187,82 +216,52 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
               </div>
             ))}
           </div>
-        )}
-      </AnalysisSection>
+        </AnalysisSection>
+      )}
 
-      <AnalysisSection title="Итог и сигналы клиента">
-        <div className="analysis-kv-grid">
-          <AnalysisKeyValue
-            label="Итог"
-            value={enumLabel(result.business_outcome.status, businessOutcomeLabels)}
-          />
-          <AnalysisKeyValue label="Описание" value={result.business_outcome.summary} />
-          {result.business_outcome.lost_reason && result.business_outcome.lost_reason !== "not_applicable" && (
-            <AnalysisKeyValue
-              label="Причина потери"
-              value={enumLabel(result.business_outcome.lost_reason, lostReasonLabels)}
-            />
+      {outcomeItems.length > 0 && (
+        <AnalysisSection title="Итог и сигналы клиента">
+          <div className="analysis-kv-grid">
+            {outcomeItems.map((item) => (
+              <AnalysisKeyValue key={item.label} label={item.label} value={item.value} />
+            ))}
+          </div>
+        </AnalysisSection>
+      )}
+
+      {(nextStepItems.length > 0 || result.next_steps.length > 0) && (
+        <AnalysisSection title="Следующий шаг">
+          {nextStepItems.length > 0 && (
+            <div className="analysis-kv-grid">
+              {nextStepItems.map((item) => (
+                <AnalysisKeyValue key={item.label} label={item.label} value={item.value} />
+              ))}
+            </div>
           )}
-          <AnalysisKeyValue
-            label="Интерес"
-            value={enumLabel(result.customer_signals.intent, signalLevelLabels)}
-          />
-          <AnalysisKeyValue
-            label="Срочность"
-            value={enumLabel(result.customer_signals.urgency, signalLevelLabels)}
-          />
-          <AnalysisKeyValue
-            label="Бюджет обсуждался"
-            value={booleanLabel(result.customer_signals.budget_discussed)}
-          />
-          <AnalysisKeyValue
-            label="ЛПР присутствовал"
-            value={booleanLabel(result.customer_signals.decision_maker_present)}
-          />
-          <AnalysisKeyValue label="Уверенность" value={enumLabel(result.confidence, confidenceLabels)} />
-        </div>
-      </AnalysisSection>
+          {result.next_steps.length > 0 && <AnalysisStringList items={result.next_steps} emptyLabel="" />}
+        </AnalysisSection>
+      )}
 
-      <AnalysisSection title="Следующий шаг">
-        <div className="analysis-kv-grid">
-          <AnalysisKeyValue label="Следующий шаг" value={result.next_step || result.next_steps[0]} />
-          <AnalysisKeyValue label="Есть шаг" value={booleanLabel(result.next_step_quality.has_next_step)} />
-          <AnalysisKeyValue label="Конкретный" value={booleanLabel(result.next_step_quality.specific)} />
-          <AnalysisKeyValue label="Есть срок" value={booleanLabel(result.next_step_quality.has_deadline)} />
-          <AnalysisKeyValue
-            label="Есть ответственный"
-            value={booleanLabel(result.next_step_quality.has_responsible_person)}
-          />
-        </div>
-        <AnalysisStringList items={result.next_steps} emptyLabel="Следующие шаги не указаны." />
-      </AnalysisSection>
+      {topicGroups.length > 0 && (
+        <AnalysisSection title="Темы, риски и возражения">
+          <div className="analysis-columns">
+            {topicGroups.map((group) => (
+              <div key={group.title}>
+                <strong>{group.title}</strong>
+                <AnalysisStringList items={group.items} emptyLabel="" />
+              </div>
+            ))}
+          </div>
+        </AnalysisSection>
+      )}
 
-      <AnalysisSection title="Темы, риски и возражения">
-        <div className="analysis-columns">
-          <div>
-            <strong>Темы</strong>
-            <AnalysisStringList items={result.topics} emptyLabel="Темы не указаны" />
+      {result.issue_codes.length > 0 && (
+        <AnalysisSection title="Проблемные коды">
+          <div className="topic-list">
+            {result.issue_codes.map((code) => <span key={code}>{code}</span>)}
           </div>
-          <div>
-            <strong>Риски</strong>
-            <AnalysisStringList items={result.risks} emptyLabel="Риски не указаны" />
-          </div>
-          <div>
-            <strong>Возражения</strong>
-            <AnalysisStringList items={result.customer_objections} emptyLabel="Возражения не указаны" />
-          </div>
-        </div>
-      </AnalysisSection>
-
-      <AnalysisSection title="Проблемные коды">
-        <div className="topic-list">
-          {result.issue_codes.length > 0 ? (
-            result.issue_codes.map((code) => <span key={code}>{code}</span>)
-          ) : (
-            <span>Коды не указаны</span>
-          )}
-        </div>
-      </AnalysisSection>
+        </AnalysisSection>
+      )}
     </div>
   );
 }
@@ -335,8 +334,13 @@ export function AnalysisQuestionList({ questions }: { questions: AnalysisQuestio
   );
 }
 
-function booleanLabel(value: boolean) {
+function booleanLabel(value?: boolean | null) {
+  if (typeof value !== "boolean") return undefined;
   return value ? "Да" : "Нет";
+}
+
+function hasText(value?: string) {
+  return Boolean(value?.trim());
 }
 
 function criterionStatusTone(status: string) {

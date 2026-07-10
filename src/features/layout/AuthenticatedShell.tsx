@@ -26,6 +26,9 @@ import type {
 import { AppTheme, isSettingsPage, sidebarItems, ThemeToggleEvent } from "../../app/runtime";
 import { Logo } from "../../shared/ui/primitives";
 
+const WORKSPACE_COMPANY_STORAGE_KEY = "calllens.activeWorkspaceCompanyId";
+const PERSONAL_WORKSPACE_VALUE = "__personal__";
+
 export function AuthenticatedShell({
   activePage,
   session,
@@ -64,7 +67,7 @@ export function AuthenticatedShell({
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
-  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [selectedCompanyId, setSelectedCompanyId] = useState(() => readStoredWorkspaceCompanyId() ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -128,12 +131,15 @@ export function AuthenticatedShell({
   useEffect(() => {
     if (!companies.length) {
       setSelectedCompanyId("");
+      storeWorkspaceCompanyId("");
       setTeamOpen(false);
       return;
     }
 
     if (selectedCompanyId && !companies.some((company) => company.id === selectedCompanyId)) {
       setSelectedCompanyId("");
+      storeWorkspaceCompanyId("");
+      persistPreferences({ active_company_uuid: null });
     }
   }, [companies, selectedCompanyId]);
 
@@ -179,7 +185,16 @@ export function AuthenticatedShell({
 
       if (cancelled) return;
       if (preferences) {
-        setSelectedCompanyId(preferences.active_company_uuid ?? "");
+        const storedCompanyId = readStoredWorkspaceCompanyId();
+        const preferenceCompanyId = preferences.active_company_uuid ?? "";
+        const nextCompanyId = storedCompanyId ?? preferenceCompanyId;
+        setSelectedCompanyId(nextCompanyId);
+        if (storedCompanyId === null && preferenceCompanyId) {
+          storeWorkspaceCompanyId(preferenceCompanyId);
+        }
+        if (storedCompanyId !== null && storedCompanyId !== preferenceCompanyId) {
+          persistPreferences({ active_company_uuid: storedCompanyId || null });
+        }
         setDateFrom(preferences.date_range.from ?? "");
         setDateTo(preferences.date_range.to ?? "");
       }
@@ -271,6 +286,12 @@ export function AuthenticatedShell({
     api.updatePreferences(next).catch(() => undefined);
   }
 
+  function selectWorkspaceCompany(companyId: string) {
+    setSelectedCompanyId(companyId);
+    storeWorkspaceCompanyId(companyId);
+    persistPreferences({ active_company_uuid: companyId || null });
+  }
+
   function openNotification(notification: NotificationResponse) {
     api.markNotificationRead(notification.id).catch(() => undefined);
     setNotifications((current) =>
@@ -325,9 +346,8 @@ export function AuthenticatedShell({
                     aria-selected={!selectedCompany}
                     className={!selectedCompany ? "active" : ""}
                     onClick={() => {
-                      setSelectedCompanyId("");
+                      selectWorkspaceCompany("");
                       setTeamOpen(false);
-                      persistPreferences({ active_company_uuid: null });
                     }}
                   >
                     <span>
@@ -345,9 +365,8 @@ export function AuthenticatedShell({
                         aria-selected={company.id === selectedCompany?.id}
                         className={company.id === selectedCompany?.id ? "active" : ""}
                         onClick={() => {
-                          setSelectedCompanyId(company.id);
+                          selectWorkspaceCompany(company.id);
                           setTeamOpen(false);
-                          persistPreferences({ active_company_uuid: company.id });
                         }}
                       >
                         <span>
@@ -608,6 +627,27 @@ export function AuthenticatedShell({
 function profileInitial(value: string) {
   const trimmed = value.trim();
   return trimmed ? trimmed[0].toUpperCase() : "П";
+}
+
+function readStoredWorkspaceCompanyId() {
+  try {
+    const value = window.localStorage.getItem(WORKSPACE_COMPANY_STORAGE_KEY);
+    if (value === null) return null;
+    return value === PERSONAL_WORKSPACE_VALUE ? "" : value;
+  } catch {
+    return null;
+  }
+}
+
+function storeWorkspaceCompanyId(companyId: string) {
+  try {
+    window.localStorage.setItem(
+      WORKSPACE_COMPANY_STORAGE_KEY,
+      companyId || PERSONAL_WORKSPACE_VALUE
+    );
+  } catch {
+    // Local persistence is best-effort; backend preferences are still updated separately.
+  }
 }
 
 function totalMinutes(calls: CallResponse[]) {

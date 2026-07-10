@@ -1,6 +1,5 @@
 import type {
   AggregateAnalysisResponse,
-  AggregateAnalysisStatus,
   AggregateReportResponse,
   AnalysisInstruction,
   AnalysisResponse,
@@ -22,7 +21,6 @@ import type {
   CreateAggregateReportRequest,
   CreateGlobalReportRequest,
   CreateReportRequest,
-  DeepAnalysisScope,
   DepartmentResponse,
   GlobalReportsResponse,
   Invitation,
@@ -31,6 +29,7 @@ import type {
   InstructionScope,
   ListAggregateAnalysesResponse,
   ListAggregateReportsResponse,
+  ListDeepAnalysesQuery,
   LoginRequest,
   NotificationResponse,
   NotificationsResponse,
@@ -398,7 +397,7 @@ function absoluteApiAssetUrl(value: string) {
   return value;
 }
 
-function queryString(input: Record<string, unknown> = {}) {
+function queryString(input: object = {}) {
   const params = new URLSearchParams();
 
   Object.entries(input).forEach(([key, value]) => {
@@ -576,6 +575,13 @@ export const api = {
     }
 
     return request<CallResponse>("/calls", { method: "POST", body });
+  },
+
+  updateCallTitle(callId: string, title: string) {
+    return request<CallResponse>(`/calls/${encodeURIComponent(callId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title })
+    });
   },
 
   deleteCall(callId: string) {
@@ -898,22 +904,16 @@ export const api = {
     });
   },
 
-  listDeepAnalyses(input?: {
-    scope?: DeepAnalysisScope;
-    company_uuid?: string;
-    department_uuid?: string;
-    folder_uuid?: string;
-    from?: string;
-    to?: string;
-    status?: AggregateAnalysisStatus;
-    limit?: number;
-    offset?: number;
-  }) {
+  listDeepAnalyses(input?: ListDeepAnalysesQuery) {
     return request<ListAggregateAnalysesResponse>(`/analytics/deep-analyses${queryString(input)}`);
   },
 
   getDeepAnalysis(id: string) {
     return request<AggregateAnalysisResponse>(`/analytics/deep-analyses/${encodeURIComponent(id)}`);
+  },
+
+  getDeepAnalysisEventsUrl(analysisId: string) {
+    return `${apiRoot}/analytics/deep-analyses/${encodeURIComponent(analysisId)}/events`;
   },
 
   createAggregateReport(analysisId: string, format: ReportFormat) {

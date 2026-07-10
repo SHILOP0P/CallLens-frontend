@@ -26,8 +26,15 @@ import { contextLabel, formatDate, formatDuration } from "../../shared/lib/forma
 import { AnalysisPreview } from "../../shared/ui/analysis";
 import { CallAudioPlayer } from "../../shared/ui/audio";
 import { InfoCard, StatusChip, StatusTimeline, TranscriptPreview } from "../../shared/ui/call";
+import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { CallDetailSkeleton } from "../../shared/ui/loading";
 import { ReportExportPanel } from "../reports/ReportExportPanel";
+
+type CardProcessState = {
+  label: string;
+  tone: "ok" | "warn" | "bad";
+  thinking?: boolean;
+};
 
 export function CallDetailPanel({
   call,
@@ -68,6 +75,7 @@ export function CallDetailPanel({
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const score = analysisScore100(analysis);
@@ -76,6 +84,7 @@ export function CallDetailPanel({
     setShowFullTranscript(false);
     setShowFullAnalysis(false);
     setDeleteError("");
+    setDeleteConfirmOpen(false);
     setFolderMenuOpen(false);
   }, [call?.id]);
 
@@ -122,16 +131,17 @@ export function CallDetailPanel({
     );
   }
 
+  const transcriptionState = transcriptionCardState(call, transcription);
+  const analysisState = analysisCardState(call, analysis);
+
   async function deleteSelectedCall() {
     if (!call || !onDeleteCall || deleting) return;
-
-    const confirmed = window.confirm(`Удалить звонок "${call.title}"? Это действие нельзя отменить.`);
-    if (!confirmed) return;
 
     setDeleteError("");
     setDeleting(true);
     try {
       await onDeleteCall(call.id);
+      setDeleteConfirmOpen(false);
     } catch (deleteCallError) {
       setDeleteError(deleteCallError instanceof Error ? deleteCallError.message : "Не удалось удалить звонок");
     } finally {
@@ -207,7 +217,7 @@ export function CallDetailPanel({
             </div>
           )}
           {onDeleteCall && (
-            <button className="ghost-button small danger-button" onClick={deleteSelectedCall} disabled={deleting}>
+            <button className="ghost-button small danger-button" onClick={() => setDeleteConfirmOpen(true)} disabled={deleting}>
               <Trash2 size={16} />
               {deleting ? "Удаляю..." : "Удалить"}
             </button>
@@ -220,7 +230,7 @@ export function CallDetailPanel({
           <PhoneCall size={22} />
         </div>
         <div className="selected-call-main">
-          <StatusChip status={call.status} />
+          <StatusChip status={call.status} analysisStatus={analysis?.status} />
           <strong>{call.title}</strong>
           <small>
             {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)} ·{" "}
@@ -232,12 +242,14 @@ export function CallDetailPanel({
         </div>
       </div>
       <CallAudioPlayer call={call} />
-      <StatusTimeline current={call.status} statuses={timelineStatuses} />
+      <StatusTimeline current={call.status} statuses={timelineStatuses} analysisStatus={analysis?.status} />
       {showReports && <ReportExportPanel call={call} analysis={analysis} />}
       <div className="detail-grid">
         <InfoCard
           title="Расшифровка"
-          status={transcription?.status === "transcribed" ? "Готово" : "Ожидает"}
+          status={transcriptionState.label}
+          statusTone={transcriptionState.tone}
+          statusThinking={transcriptionState.thinking}
           action={showFullTranscript ? "Свернуть расшифровку" : "Открыть полную расшифровку"}
           onAction={() => setShowFullTranscript((current) => !current)}
           actionVariant="analysis"
@@ -247,13 +259,20 @@ export function CallDetailPanel({
         </InfoCard>
         <InfoCard
           title="AI-анализ"
-          status={isAnalysisDone(analysis) ? "Анализ готов" : "Ожидает"}
+          status={analysisState.label}
+          statusTone={analysisState.tone}
+          statusThinking={analysisState.thinking}
           action={showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
           onAction={() => setShowFullAnalysis((current) => !current)}
           actionVariant="analysis"
           expanded={showFullAnalysis}
         >
-          <AnalysisPreview analysis={analysis} expanded={showFullAnalysis} loading={loadingDetails} />
+          <AnalysisPreview
+            analysis={analysis}
+            expanded={showFullAnalysis}
+            loading={loadingDetails}
+            pendingMessage={analysisState.thinking ? "Производится анализ транскрипции. Результат появится после завершения обработки." : undefined}
+          />
         </InfoCard>
       </div>
       <div className="next-step">
@@ -269,6 +288,64 @@ export function CallDetailPanel({
           <ChevronRight size={16} />
         </button>
       </div>
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        variant="danger"
+        title="Удалить звонок?"
+        message={`Звонок «${call.title}» будет удален без возможности восстановления.`}
+        confirmLabel="Удалить"
+        busy={deleting}
+        onCancel={() => {
+          if (!deleting) setDeleteConfirmOpen(false);
+        }}
+        onConfirm={() => void deleteSelectedCall()}
+      />
     </>
   );
+}
+
+function transcriptionCardState(
+  call: CallResponse,
+  transcription?: TranscriptionResponse
+): CardProcessState {
+  if (call.status === "failed" || transcription?.status === "failed") {
+    return { label: "Ошибка", tone: "bad" };
+  }
+
+  if (transcription?.status === "transcribed" || call.status === "transcribed" || call.status === "analyzed") {
+    return { label: "Готово", tone: "ok" };
+  }
+
+  if (call.status === "processing" || transcription?.status === "processing") {
+    return { label: "Транскрибируется", tone: "warn", thinking: true };
+  }
+
+  return { label: "Ожидает", tone: "warn" };
+}
+
+function analysisCardState(
+  call: CallResponse,
+  analysis?: AnalysisResponse
+): CardProcessState {
+  if (isAnalysisDone(analysis) || call.status === "analyzed") {
+    return { label: "Анализ готов", tone: "ok" };
+  }
+
+  if (analysis?.status === "failed") {
+    return { label: "Ошибка анализа", tone: "bad" };
+  }
+
+  if (call.status === "failed") {
+    return { label: "Ошибка", tone: "bad" };
+  }
+
+  if (call.status === "transcribed" || analysis?.status === "pending" || analysis?.status === "processing") {
+    return { label: "Производится анализ транскрипции", tone: "warn", thinking: true };
+  }
+
+  if (call.status === "processing") {
+    return { label: "Ожидает расшифровку", tone: "warn" };
+  }
+
+  return { label: "Ожидает", tone: "warn" };
 }

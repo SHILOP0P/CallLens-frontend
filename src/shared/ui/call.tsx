@@ -7,25 +7,42 @@ import {
   X
 } from "lucide-react";
 import type {
+  AnalysisResponse,
   CallStatus,
   TranscriptionResponse
 } from "../../types";
 
-import { statusMeta, timelineFromStatus } from "../lib/call-status";
+import {
+  activeCallProcess,
+  callStatusChip,
+  callStatusTone,
+  normalTimelineSteps,
+  statusMeta,
+  timelineFromStatus
+} from "../lib/call-status";
 import { formatSegmentTimeRange, speakerLabel } from "../lib/formatters";
 import { TextBlockSkeleton } from "./loading";
 
-export function StatusChip({ status }: { status: CallStatus; }) {
-  const className = status === "failed" ? "bad" : status === "processing" ? "warn" : "ok";
-  return <span className={`status-chip ${className}`}>{statusMeta[status].chip}</span>;
+type StatusTone = "ok" | "warn" | "bad";
+
+export function StatusChip({
+  status,
+  analysisStatus
+}: {
+  status: CallStatus;
+  analysisStatus?: AnalysisResponse["status"];
+}) {
+  return <span className={`status-chip ${callStatusTone(status, analysisStatus)}`}>{callStatusChip(status, analysisStatus)}</span>;
 }
 
 export function StatusTimeline({
   current,
-  statuses
+  statuses,
+  analysisStatus
 }: {
   current: CallStatus;
   statuses?: CallStatus[];
+  analysisStatus?: AnalysisResponse["status"];
 }) {
   const steps = visibleTimelineSteps(current, statuses);
   const currentIndex = steps.indexOf(current);
@@ -37,7 +54,7 @@ export function StatusTimeline({
     >
       {steps.map((step, index) => (
         <div
-          className={`timeline-step ${timelineStepClass(step, index, current, currentIndex)}`}
+          className={`timeline-step ${timelineStepClass(step, index, current, currentIndex, analysisStatus)}`}
           key={step}
         >
           <span>
@@ -48,7 +65,7 @@ export function StatusTimeline({
             {step === "failed" && <X size={19} />}
           </span>
           <strong>{statusMeta[step].label}</strong>
-          <small>{timelineStepCaption(step, index, current, currentIndex)}</small>
+          <small>{timelineStepCaption(step, index, current, currentIndex, analysisStatus)}</small>
         </div>
       ))}
     </div>
@@ -56,6 +73,7 @@ export function StatusTimeline({
 }
 
 function visibleTimelineSteps(current: CallStatus, statuses?: CallStatus[]) {
+  if (current !== "failed") return normalTimelineSteps;
   if (!statuses?.length) return timelineFromStatus(current);
 
   const currentIndex = statuses.indexOf(current);
@@ -68,11 +86,16 @@ function timelineStepClass(
   step: CallStatus,
   index: number,
   current: CallStatus,
-  currentIndex: number
+  currentIndex: number,
+  analysisStatus?: AnalysisResponse["status"]
 ) {
+  const activeProcess = activeCallProcess(current, analysisStatus);
+
   if (step === "failed") return "danger";
-  if (step === "processing" && step === current) return "processing current";
-  if (index <= currentIndex || currentIndex === -1) return "ready";
+  if (analysisStatus === "failed" && step === "analyzed") return "danger current";
+  if (activeProcess === "transcription" && step === "processing") return "processing current";
+  if (activeProcess === "analysis" && step === "analyzed") return "processing current";
+  if (isTimelineStepReady(step, current, index, currentIndex, analysisStatus)) return "ready";
   return "";
 }
 
@@ -80,17 +103,38 @@ function timelineStepCaption(
   step: CallStatus,
   index: number,
   current: CallStatus,
-  currentIndex: number
+  currentIndex: number,
+  analysisStatus?: AnalysisResponse["status"]
 ) {
+  const activeProcess = activeCallProcess(current, analysisStatus);
+
   if (step === "failed") return "ошибка";
-  if (step === "processing" && step === current) return "в обработке";
-  if (index <= currentIndex || currentIndex === -1) return "готово";
+  if (analysisStatus === "failed" && step === "analyzed") return "ошибка анализа";
+  if (activeProcess === "transcription" && step === "processing") return "Транскрибируется";
+  if (activeProcess === "analysis" && step === "analyzed") return "Производится анализ транскрипции";
+  if (isTimelineStepReady(step, current, index, currentIndex, analysisStatus)) return "готово";
   return "";
+}
+
+function isTimelineStepReady(
+  step: CallStatus,
+  current: CallStatus,
+  index: number,
+  currentIndex: number,
+  analysisStatus?: AnalysisResponse["status"]
+) {
+  if (step === "new" && current !== "failed") return true;
+  if (step === "processing") return current === "transcribed" || current === "analyzed" || analysisStatus === "done";
+  if (step === "transcribed") return current === "transcribed" || current === "analyzed" || analysisStatus === "done";
+  if (step === "analyzed") return current === "analyzed" || analysisStatus === "done";
+  return index <= currentIndex || currentIndex === -1;
 }
 
 export function InfoCard({
   title,
   status,
+  statusTone = "ok",
+  statusThinking = false,
   action,
   children,
   onAction,
@@ -99,6 +143,8 @@ export function InfoCard({
 }: {
   title: string;
   status: string;
+  statusTone?: StatusTone;
+  statusThinking?: boolean;
   action: string;
   children: React.ReactNode;
   onAction?: () => void;
@@ -109,7 +155,7 @@ export function InfoCard({
     <div className="info-card">
       <div className="card-title">
         <h3>{title}</h3>
-        <span className="status-chip ok">{status}</span>
+        <span className={`status-chip ${statusTone} ${statusThinking ? "thinking-status" : ""}`}>{status}</span>
       </div>
       {children}
       {actionVariant === "analysis" ? (

@@ -14,6 +14,7 @@ import type {
   AggregateAnalysisResponse,
   AggregateAnalysisResult,
   AggregateAnalysisStatus,
+  AggregateAnalysisStatusEvent,
   AggregateReportResponse,
   AnalysisResponse,
   CallFolderResponse,
@@ -35,9 +36,14 @@ import {
 import { isAnalysisDone } from "../../shared/lib/analysis";
 import { formatBytes, formatDate, reportFormatLabel, reportStatusLabel } from "../../shared/lib/formatters";
 import { SelectControl } from "../../shared/ui/primitives";
+import { aggregateResult, callCountLabel, formatShare, shortIdentifier } from "./aggregate-analysis";
 import { reportFormats } from "./ReportExportPanel";
 
 type ReportsTab = "call" | "deep";
+
+function readReportsTabFromLocation(): ReportsTab {
+  return new URLSearchParams(window.location.search).get("tab") === "deep" ? "deep" : "call";
+}
 
 type DeepAnalysisFormState = {
   scope: DeepAnalysisScope;
@@ -60,7 +66,7 @@ export function AiReportsPage({
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
 }) {
-  const [activeTab, setActiveTab] = useState<ReportsTab>("call");
+  const [activeTab, setActiveTab] = useState<ReportsTab>(() => readReportsTabFromLocation());
   const [reports, setReports] = useState<ReportWithCallResponse[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
   const [formatFilter, setFormatFilter] = useState<ReportFormat | "all">("all");
@@ -78,6 +84,7 @@ export function AiReportsPage({
   const [deepBusy, setDeepBusy] = useState(false);
   const [deepFolders, setDeepFolders] = useState<CallFolderResponse[]>([]);
   const [loadingDeepFolders, setLoadingDeepFolders] = useState(false);
+  const [deepFoldersError, setDeepFoldersError] = useState("");
   const [aggregateReports, setAggregateReports] = useState<AggregateReportResponse[]>([]);
   const [loadingAggregateReports, setLoadingAggregateReports] = useState(false);
   const [selectedAggregateFormat, setSelectedAggregateFormat] = useState<ReportFormat>("pdf");
@@ -98,22 +105,47 @@ export function AiReportsPage({
   const selectedCall = readyAnalyses.find((call) => call.id === selectedCallId) ?? readyAnalyses[0];
   const selectedDeepAnalysis =
     deepAnalyses.find((analysis) => analysis.id === selectedDeepAnalysisId) ?? deepAnalyses[0];
-  const selectedFolder = deepFolders.find((folder) => folder.id === deepForm.folder_uuid);
   const processingReports = calls.filter((call) => call.status === "processing").length;
   const latestReport = reports[0];
   const doneDeepCount = deepAnalyses.filter((analysis) => analysis.status === "done").length;
   const activeDeepCount = deepAnalyses.filter((analysis) =>
     analysis.status === "pending" || analysis.status === "processing"
   ).length;
-
+  const activeDeepAnalysisIds = useMemo(
+    () =>
+      deepAnalyses
+        .filter((analysis) => analysis.status === "pending" || analysis.status === "processing")
+        .map((analysis) => analysis.id)
+        .sort()
+        .join("|"),
+    [deepAnalyses]
+  );
   const formDepartmentOptions = departments.filter((department) => department.company_uuid === deepForm.company_uuid);
   const companiesFolderKey = companies.map((company) => company.id).join("|");
   const departmentsFolderKey = departments.map((department) => `${department.company_uuid}:${department.id}`).join("|");
+
+  function changeReportsTab(tab: ReportsTab) {
+    setActiveTab(tab);
+
+    const url = new URL(window.location.href);
+    if (tab === "deep") {
+      url.searchParams.set("tab", "deep");
+    } else {
+      url.searchParams.delete("tab");
+    }
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
 
   useEffect(() => {
     if (selectedCallId && readyAnalyses.some((call) => call.id === selectedCallId)) return;
     setSelectedCallId(readyAnalyses[0]?.id ?? "");
   }, [readyAnalyses, selectedCallId]);
+
+  useEffect(() => {
+    const onPopState = () => setActiveTab(readReportsTabFromLocation());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,6 +181,74 @@ export function AiReportsPage({
     void loadDeepAnalyses();
   }, [activeTab, deepStatusFilter]);
 
+  useEffect(() => {
+    if (activeTab !== "deep" || !activeDeepAnalysisIds) return;
+
+    const sources = activeDeepAnalysisIds.split("|").map((analysisId) => {
+      const source = new EventSource(api.getDeepAnalysisEventsUrl(analysisId), { withCredentials: true });
+
+      source.addEventListener("status", (event) => {
+        const statusEvent = parseDeepAnalysisStatusEvent(event);
+        if (!statusEvent || statusEvent.analysis_id !== analysisId) return;
+
+        setDeepAnalyses((current) =>
+          current.map((analysis) =>
+            analysis.id === analysisId && analysis.status !== statusEvent.status
+              ? { ...analysis, status: statusEvent.status, updated_at: statusEvent.timestamp }
+              : analysis
+          )
+        );
+
+        if (statusEvent.terminal) {
+          source.close();
+          void loadDeepAnalyses();
+        }
+      });
+
+      source.addEventListener("error", (event) => {
+        source.close();
+        void loadDeepAnalyses();
+      });
+
+      return source;
+    });
+
+    return () => {
+      sources.forEach((source) => source.close());
+    };
+  }, [activeTab, activeDeepAnalysisIds, deepStatusFilter]);
+
+  useEffect(() => {
+    if (
+      activeTab !== "deep" ||
+      !selectedDeepAnalysis?.id ||
+      (selectedDeepAnalysis.status !== "pending" && selectedDeepAnalysis.status !== "processing")
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function refreshSelectedAnalysis() {
+      try {
+        const refreshed = await api.getDeepAnalysis(selectedDeepAnalysis.id);
+        if (cancelled) return;
+        setDeepAnalyses((current) => upsertDeepAnalysis(current, refreshed));
+      } catch (error) {
+        if (!cancelled) {
+          setDeepActionError(error instanceof Error ? error.message : "Не удалось обновить статус глубокого анализа.");
+        }
+      }
+    }
+
+    const timer = window.setInterval(() => void refreshSelectedAnalysis(), 12_000);
+    void refreshSelectedAnalysis();
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeTab, selectedDeepAnalysis?.id, selectedDeepAnalysis?.status]);
 
   useEffect(() => {
     if (activeTab !== "deep") return;
@@ -156,10 +256,23 @@ export function AiReportsPage({
 
     async function loadFolders() {
       setLoadingDeepFolders(true);
-      const response = await loadCallFoldersForContext(companies, departments).catch(() => []);
-      if (!cancelled) {
-        setDeepFolders(response);
-        setLoadingDeepFolders(false);
+      setDeepFoldersError("");
+
+      try {
+        const response = await loadCallFoldersForContext(companies, departments);
+        if (!cancelled) {
+          setDeepFolders(response.items);
+          setDeepFoldersError(response.error ?? "");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDeepFolders([]);
+          setDeepFoldersError(error instanceof Error ? error.message : "Не удалось загрузить папки звонков.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingDeepFolders(false);
+        }
       }
     }
 
@@ -218,6 +331,18 @@ export function AiReportsPage({
     }
   }
 
+  async function selectDeepAnalysis(analysisId: string) {
+    setSelectedDeepAnalysisId(analysisId);
+    setDeepActionError("");
+
+    try {
+      const analysis = await api.getDeepAnalysis(analysisId);
+      setDeepAnalyses((current) => upsertDeepAnalysis(current, analysis));
+    } catch (error) {
+      setDeepActionError(error instanceof Error ? error.message : "Не удалось загрузить глубокий анализ.");
+    }
+  }
+
   async function createCallReport() {
     if (!selectedCall) {
       setActionError("Нет звонка с готовым анализом для отчета.");
@@ -261,7 +386,7 @@ export function AiReportsPage({
   }
 
   async function createDeepAnalysis() {
-    const payload = buildDeepAnalysisPayload(deepForm, selectedFolder);
+    const payload = buildDeepAnalysisPayload(deepForm);
     if (!payload.ok) {
       setDeepActionError(payload.error);
       return;
@@ -272,6 +397,7 @@ export function AiReportsPage({
     try {
       const created = await api.createDeepAnalysis(payload.value);
       setSelectedDeepAnalysisId(created.id);
+      setDeepAnalyses((current) => upsertDeepAnalysis(current, created));
       await loadDeepAnalyses();
     } catch (error) {
       setDeepActionError(error instanceof Error ? error.message : "Не удалось создать глубокий анализ.");
@@ -329,10 +455,10 @@ export function AiReportsPage({
       </div>
 
       <div className="report-tabs segmented scope" aria-label="Разделы отчетов">
-        <button className={activeTab === "call" ? "active" : ""} type="button" onClick={() => setActiveTab("call")}>
+        <button className={activeTab === "call" ? "active" : ""} type="button" onClick={() => changeReportsTab("call")}>
           Отчеты по звонкам
         </button>
-        <button className={activeTab === "deep" ? "active" : ""} type="button" onClick={() => setActiveTab("deep")}>
+        <button className={activeTab === "deep" ? "active" : ""} type="button" onClick={() => changeReportsTab("deep")}>
           Глубокий анализ
         </button>
       </div>
@@ -391,6 +517,8 @@ export function AiReportsPage({
             companies={companies}
             departments={departments}
             folders={deepFolders}
+            foldersLoading={loadingDeepFolders}
+            foldersError={deepFoldersError}
             formDepartmentOptions={formDepartmentOptions}
             form={deepForm}
             analyses={deepAnalyses}
@@ -405,7 +533,7 @@ export function AiReportsPage({
             busyReportId={busyAggregateReportId}
             onFormChange={setDeepForm}
             onStatusFilterChange={setDeepStatusFilter}
-            onSelectAnalysis={setSelectedDeepAnalysisId}
+            onSelectAnalysis={selectDeepAnalysis}
             onCreateAnalysis={createDeepAnalysis}
             onRefreshAnalyses={loadDeepAnalyses}
             onAggregateFormatChange={setSelectedAggregateFormat}
@@ -617,6 +745,8 @@ function DeepAnalysisSection({
   companies,
   departments,
   folders,
+  foldersLoading,
+  foldersError,
   formDepartmentOptions,
   form,
   analyses,
@@ -642,6 +772,8 @@ function DeepAnalysisSection({
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
   folders: CallFolderResponse[];
+  foldersLoading: boolean;
+  foldersError: string;
   formDepartmentOptions: DepartmentResponse[];
   form: DeepAnalysisFormState;
   analyses: AggregateAnalysisResponse[];
@@ -667,15 +799,31 @@ function DeepAnalysisSection({
   const selectedContext = selectedAnalysis
     ? deepAnalysisContext(selectedAnalysis, companies, departments, folders)
     : null;
+  const selectedFolder = folders.find((folder) => folder.id === form.folder_uuid);
 
   return (
     <div className="deep-analysis-grid">
       <section className="glass-panel deep-analysis-form-panel">
-        <div className="panel-heading large">
+        <div className="panel-heading large deep-analysis-form-heading">
           <div>
             <h2>Создать глубокий анализ</h2>
             <p>Соберите сводку по готовым анализам звонков за выбранный период.</p>
           </div>
+          <label className={`deep-force-toggle ${form.force ? "checked" : ""}`}>
+            <input
+              className="deep-force-input"
+              type="checkbox"
+              checked={form.force}
+              onChange={(event) => onFormChange({ ...form, force: event.target.checked })}
+            />
+            <span className="deep-force-box" aria-hidden="true">
+              {form.force && <Check size={15} />}
+            </span>
+            <span>
+              <strong>Создать заново и потратить недельный лимит</strong>
+              <small>Если за этот период уже есть успешный анализ, он будет использован повторно.</small>
+            </span>
+          </label>
         </div>
         {actionError && <div className="form-error">{friendlyDeepActionError(actionError)}</div>}
         <div className="deep-analysis-form">
@@ -757,10 +905,26 @@ function DeepAnalysisSection({
                 <option value="">Выберите папку</option>
                 {folders.map((folder) => (
                   <option key={folder.id} value={folder.id}>
-                    {folder.name} · {deepScopeLabel(folder.scope)}
+                    {folder.name} · {folder.color || "без цвета"} · {callCountLabel(folder.calls_count)}
                   </option>
                 ))}
               </SelectControl>
+              {foldersLoading ? (
+                <small>Загружаю папки выбранных областей.</small>
+              ) : foldersError ? (
+                <small className="report-error">{foldersError}</small>
+              ) : selectedFolder ? (
+                <small className="deep-folder-preview">
+                  <span
+                    className="folder-color-dot"
+                    style={{ backgroundColor: selectedFolder.color || "var(--app-border)" }}
+                    aria-hidden="true"
+                  />
+                  {deepScopeLabel(selectedFolder.scope)} · {callCountLabel(selectedFolder.calls_count)}
+                </small>
+              ) : folders.length === 0 ? (
+                <small>В доступных областях пока нет папок.</small>
+              ) : null}
             </label>
           )}
           <div className="deep-period-grid">
@@ -781,25 +945,12 @@ function DeepAnalysisSection({
               />
             </label>
           </div>
-          <label className={`deep-force-toggle ${form.force ? "checked" : ""}`}>
-            <input
-              className="deep-force-input"
-              type="checkbox"
-              checked={form.force}
-              onChange={(event) => onFormChange({ ...form, force: event.target.checked })}
-            />
-            <span className="deep-force-box" aria-hidden="true">
-              {form.force && <Check size={15} />}
-            </span>
-            <span>
-              <strong>Создать заново и потратить недельный лимит</strong>
-              <small>Если за этот период уже есть успешный анализ, он будет использован повторно.</small>
-            </span>
-          </label>
-          <button className="primary-button" type="button" disabled={busy} onClick={onCreateAnalysis}>
-            <Plus size={17} />
-            {busy ? "Создаю..." : "Создать глубокий анализ"}
-          </button>
+          <div className="deep-create-actions">
+            <button className="primary-button deep-create-button" type="button" disabled={busy} onClick={onCreateAnalysis}>
+              <Plus size={17} />
+              {busy ? "Создаю..." : "Создать глубокий анализ"}
+            </button>
+          </div>
         </div>
       </section>
 
@@ -848,6 +999,9 @@ function DeepAnalysisSection({
             ) : (
               analyses.map((analysis) => {
                 const context = deepAnalysisContext(analysis, companies, departments, folders);
+                const providerModel = [analysis.provider, analysis.model].filter(
+                  (value): value is string => typeof value === "string" && value.trim().length > 0
+                ).join(" · ");
 
                 return (
                   <button
@@ -863,6 +1017,7 @@ function DeepAnalysisSection({
                       <strong>{context.title} · {callCountLabel(analysis.source_calls_count)}</strong>
                       <small>Период: {dateOnly(analysis.period_from)} - {dateOnly(analysis.period_to)}</small>
                       <small>Создан: {formatDate(analysis.created_at)}</small>
+                      {providerModel && <small>Модель: {providerModel}</small>}
                       {context.details && <small>{context.details}</small>}
                       {analysis.error_message && (
                         <small className="report-error">{friendlyDeepAnalysisError(analysis.error_message)}</small>
@@ -949,32 +1104,103 @@ function AggregateResultView({ analysis }: { analysis: AggregateAnalysisResponse
     );
   }
 
+  const recurringIssues = result.recurring_issues.filter((issue) => (issue.count ?? 0) >= 2);
+  const oneOffFromLegacyRecurring = result.recurring_issues
+    .filter((issue) => (issue.count ?? 0) < 2)
+    .map((issue) => ({
+      code: issue.code,
+      title: issue.title,
+      description: issue.recommendation,
+      affected_calls_count: issue.count,
+      affected_share: issue.affected_share,
+      sample_call_uuids: issue.sample_call_uuids,
+      recommendation: issue.recommendation,
+      count: issue.count
+    }));
+  const singleCallObservations = [
+    ...(result.single_call_observations ?? []),
+    ...oneOffFromLegacyRecurring
+  ];
+  const systemicIssues = result.systemic_issues?.length
+    ? result.systemic_issues
+    : result.key_findings.map((finding) => ({
+        title: finding.title,
+        description: finding.description,
+        severity: finding.severity,
+        affected_calls_count: finding.affected_calls_count,
+        affected_share: finding.affected_share,
+        evidence_call_uuids: finding.evidence_call_uuids
+      }));
+  const executiveSummary =
+    result.executive_summary || result.overall_assessment || result.summary || analysis.result_text || "Резюме не указано.";
+
   return (
     <div className="analysis-structured aggregate-result">
+      <AggregateSourceCoverage
+        analysis={analysis}
+        source={result.source_summary}
+        coverageNote={result.coverage_note}
+      />
       <div className="analysis-section">
-        <strong>Резюме</strong>
-        <p>{result.summary || "Резюме не указано."}</p>
-        <small>Уверенность: {enumLabel(result.confidence, confidenceLabels) ?? "Не указана"}</small>
+        <strong>Резюме для руководителя</strong>
+        <p>{executiveSummary}</p>
+        {result.overall_assessment && result.overall_assessment !== executiveSummary && (
+          <p className="aggregate-secondary-text">{result.overall_assessment}</p>
+        )}
+        {result.summary && result.summary !== executiveSummary && result.summary !== result.overall_assessment && (
+          <p className="aggregate-secondary-text">{result.summary}</p>
+        )}
+        <small>Уверенность: {(enumLabel(result.confidence, confidenceLabels) ?? result.confidence) || "Не указана"}</small>
       </div>
-      <AggregateFindingList items={result.key_findings} />
+      <AggregateDetailedReportView report={result.detailed_report} />
+      <AggregateIssueDetailList
+        title="Системные проблемы"
+        items={systemicIssues}
+        emptyLabel="Системные проблемы не указаны."
+      />
+      {result.systemic_issues?.length ? <AggregateFindingList items={result.key_findings} /> : null}
       <div className="analysis-section">
         <strong>Повторяющиеся проблемы</strong>
-        {result.recurring_issues.length === 0 ? (
-          <p className="analysis-empty">Проблемы не указаны.</p>
+        {recurringIssues.length === 0 ? (
+          <p className="analysis-empty">Повторяющиеся проблемы не указаны.</p>
         ) : (
           <div className="analytics-list">
-            {result.recurring_issues.map((issue) => (
+            {recurringIssues.map((issue) => (
               <div className="analytics-list-row criteria" key={`${issue.code}-${issue.title}`}>
                 <div>
-                  <strong>{issue.title || issue.code}</strong>
+                  <strong>{issue.title || issue.code || "Повторяющийся сигнал"}</strong>
                   <small>{issue.recommendation || "Рекомендация не указана"}</small>
+                  {issue.sample_call_uuids?.length ? <UuidSamples values={issue.sample_call_uuids} /> : null}
                 </div>
-                <span>{issue.count}</span>
+                <span>
+                  {issue.count ?? "—"}
+                  {issue.affected_share !== undefined ? ` · ${formatShare(issue.affected_share)}` : ""}
+                </span>
               </div>
             ))}
           </div>
         )}
       </div>
+      <AggregateIssueDetailList
+        title="Единичные, но важные сигналы"
+        items={singleCallObservations}
+        emptyLabel="Единичные важные сигналы не указаны."
+      />
+      <AggregateMetricDetailList
+        title="Слабые критерии"
+        items={result.weak_criteria ?? []}
+        emptyLabel="Слабые критерии не указаны."
+      />
+      <AggregateMetricDetailList
+        title="Возражения клиентов"
+        items={result.client_objections ?? []}
+        emptyLabel="Отдельные возражения не указаны."
+      />
+      <AggregateIssueDetailList
+        title="Паттерны потерь и рисков"
+        items={result.loss_and_risk_patterns ?? []}
+        emptyLabel="Паттерны потерь и рисков не указаны."
+      />
       <div className="analysis-section">
         <strong>Сильные стороны, риски и рекомендации</strong>
         <div className="analysis-columns">
@@ -999,18 +1225,405 @@ function AggregateResultView({ analysis }: { analysis: AggregateAnalysisResponse
         ) : (
           <div className="analytics-list">
             {result.priority_actions.map((action) => (
-              <div className="analytics-list-row criteria" key={action.title}>
+              <div className="analytics-list-row criteria" key={`${action.title}-${action.expected_effect}-${action.priority}`}>
                 <div>
-                  <strong>{action.title}</strong>
+                  <strong>{action.title || "Действие"}</strong>
                   <small>{action.expected_effect || "Эффект не указан"}</small>
                 </div>
-                <span>{enumLabel(action.priority, priorityLabels) ?? action.priority}</span>
+                {action.priority && <span>{enumLabel(action.priority, priorityLabels) ?? action.priority}</span>}
               </div>
             ))}
           </div>
         )}
       </div>
+      <AggregateStatisticsPanel statistics={result.aggregate_statistics} />
     </div>
+  );
+}
+
+function AggregateSourceCoverage({
+  analysis,
+  source,
+  coverageNote
+}: {
+  analysis: AggregateAnalysisResponse;
+  source?: AggregateAnalysisResult["source_summary"];
+  coverageNote?: string;
+}) {
+  const includedCalls = source?.included_in_statistics ?? analysis.source_calls_count;
+
+  return (
+    <section className="analysis-section aggregate-source-coverage">
+      <strong>Покрытие источников</strong>
+      <div className="aggregate-coverage-grid">
+        <div>
+          <span>Учтено в статистике</span>
+          <strong>{callCountLabel(includedCalls)}</strong>
+        </div>
+        <div>
+          <span>Примеры для AI</span>
+          <strong>
+            {source?.representative_calls === undefined ? "—" : callCountLabel(source.representative_calls)}
+          </strong>
+        </div>
+        {source?.analyzed_calls !== undefined && source.analyzed_calls !== includedCalls ? (
+          <div>
+            <span>Готовых анализов в наборе</span>
+            <strong>{callCountLabel(source.analyzed_calls)}</strong>
+          </div>
+        ) : null}
+      </div>
+      {source?.all_analyzed_calls_used === true && (
+        <p className="aggregate-coverage-confirmation">
+          Backend-статистика построена по всем готовым анализам за период.
+        </p>
+      )}
+      {coverageNote && <p className="aggregate-secondary-text">{coverageNote}</p>}
+      {source?.source_set_hash && (
+        <small className="aggregate-source-hash">
+          Состав набора: <code title={source.source_set_hash}>{shortIdentifier(source.source_set_hash)}</code>
+        </small>
+      )}
+    </section>
+  );
+}
+
+function AggregateDetailedReportView({ report }: { report?: AggregateAnalysisResult["detailed_report"] }) {
+  const sections = report
+    ? [
+        ["Методика", report.methodology],
+        ["Обзор качества", report.quality_overview],
+        ["Анализ проблем", report.issue_analysis],
+        ["Потери клиентов", report.customer_loss_analysis],
+        ["План обучения", report.training_plan],
+        ["Ограничения данных", report.data_limitations]
+      ].filter((item): item is [string, string] => typeof item[1] === "string" && item[1].trim().length > 0)
+    : [];
+
+  if (sections.length === 0) return null;
+
+  return (
+    <section className="analysis-section aggregate-detailed-report">
+      <strong>Подробный отчет</strong>
+      <div className="aggregate-detailed-report-grid">
+        {sections.map(([title, text]) => (
+          <div key={title}>
+            <h3>{title}</h3>
+            <p>{text}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AggregateIssueDetailList({
+  title,
+  items,
+  emptyLabel
+}: {
+  title: string;
+  items: NonNullable<AggregateAnalysisResult["systemic_issues"]>;
+  emptyLabel: string;
+}) {
+  return (
+    <section className="analysis-section">
+      <strong>{title}</strong>
+      {items.length === 0 ? (
+        <p className="analysis-empty">{emptyLabel}</p>
+      ) : (
+        <div className="analytics-list">
+          {items.map((issue) => {
+            const evidence = [...(issue.evidence_call_uuids ?? []), ...(issue.sample_call_uuids ?? [])];
+            const count = issue.affected_calls_count ?? issue.count;
+
+            return (
+              <div className="analytics-list-row criteria aggregate-detail-row" key={`${issue.code}-${issue.title}-${evidence[0]}-${count}`}>
+                <div>
+                  <strong>{issue.title || issue.code || "Сигнал"}</strong>
+                  {(issue.description || issue.reason) && <small>{issue.description || issue.reason}</small>}
+                  {(count !== undefined || issue.affected_share !== undefined) && (
+                    <small>
+                      {count !== undefined ? `Затронуто: ${callCountLabel(count)}` : ""}
+                      {count !== undefined && issue.affected_share !== undefined ? " · " : ""}
+                      {issue.affected_share !== undefined ? formatShare(issue.affected_share) : ""}
+                    </small>
+                  )}
+                  {issue.business_impact && <small>Влияние: {issue.business_impact}</small>}
+                  {issue.recommendation && <small>Рекомендация: {issue.recommendation}</small>}
+                  {evidence.length > 0 ? <UuidSamples values={evidence} /> : null}
+                </div>
+                {issue.severity && <span>{enumLabel(issue.severity, severityLabels) ?? issue.severity}</span>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AggregateMetricDetailList({
+  title,
+  items,
+  emptyLabel
+}: {
+  title: string;
+  items: NonNullable<AggregateAnalysisResult["weak_criteria"]>;
+  emptyLabel: string;
+}) {
+  return (
+    <section className="analysis-section">
+      <strong>{title}</strong>
+      {items.length === 0 ? (
+        <p className="analysis-empty">{emptyLabel}</p>
+      ) : (
+        <div className="analytics-list">
+          {items.map((item) => (
+            <div className="analytics-list-row criteria aggregate-detail-row" key={`${item.code}-${item.title}-${item.evidence_call_uuids?.[0]}`}>
+              <div>
+                <strong>{item.title || item.code || "Метрика"}</strong>
+                {item.explanation && <small>{item.explanation}</small>}
+                {(item.affected_calls_count !== undefined || item.affected_share !== undefined) && (
+                  <small>
+                    {item.affected_calls_count !== undefined
+                      ? `Затронуто: ${callCountLabel(item.affected_calls_count)}`
+                      : ""}
+                    {item.affected_calls_count !== undefined && item.affected_share !== undefined ? " · " : ""}
+                    {item.affected_share !== undefined ? formatShare(item.affected_share) : ""}
+                  </small>
+                )}
+                {item.recommendation && <small>Рекомендация: {item.recommendation}</small>}
+                {item.evidence_call_uuids?.length ? <UuidSamples values={item.evidence_call_uuids} /> : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AggregateStatisticsPanel({ statistics }: { statistics?: AggregateAnalysisResult["aggregate_statistics"] }) {
+  const hasStatistics = Boolean(
+    statistics &&
+      [
+        statistics.score_summary,
+        statistics.issue_coverage?.length,
+        statistics.weak_criteria?.length,
+        statistics.business_outcomes?.length,
+        statistics.lost_reasons?.length,
+        statistics.customer_objections?.length,
+        statistics.risks?.length,
+        statistics.topics?.length,
+        statistics.next_step_summary,
+        statistics.attention_calls?.length,
+        statistics.strong_calls?.length
+      ].some(Boolean)
+  );
+
+  if (!hasStatistics || !statistics) return null;
+
+  return (
+    <section className="analysis-section aggregate-statistics">
+      <details>
+        <summary>Проверяемая статистика по звонкам</summary>
+        <div className="aggregate-statistics-content">
+          <AggregateScoreSummaryView summary={statistics.score_summary} />
+          <AggregateFrequencyList title="Покрытие проблем" items={statistics.issue_coverage ?? []} />
+          <AggregateCriterionStatistics items={statistics.weak_criteria ?? []} />
+          <AggregateFrequencyList title="Бизнес-результаты" items={statistics.business_outcomes ?? []} />
+          <AggregateFrequencyList title="Причины потерь" items={statistics.lost_reasons ?? []} />
+          <AggregateFrequencyList title="Возражения клиентов" items={statistics.customer_objections ?? []} />
+          <AggregateFrequencyList title="Риски" items={statistics.risks ?? []} />
+          <AggregateFrequencyList title="Темы разговоров" items={statistics.topics ?? []} />
+          <AggregateNextStepStatistics summary={statistics.next_step_summary} />
+          <AggregateCallEvidenceList title="Звонки, требующие внимания" items={statistics.attention_calls ?? []} />
+          <AggregateCallEvidenceList title="Сильные звонки" items={statistics.strong_calls ?? []} />
+        </div>
+      </details>
+    </section>
+  );
+}
+
+function AggregateScoreSummaryView({ summary }: { summary?: NonNullable<AggregateAnalysisResult["aggregate_statistics"]>["score_summary"] }) {
+  if (!summary) return null;
+
+  return (
+    <div className="aggregate-stat-block">
+      <h3>Оценки качества</h3>
+      <div className="aggregate-stat-metrics">
+        <StatisticMetric label="С оценкой" value={summary.calls_with_score} count />
+        <StatisticMetric label="Средняя" value={summary.average} />
+        <StatisticMetric label="Минимум" value={summary.min} />
+        <StatisticMetric label="Максимум" value={summary.max} />
+        <StatisticMetric label="Низкие" value={summary.low_count} count />
+        <StatisticMetric label="Средние" value={summary.medium_count} count />
+        <StatisticMetric label="Высокие" value={summary.high_count} count />
+      </div>
+    </div>
+  );
+}
+
+function AggregateFrequencyList({
+  title,
+  items
+}: {
+  title: string;
+  items: NonNullable<AggregateAnalysisResult["aggregate_statistics"]>["issue_coverage"];
+}) {
+  if (!items?.length) return null;
+
+  return (
+    <div className="aggregate-stat-block">
+      <h3>{title}</h3>
+      <div className="aggregate-stat-list">
+        {items.map((item) => (
+          <div className="aggregate-stat-row" key={`${item.code}-${item.title}-${item.sample_call_uuids?.[0]}`}>
+            <div>
+              <strong>{item.title || item.code || "Показатель"}</strong>
+              {item.sample_call_uuids?.length ? <UuidSamples values={item.sample_call_uuids} /> : null}
+            </div>
+            <span>
+              {item.count !== undefined ? callCountLabel(item.count) : "—"}
+              {item.share !== undefined ? ` · ${formatShare(item.share)}` : ""}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AggregateCriterionStatistics({
+  items
+}: {
+  items: NonNullable<AggregateAnalysisResult["aggregate_statistics"]>["weak_criteria"];
+}) {
+  if (!items?.length) return null;
+
+  return (
+    <div className="aggregate-stat-block">
+      <h3>Слабые критерии: фактические показатели</h3>
+      <div className="aggregate-stat-list">
+        {items.map((item) => (
+          <div className="aggregate-stat-row aggregate-criterion-row" key={`${item.code}-${item.title}-${item.sample_call_uuids?.[0]}`}>
+            <div>
+              <strong>{item.title || item.code || "Критерий"}</strong>
+              <small>
+                {item.weak_calls !== undefined ? `Слабых: ${callCountLabel(item.weak_calls)}` : ""}
+                {item.weak_calls !== undefined && item.weak_share !== undefined ? " · " : ""}
+                {item.weak_share !== undefined ? formatShare(item.weak_share) : ""}
+              </small>
+              <small>
+                Пропущено: {item.missed_calls ?? "—"} · Частично: {item.partially_met_calls ?? "—"} · Неясно: {item.unclear_calls ?? "—"}
+                {item.average_points_share !== undefined ? ` · Среднее: ${formatShare(item.average_points_share)}` : ""}
+              </small>
+              {item.sample_call_uuids?.length ? <UuidSamples values={item.sample_call_uuids} /> : null}
+            </div>
+            <span>{item.applicable_calls !== undefined ? callCountLabel(item.applicable_calls) : "—"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AggregateNextStepStatistics({
+  summary
+}: {
+  summary?: NonNullable<AggregateAnalysisResult["aggregate_statistics"]>["next_step_summary"];
+}) {
+  if (!summary) return null;
+
+  return (
+    <div className="aggregate-stat-block">
+      <h3>Следующие шаги</h3>
+      <div className="aggregate-stat-metrics">
+        <StatisticMetric label="Есть следующий шаг" value={summary.calls_with_next_step} count />
+        <StatisticMetric label="Есть конкретный шаг" value={summary.calls_with_specific_next_step} count />
+        <StatisticMetric label="Нет следующего шага" value={summary.calls_missing_next_step} count />
+        <StatisticMetric label="Нет конкретики" value={summary.calls_missing_specific_step} count />
+        <StatisticMetric label="Без следующего шага" value={summary.missing_next_step_share} share />
+        <StatisticMetric label="Без конкретики" value={summary.missing_specific_step_share} share />
+      </div>
+    </div>
+  );
+}
+
+function AggregateCallEvidenceList({
+  title,
+  items
+}: {
+  title: string;
+  items: NonNullable<AggregateAnalysisResult["aggregate_statistics"]>["attention_calls"];
+}) {
+  if (!items?.length) return null;
+
+  return (
+    <div className="aggregate-stat-block">
+      <h3>{title}</h3>
+      <div className="aggregate-stat-list">
+        {items.map((item) => (
+          <div className="aggregate-stat-row aggregate-evidence-row" key={`${item.call_uuid}-${item.title}`}>
+            <div>
+              <strong>{item.title || "Звонок"}</strong>
+              {item.summary && <small>{item.summary}</small>}
+              {item.call_uuid ? <UuidSamples values={[item.call_uuid]} /> : null}
+              {item.issue_codes?.length ? <small>Сигналы: {item.issue_codes.join(", ")}</small> : null}
+            </div>
+            <span>{item.score === undefined || item.score === null ? "—" : item.score}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function StatisticMetric({
+  label,
+  value,
+  count = false,
+  share = false
+}: {
+  label: string;
+  value?: number | null;
+  count?: boolean;
+  share?: boolean;
+}) {
+  const rendered = share
+    ? formatShare(value)
+    : value === undefined || value === null
+      ? "—"
+      : count
+        ? callCountLabel(value)
+        : new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(value);
+
+  return (
+    <div>
+      <strong>{rendered}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function UuidSamples({ values }: { values: string[] }) {
+  const uniqueValues = Array.from(new Set(values)).slice(0, 5);
+  if (uniqueValues.length === 0) return null;
+
+  return (
+    <span className="aggregate-uuid-samples">
+      {uniqueValues.map((value, index) => (
+        <a
+          className="aggregate-call-link"
+          href={`/app/calls?call=${encodeURIComponent(value)}`}
+          key={value}
+          title="Перейти к звонку"
+        >
+          Звонок {index + 1}
+        </a>
+      ))}
+    </span>
   );
 }
 
@@ -1046,13 +1659,13 @@ function AggregateReportsPanel({
       <div className="report-format-actions">
         {reportFormats.map((item) => (
           <button
-            className={`report-action-row ${selectedFormat === item.format ? "active" : ""}`}
+            className={`report-action-row deep-report-format-button ${selectedFormat === item.format ? "active" : ""}`}
             type="button"
             key={item.format}
             onClick={() => onFormatChange(item.format)}
+            aria-pressed={selectedFormat === item.format}
           >
             <span>{item.label}</span>
-            <small>{item.description}</small>
           </button>
         ))}
       </div>
@@ -1125,15 +1738,22 @@ function AggregateFindingList({
       ) : (
         <div className="analytics-list">
           {items.map((finding) => (
-            <div className="analytics-list-row criteria" key={finding.title}>
+            <div className="analytics-list-row criteria aggregate-detail-row" key={`${finding.title}-${finding.description}-${finding.evidence_call_uuids?.[0]}`}>
               <div>
-                <strong>{finding.title}</strong>
-                <small>{finding.description}</small>
-                {finding.evidence_call_uuids.length > 0 && (
-                  <small>Звонки: {finding.evidence_call_uuids.slice(0, 3).join(", ")}</small>
+                <strong>{finding.title || "Ключевой вывод"}</strong>
+                {finding.description && <small>{finding.description}</small>}
+                {(finding.affected_calls_count !== undefined || finding.affected_share !== undefined) && (
+                  <small>
+                    {finding.affected_calls_count !== undefined
+                      ? `Затронуто: ${callCountLabel(finding.affected_calls_count)}`
+                      : ""}
+                    {finding.affected_calls_count !== undefined && finding.affected_share !== undefined ? " · " : ""}
+                    {finding.affected_share !== undefined ? formatShare(finding.affected_share) : ""}
+                  </small>
                 )}
+                {finding.evidence_call_uuids?.length ? <UuidSamples values={finding.evidence_call_uuids} /> : null}
               </div>
-              <span>{enumLabel(finding.severity, severityLabels) ?? finding.severity}</span>
+              {finding.severity && <span>{enumLabel(finding.severity, severityLabels) ?? finding.severity}</span>}
             </div>
           ))}
         </div>
@@ -1181,8 +1801,7 @@ type DeepPayloadResult =
   | { ok: false; error: string };
 
 function buildDeepAnalysisPayload(
-  form: DeepAnalysisFormState,
-  folder?: CallFolderResponse
+  form: DeepAnalysisFormState
 ): DeepPayloadResult {
   if (!form.period_from || !form.period_to) {
     return { ok: false, error: "Выберите начало и конец периода." };
@@ -1204,51 +1823,58 @@ function buildDeepAnalysisPayload(
     return { ok: false, error: "Для анализа папки выберите папку." };
   }
 
-  return {
-    ok: true,
-    value: {
-      scope: form.scope,
-      company_uuid:
-        form.scope === "company" || form.scope === "department"
-          ? form.company_uuid
-          : folder?.company_uuid ?? null,
-      department_uuid: form.scope === "department" ? form.department_uuid : folder?.department_uuid ?? null,
-      folder_uuid: form.scope === "folder" ? form.folder_uuid : null,
-      period_from: form.period_from,
-      period_to: form.period_to,
-      force: form.force
-    }
+  const base = {
+    scope: form.scope,
+    period_from: form.period_from,
+    period_to: form.period_to,
+    force: form.force
   };
+
+  if (form.scope === "company") {
+    return { ok: true, value: { ...base, company_uuid: form.company_uuid } };
+  }
+
+  if (form.scope === "department") {
+    return {
+      ok: true,
+      value: {
+        ...base,
+        company_uuid: form.company_uuid,
+        department_uuid: form.department_uuid
+      }
+    };
+  }
+
+  if (form.scope === "folder") {
+    return { ok: true, value: { ...base, folder_uuid: form.folder_uuid } };
+  }
+
+  return { ok: true, value: base };
 }
 
+function parseDeepAnalysisStatusEvent(event: Event): AggregateAnalysisStatusEvent | null {
+  if (!(event instanceof MessageEvent) || typeof event.data !== "string") return null;
 
-function aggregateResult(value: AggregateAnalysisResponse["result_json"]): AggregateAnalysisResult | null {
-  if (!isRecord(value)) return null;
+  try {
+    const payload = JSON.parse(event.data) as Partial<AggregateAnalysisStatusEvent>;
+    if (
+      typeof payload.analysis_id !== "string" ||
+      typeof payload.status !== "string" ||
+      typeof payload.terminal !== "boolean" ||
+      typeof payload.timestamp !== "string"
+    ) {
+      return null;
+    }
 
-  return {
-    summary: stringValue(value.summary) ?? "",
-    key_findings: recordList(value.key_findings).map((item) => ({
-      title: stringValue(item.title) ?? "Вывод",
-      description: stringValue(item.description) ?? "",
-      severity: stringValue(item.severity) ?? "unclear",
-      evidence_call_uuids: stringList(item.evidence_call_uuids)
-    })),
-    recurring_issues: recordList(value.recurring_issues).map((item) => ({
-      code: stringValue(item.code) ?? "",
-      title: stringValue(item.title) ?? stringValue(item.code) ?? "Проблема",
-      count: numberValue(item.count),
-      recommendation: stringValue(item.recommendation) ?? ""
-    })),
-    strengths: stringList(value.strengths),
-    risks: stringList(value.risks),
-    priority_actions: recordList(value.priority_actions).map((item) => ({
-      title: stringValue(item.title) ?? "Действие",
-      priority: stringValue(item.priority) ?? "medium",
-      expected_effect: stringValue(item.expected_effect) ?? ""
-    })),
-    manager_recommendations: stringList(value.manager_recommendations),
-    confidence: stringValue(value.confidence) ?? "unclear"
-  };
+    return {
+      analysis_id: payload.analysis_id,
+      status: payload.status,
+      terminal: payload.terminal,
+      timestamp: payload.timestamp
+    };
+  } catch {
+    return null;
+  }
 }
 
 function reportFileLabel(fileName: string) {
@@ -1324,59 +1950,31 @@ function deepAnalysisContext(
   };
 }
 
-function callCountLabel(count: number) {
-  const normalized = Math.abs(count);
-  const mod10 = normalized % 10;
-  const mod100 = normalized % 100;
-
-  if (mod10 === 1 && mod100 !== 11) return `${count} звонок`;
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} звонка`;
-  return `${count} звонков`;
-}
-
 function friendlyDeepActionError(message: string) {
-  if (
-    message.startsWith("Выберите") ||
-    message.startsWith("Для анализа") ||
-    message.startsWith("Начало периода")
-  ) {
-    return message;
-  }
-
-  return friendlyDeepAnalysisError(message);
+  return message.trim() || "Не удалось выполнить действие с глубоким анализом.";
 }
 
 function friendlyDeepAnalysisError(message?: string | null) {
-  const normalized = message?.toLowerCase() ?? "";
-
-  if (normalized.includes("429") || normalized.includes("rate")) {
-    return "Сейчас не удалось сформировать анализ из-за временного ограничения. Попробуйте позже.";
-  }
-
-  return "Не удалось сформировать анализ. Проверьте период и попробуйте снова.";
+  return message?.trim() || "Не удалось сформировать анализ. Проверьте период и попробуйте снова.";
 }
 
 function friendlyAggregateReportError(message?: string | null) {
-  const normalized = message?.toLowerCase() ?? "";
-
-  if (normalized.includes("429") || normalized.includes("rate")) {
-    return "Экспорт временно недоступен. Попробуйте позже.";
-  }
-
-  return "Не удалось подготовить экспорт. Попробуйте создать его заново.";
+  return message?.trim() || "Не удалось подготовить экспорт. Попробуйте создать его заново.";
 }
 
 function aggregateStatusLabel(status: string) {
   if (status === "done") return "Готов";
   if (status === "failed") return "Ошибка";
   if (status === "processing") return "Формируется";
-  return "В очереди";
+  if (status === "pending") return "В очереди";
+  return `Статус: ${status}`;
 }
 
 function aggregateReportStatusLabel(status: string) {
   if (status === "ready") return "Готов";
   if (status === "failed") return "Ошибка";
-  return "Формируется";
+  if (status === "pending") return "Формируется";
+  return `Статус: ${status}`;
 }
 
 function deepScopeLabel(scope: string) {
@@ -1432,43 +2030,36 @@ async function loadCallFoldersForContext(
       })
     )
   ];
-  const responses = await Promise.all(
-    requests.map((request) => request.catch(() => ({ items: [] as CallFolderResponse[] })))
-  );
+  const responses = await Promise.allSettled(requests);
   const folders = new Map<string, CallFolderResponse>();
+  const errors: string[] = [];
 
   responses.forEach((response) => {
-    response.items.forEach((folder) => folders.set(folder.id, folder));
+    if (response.status === "fulfilled") {
+      response.value.items.forEach((folder) => folders.set(folder.id, folder));
+      return;
+    }
+
+    errors.push(
+      response.reason instanceof Error ? response.reason.message : "Не удалось загрузить часть папок звонков."
+    );
   });
 
-  return Array.from(folders.values());
+  return {
+    items: Array.from(folders.values()),
+    error: errors[0]
+  };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+function upsertDeepAnalysis(
+  current: AggregateAnalysisResponse[],
+  next: AggregateAnalysisResponse
+) {
+  const existingIndex = current.findIndex((analysis) => analysis.id === next.id);
 
-function recordList(value: unknown) {
-  return Array.isArray(value) ? value.filter(isRecord) : [];
-}
-
-function stringValue(value: unknown) {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function stringList(value: unknown) {
-  if (typeof value === "string") {
-    const item = stringValue(value);
-    return item ? [item] : [];
+  if (existingIndex === -1) {
+    return [next, ...current];
   }
 
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
-    const text = stringValue(item);
-    return text ? [text] : [];
-  });
-}
-
-function numberValue(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return current.map((analysis) => (analysis.id === next.id ? next : analysis));
 }
