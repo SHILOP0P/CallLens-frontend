@@ -20,10 +20,11 @@ import type {
   SessionState,
   SearchResponse,
   Subscription,
-  SubscriptionUsageResponse
+  SubscriptionUsageResponse,
+  AdminCapabilitiesResponse
 } from "../../types";
 
-import { AppTheme, isSettingsPage, sidebarItems, ThemeToggleEvent } from "../../app/runtime";
+import { adminSidebarItem, AppTheme, isSettingsPage, sidebarItems, ThemeToggleEvent } from "../../app/runtime";
 import { Logo } from "../../shared/ui/primitives";
 
 const WORKSPACE_COMPANY_STORAGE_KEY = "calllens.activeWorkspaceCompanyId";
@@ -38,6 +39,7 @@ export function AuthenticatedShell({
   personalSubscription,
   companySubscriptions,
   invitationCount,
+  adminCapabilities,
   children,
   onNavigate,
   onOpenCall,
@@ -54,6 +56,7 @@ export function AuthenticatedShell({
   personalSubscription: Subscription | null;
   companySubscriptions: Record<string, Subscription | null>;
   invitationCount: number;
+  adminCapabilities: AdminCapabilitiesResponse | null;
   children: React.ReactNode;
   onNavigate: (page: AppPage) => void;
   onOpenCall: (callId: string) => void;
@@ -574,7 +577,7 @@ export function AuthenticatedShell({
       <div className="workspace-frame">
         <aside className="app-sidebar" aria-label="Рабочие разделы">
           <div className="app-sidebar-menu">
-            {sidebarItems.map((item) => (
+            {[...sidebarItems, ...(adminCapabilities ? [adminSidebarItem] : [])].map((item) => (
                 <button
                   key={item.page}
                   className={activeSidebarPage === item.page ? "active" : ""}

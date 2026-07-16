@@ -569,7 +569,7 @@ html[data-theme="dark"] :is(
   border-color: rgba(255, 154, 109, 0.28);
 }
 
-html[data-theme="dark"] :is(.segmented, input, select) {
+html[data-theme="dark"] :is(.segmented, input) {
   color: #fffaf5;
   background: rgba(255, 250, 245, 0.08);
   border-color: rgba(255, 250, 245, 0.14);
@@ -592,36 +592,6 @@ html[data-theme="dark"] .file-dropzone-icon {
 
 html[data-theme="dark"] :is(.instruction-preview svg, .context-note svg, .instruction-mini-list svg) {
   color: #ff9a6d;
-}
-
-html[data-theme="dark"] select {
-  background:
-    linear-gradient(45deg, transparent 50%, #d9c8bc 50%),
-    linear-gradient(135deg, #d9c8bc 50%, transparent 50%),
-    linear-gradient(180deg, rgba(255, 250, 245, 0.12), rgba(255, 250, 245, 0.08));
-  box-shadow: inset 0 1px 0 rgba(255, 250, 245, 0.12);
-}
-
-html[data-theme="dark"] select:hover:not(:disabled) {
-  border-color: rgba(255, 250, 245, 0.16);
-  background:
-    linear-gradient(45deg, transparent 50%, #d9c8bc 50%),
-    linear-gradient(135deg, #d9c8bc 50%, transparent 50%),
-    linear-gradient(180deg, rgba(255, 250, 245, 0.12), rgba(255, 250, 245, 0.08));
-}
-
-html[data-theme="dark"] select option {
-  color: #fffaf5;
-  background: #251914;
-}
-
-html[data-theme="dark"] .select-control::after {
-  border-color: #d9c8bc;
-}
-
-html[data-theme="dark"] .select-control:hover::after,
-html[data-theme="dark"] .select-control:focus-within::after {
-  border-color: #ff9a6d;
 }
 
 html[data-theme="dark"] :is(.segmented button, .report-format-button, .instruction-choice) {

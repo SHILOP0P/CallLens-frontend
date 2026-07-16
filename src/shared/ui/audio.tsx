@@ -1,8 +1,9 @@
 import { Download, Pause, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getCallAudioBlob, getCallAudioUrl } from "../../api";
+import { getCallAudioBlob, getCallAudioUrl, getCallMediaBlob, getCallMediaUrl } from "../../api";
 import type { CallResponse } from "../../types";
 import { formatDuration } from "../lib/formatters";
+import { isVideoCall, mediaDownloadName } from "../lib/media";
 
 const playbackRates = [0.75, 1, 1.25, 1.5, 2];
 const waveformBars = 72;
@@ -10,6 +11,70 @@ const fallbackWaveform = Array.from({ length: waveformBars }, (_, index) => {
   const wave = Math.sin(index * 0.68) * 0.22 + Math.sin(index * 1.73) * 0.14;
   return Math.max(0.2, Math.min(0.9, 0.54 + wave));
 });
+
+export function CallMediaPlayer({ call }: { call: CallResponse }) {
+  return isVideoCall(call) ? <CallVideoPlayer call={call} /> : <CallAudioPlayer call={call} />;
+}
+
+function CallVideoPlayer({ call }: { call: CallResponse }) {
+  const [videoUrl, setVideoUrl] = useState("");
+  const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
+  const [error, setError] = useState("");
+  const source = useMemo(() => getCallMediaUrl(call), [call.id, call.media_url, call.audio_url]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl = "";
+    setVideoUrl("");
+    setVideoBlob(null);
+    setError("");
+    getCallMediaBlob(call)
+      .then((blob) => {
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setVideoBlob(blob);
+        setVideoUrl(objectUrl);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Видео недоступно");
+      });
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [call, source]);
+
+  function downloadVideo() {
+    if (!videoBlob) return;
+    const downloadUrl = URL.createObjectURL(videoBlob);
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = mediaDownloadName(call);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+  }
+
+  return (
+    <div className={`call-video-player ${error ? "video-error-state" : ""}`}>
+      {videoUrl ? (
+        <video controls preload="metadata" src={videoUrl} aria-label={`Видеозапись звонка ${call.title}`} />
+      ) : (
+        <div className="call-video-placeholder" role="status">
+          {error || "Загружаю видеозапись…"}
+        </div>
+      )}
+      <div className="call-video-meta">
+        <span>{call.original_filename}</span>
+        <button className="ghost-button small" type="button" disabled={!videoBlob} onClick={downloadVideo}>
+          <Download size={15} />
+          Скачать видео
+        </button>
+      </div>
+    </div>
+  );
+}
 
 export function CallAudioPlayer({ call }: { call: CallResponse; }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -222,7 +287,7 @@ export function CallAudioPlayer({ call }: { call: CallResponse; }) {
     const downloadUrl = URL.createObjectURL(audioBlob);
     const link = document.createElement("a");
     link.href = downloadUrl;
-    link.download = audioDownloadName(call);
+    link.download = mediaDownloadName(call);
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -359,15 +424,6 @@ function resetAudioElement(audio: HTMLAudioElement | null) {
     audio.currentTime = 0;
   }
   audio.load();
-}
-
-function audioDownloadName(call: CallResponse) {
-  const fallbackName = call.title || "call-audio";
-  const rawName = call.original_filename || `${fallbackName}.mp3`;
-  return rawName
-    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim() || "call-audio.mp3";
 }
 
 async function buildWaveform(blob: Blob, barCount: number) {

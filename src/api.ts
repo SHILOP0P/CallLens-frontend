@@ -1,5 +1,9 @@
 import type {
   AggregateAnalysisResponse,
+  AdminCapabilitiesResponse,
+  AdminCompaniesResponse,
+  AdminSubscriptionResponse,
+  AdminUsersResponse,
   AggregateReportResponse,
   AnalysisInstruction,
   AnalysisResponse,
@@ -57,6 +61,8 @@ import type {
   UserSessionsResponse,
   VisibilityScope
 } from "./types";
+import { authStore } from "./stores/auth-store";
+import { AuthorizedEventStream } from "./shared/lib/authorized-event-stream";
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 const apiRoot = `${configuredBase}/api/v1`;
@@ -283,14 +289,23 @@ function normalizeSubscriptionUsage(usage: RawSubscriptionUsageResponse): Subscr
 }
 
 function refreshSessionRequest() {
+  if (!authStore.refreshToken) {
+    return Promise.reject(new ApiError(401, "Необходимо войти в аккаунт", "unauthorized"));
+  }
+
   if (!refreshSessionPromise) {
     refreshSessionPromise = request<AuthResponse>(
       authRefreshPath,
-      { method: "POST" },
+      { method: "POST", body: JSON.stringify({ refresh_token: authStore.refreshToken }) },
       { retryOnUnauthorized: false }
-    ).finally(() => {
-      refreshSessionPromise = null;
-    });
+    )
+      .then((response) => {
+        authStore.setTokens(response.access_token, response.refresh_token);
+        return response;
+      })
+      .finally(() => {
+        refreshSessionPromise = null;
+      });
   }
 
   return refreshSessionPromise;
@@ -303,14 +318,17 @@ async function request<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
 
+  if (authStore.accessToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${authStore.accessToken}`);
+  }
+
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
   const response = await fetch(`${apiRoot}${path}`, {
     ...init,
-    headers,
-    credentials: "include"
+    headers
   });
 
   if (response.status === 204) {
@@ -340,8 +358,11 @@ async function request<T>(
 }
 
 async function requestBlob(path: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
+  const headers = new Headers();
+  if (authStore.accessToken) headers.set("Authorization", `Bearer ${authStore.accessToken}`);
+
   const response = await fetch(`${apiRoot}${path}`, {
-    credentials: "include"
+    headers
   });
 
   if (!response.ok) {
@@ -366,8 +387,11 @@ async function requestBlob(path: string, options: { retryOnUnauthorized?: boolea
 }
 
 async function requestAssetBlob(url: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
+  const headers = new Headers();
+  if (authStore.accessToken) headers.set("Authorization", `Bearer ${authStore.accessToken}`);
+
   const response = await fetch(url, {
-    credentials: "include"
+    headers
   });
 
   if (!response.ok) {
@@ -419,7 +443,7 @@ function apiPathFromUrl(pathOrUrl: string) {
   return pathOrUrl;
 }
 
-export function getCallAudioUrl(call: CallResponse) {
+export function getCallMediaUrl(call: CallResponse) {
   const callWithAudioLinks = call as CallResponse & {
     audio_url?: string | null;
     audio_download_url?: string | null;
@@ -429,28 +453,124 @@ export function getCallAudioUrl(call: CallResponse) {
     download_url?: string | null;
   };
   const directUrl = [
+    callWithAudioLinks.media_url,
     callWithAudioLinks.audio_url,
     callWithAudioLinks.audio_download_url,
     callWithAudioLinks.file_url,
-    callWithAudioLinks.media_url,
     callWithAudioLinks.recording_url,
     callWithAudioLinks.download_url
   ].find((value): value is string => typeof value === "string" && value.trim().length > 0);
 
   if (directUrl) return absoluteApiAssetUrl(directUrl);
 
-  return `${apiRoot}/calls/${encodeURIComponent(call.id)}/audio`;
+  return `${apiRoot}/calls/${encodeURIComponent(call.id)}/media`;
 }
 
-export function getCallAudioBlob(call: CallResponse) {
-  return requestAssetBlob(getCallAudioUrl(call));
+export function getCallMediaBlob(call: CallResponse) {
+  return requestAssetBlob(getCallMediaUrl(call));
+}
+
+export const getCallAudioUrl = getCallMediaUrl;
+export const getCallAudioBlob = getCallMediaBlob;
+
+export function getAdminCallAudioBlob(callId: string) {
+  return requestBlob(`/admin/calls/${encodeURIComponent(callId)}/audio`);
+}
+
+export function openAuthorizedEventStream(url: string) {
+  return new AuthorizedEventStream(url, refreshSessionRequest);
 }
 
 export const api = {
+  getAdminCapabilities() {
+    return request<AdminCapabilitiesResponse>("/admin/capabilities");
+  },
+
+  listAdminUsers(input: { q?: string; role?: string; limit?: number; offset?: number } = {}) {
+    return request<AdminUsersResponse>(`/admin/users${queryString(input)}`);
+  },
+
+  getAdminUser(userId: string) {
+    return request<UserResponse>(`/admin/users/${encodeURIComponent(userId)}`);
+  },
+
+  updateAdminUserProfile(userId: string, input: import("./types").UpdateAdminUserProfileRequest) {
+    return request<UserResponse>(`/admin/users/${encodeURIComponent(userId)}/profile`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  changeAdminUserRole(userId: string, input: { role: string; expected_role: string; reason: string }) {
+    return request<UserResponse>(`/admin/users/${encodeURIComponent(userId)}/role`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  listAdminUserSessions(userId: string) {
+    return request<UserSessionsResponse>(`/admin/users/${encodeURIComponent(userId)}/sessions`);
+  },
+
+  revokeAllAdminUserSessions(userId: string, reason: string) {
+    return request<void>(`/admin/users/${encodeURIComponent(userId)}/sessions`, {
+      method: "DELETE",
+      body: JSON.stringify({ reason })
+    });
+  },
+
+  revokeAdminUserSession(userId: string, sessionId: string, reason: string) {
+    return request<void>(`/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+      body: JSON.stringify({ reason })
+    });
+  },
+
+  listAdminCompanies(input: { q?: string; limit?: number; offset?: number } = {}) {
+    return request<AdminCompaniesResponse>(`/admin/companies${queryString(input)}`);
+  },
+
+  getAdminCompany(companyId: string) {
+    return request<CompanyResponse>(`/admin/companies/${encodeURIComponent(companyId)}`);
+  },
+
+  updateCompanyTag(companyId: string, tag: string) {
+    return request<CompanyResponse>(`/companies/${encodeURIComponent(companyId)}/tag`, {
+      method: "PATCH",
+      body: JSON.stringify({ tag })
+    });
+  },
+
+  getAdminSubscription(kind: "users" | "companies", id: string) {
+    return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription`);
+  },
+
+  grantAdminSubscription(kind: "users" | "companies", id: string, input: { plan_code: PlanCode; starts_at?: string; ends_at: string; reason: string }) {
+    return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription/grant`, {
+      method: "POST", body: JSON.stringify(input)
+    });
+  },
+
+  cancelAdminSubscription(kind: "users" | "companies", id: string, reason: string) {
+    return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription/cancel`, {
+      method: "POST", body: JSON.stringify({ reason })
+    });
+  },
+
+  getAdminCall(callId: string) {
+    return request<CallResponse>(`/admin/calls/${encodeURIComponent(callId)}`);
+  },
+
+  listAdminUserCalls(userId: string, input: { limit?: number; offset?: number } = {}) {
+    return request<CallsListResponse>(`/admin/users/${encodeURIComponent(userId)}/calls${queryString(input)}`);
+  },
   login(input: LoginRequest) {
     return request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(input)
+    }).then((response) => {
+      authStore.setTokens(response.access_token, response.refresh_token);
+      return response;
     });
   },
 
@@ -466,12 +586,20 @@ export const api = {
     });
   },
 
-  logout() {
-    return request<void>("/auth/logout", { method: "POST" });
+  async logout() {
+    try {
+      await request<void>("/auth/logout", { method: "POST" });
+    } finally {
+      authStore.clear();
+    }
   },
 
-  logoutAll() {
-    return request<void>("/auth/logout-all", { method: "POST" });
+  async logoutAll() {
+    try {
+      await request<void>("/auth/logout-all", { method: "POST" });
+    } finally {
+      authStore.clear();
+    }
   },
 
   refreshSession() {
@@ -559,7 +687,7 @@ export const api = {
   createCall(
     input: {
       title: string;
-      audio: File;
+      media: File;
       companyUuid?: string;
       departmentUuid?: string;
       useCustomInstructions?: boolean;
@@ -567,7 +695,7 @@ export const api = {
   ) {
     const body = new FormData();
     body.append("title", input.title);
-    body.append("audio", input.audio);
+    body.append("media", input.media);
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
     if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
     if (typeof input.useCustomInstructions === "boolean") {

@@ -177,14 +177,6 @@ function textFromReactNode(node: ReactNode): string {
   return "";
 }
 
-export function NativeSelectControl(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <span className="select-control">
-      <select {...props} />
-    </span>
-  );
-}
-
 export function ProfileField({ label, value }: { label: string; value: string }) {
   return (
     <div className="profile-field">

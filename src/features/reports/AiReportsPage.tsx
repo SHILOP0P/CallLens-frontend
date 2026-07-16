@@ -9,7 +9,7 @@ import {
   Trash2
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { api } from "../../api";
+import { api, openAuthorizedEventStream } from "../../api";
 import type {
   AggregateAnalysisResponse,
   AggregateAnalysisResult,
@@ -185,7 +185,7 @@ export function AiReportsPage({
     if (activeTab !== "deep" || !activeDeepAnalysisIds) return;
 
     const sources = activeDeepAnalysisIds.split("|").map((analysisId) => {
-      const source = new EventSource(api.getDeepAnalysisEventsUrl(analysisId), { withCredentials: true });
+      const source = openAuthorizedEventStream(api.getDeepAnalysisEventsUrl(analysisId));
 
       source.addEventListener("status", (event) => {
         const statusEvent = parseDeepAnalysisStatusEvent(event);
@@ -961,9 +961,9 @@ function DeepAnalysisSection({
               <h2>История глубокого анализа</h2>
               <p>Статусы обновляются автоматически; при необходимости обновите список вручную.</p>
             </div>
-            <button className="ghost-button small" type="button" onClick={onRefreshAnalyses}>
-              <RefreshCcw size={16} />
-              Обновить
+            <button className="ghost-button small" type="button" disabled={loadingAnalyses} aria-busy={loadingAnalyses} onClick={onRefreshAnalyses}>
+              <RefreshCcw className={loadingAnalyses ? "refresh-icon spinning" : "refresh-icon"} size={16} />
+              {loadingAnalyses ? "Обновляю" : "Обновить"}
             </button>
           </div>
           <div className="calls-filter-bar">
@@ -980,7 +980,7 @@ function DeepAnalysisSection({
             </SelectControl>
           </div>
           <div className="report-placeholder-list deep-analysis-history">
-            {loadingAnalyses ? (
+            {loadingAnalyses && analyses.length === 0 ? (
               <div className="report-placeholder-row">
                 <FileBarChart2 size={22} />
                 <div>

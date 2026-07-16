@@ -4,6 +4,7 @@ import {
   CircleUserRound,
   CloudUpload,
   FileAudio,
+  FileVideo,
   FileText,
   Pencil,
   Upload,
@@ -48,7 +49,7 @@ export function UploadPage({
   onUploaded: (call: CallResponse) => void;
 }) {
   const [title, setTitle] = useState("");
-  const [audio, setAudio] = useState<File | null>(null);
+  const [media, setMedia] = useState<File | null>(null);
   const [scope, setScope] = useState<VisibilityScope>("personal");
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [departmentId, setDepartmentId] = useState(
@@ -195,14 +196,14 @@ export function UploadPage({
       return;
     }
 
-    if (!audio) {
-      setError("Выберите аудиофайл.");
+    if (!media) {
+	  setError("Выберите аудио- или видеофайл.");
       return;
     }
 
     const payload = {
       title: title.trim(),
-      audio,
+      media,
       companyUuid: scope === "company" || scope === "department" ? companyId : undefined,
       departmentUuid: scope === "department" ? departmentId : undefined,
       useCustomInstructions: selectedInstructionIds.length > 0
@@ -239,7 +240,7 @@ export function UploadPage({
           <Upload size={28} />
           <div>
             <h2>Загрузка звонка</h2>
-            <p>Загрузите аудио и укажите, кому принадлежит этот звонок.</p>
+            <p>Загрузите аудио или видео и укажите, кому принадлежит этот звонок.</p>
           </div>
         </div>
         <StepItem active number="1" title="Файл и принадлежность" text="Загрузите файл и выберите, куда добавить звонок." />
@@ -264,16 +265,16 @@ export function UploadPage({
           </div>
         </label>
         <div>
-          <span className="field-title">Аудиофайл</span>
+          <span className="field-title">Запись звонка</span>
           <FileDropZone
-            file={audio}
-            icon={<FileAudio size={24} />}
-            accept=".mp3,.wav,.m4a,.ogg,audio/*"
-            buttonLabel="Выбрать аудиофайл"
-            emptyLabel="Перетащите аудиофайл сюда"
-            onFile={setAudio}
+            file={media}
+            icon={media?.type.startsWith("video/") ? <FileVideo size={24} /> : <FileAudio size={24} />}
+            accept=".mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm,.mkv,audio/*,video/mp4,video/quicktime,video/webm,video/x-matroska"
+            buttonLabel="Выбрать запись"
+            emptyLabel="Перетащите аудио или видео сюда"
+            onFile={setMedia}
           />
-          <small>Поддерживаются: MP3, WAV, M4A, OGG. Максимальный размер: 100 МБ.</small>
+          <small>Аудио: MP3, WAV, M4A, OGG. Видео: MP4, MOV, WEBM, MKV. Максимальный размер: 100 МБ.</small>
         </div>
         <div>
           <span className="field-title">Куда добавить звонок?</span>

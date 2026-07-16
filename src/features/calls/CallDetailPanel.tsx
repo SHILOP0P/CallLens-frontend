@@ -24,7 +24,7 @@ import type {
 import { analysisNextStep, analysisScore100, formatScore, isAnalysisDone } from "../../shared/lib/analysis";
 import { contextLabel, formatDate, formatDuration } from "../../shared/lib/formatters";
 import { AnalysisPreview } from "../../shared/ui/analysis";
-import { CallAudioPlayer } from "../../shared/ui/audio";
+import { CallMediaPlayer } from "../../shared/ui/audio";
 import { InfoCard, StatusChip, StatusTimeline, TranscriptPreview } from "../../shared/ui/call";
 import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { CallDetailSkeleton } from "../../shared/ui/loading";
@@ -241,7 +241,7 @@ export function CallDetailPanel({
           )}
         </div>
       </div>
-      <CallAudioPlayer call={call} />
+      <CallMediaPlayer call={call} />
       <StatusTimeline current={call.status} statuses={timelineStatuses} analysisStatus={analysis?.status} />
       {showReports && <ReportExportPanel call={call} analysis={analysis} />}
       <div className="detail-grid">

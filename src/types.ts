@@ -12,6 +12,7 @@ export type AppPage =
   | "settingsProfile"
   | "settingsProfileEdit"
   | "settingsDevices"
+  | "admin"
   | "upload";
 export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
 export type VisibilityScope = "personal" | "company" | "department";
@@ -74,6 +75,8 @@ export interface UserResponse {
 
 export interface AuthResponse {
   user: UserResponse;
+  access_token: string;
+  refresh_token: string;
 }
 
 export interface RegisterRequest {
@@ -110,6 +113,48 @@ export interface UserSessionResponse {
 
 export interface UserSessionsResponse {
   sessions: UserSessionResponse[];
+}
+
+export interface AdminCapabilitiesResponse {
+  role: "helper" | "admin" | "superadmin";
+  permissions: string[];
+}
+
+export interface UpdateAdminUserProfileRequest {
+  full_name?: string;
+  full_surname?: string;
+  username?: string;
+  post?: string;
+  phone?: string;
+  timezone?: string;
+  reason: string;
+}
+
+export interface AdminUsersResponse {
+  items: UserResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminCompaniesResponse {
+  items: CompanyResponse[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AdminSubscriptionResponse {
+  id: string;
+  plan_code: PlanCode;
+  type: PlanType;
+  status: "active" | "canceled" | "expired";
+  user_uuid: string | null;
+  company_uuid: string | null;
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UpdateProfileRequest {
@@ -154,6 +199,7 @@ export interface CallResponse {
   audio_download_url?: string | null;
   file_url?: string | null;
   media_url?: string | null;
+  media_kind?: "audio" | "video" | null;
   recording_url?: string | null;
   download_url?: string | null;
   uploaded_by_user_uuid?: string | null;
@@ -368,6 +414,7 @@ export interface GlobalReportsResponse {
 export interface CompanyResponse {
   id: string;
   name: string;
+  tag?: string;
   manager_user_uuid: string;
   member_limit: number;
   created_at: string;

@@ -7,15 +7,14 @@ import {
   LayoutDashboard,
   CloudUpload,
   PhoneCall,
-  Settings
+  Settings,
+  ShieldCheck
 } from "lucide-react";
 import { useEffect } from "react";
 import type {
   AppPage,
   SessionState
 } from "../types";
-
-export const SESSION_KEY = "calllens.session.v1";
 
 export const THEME_KEY = "calllens.theme.v1";
 
@@ -52,7 +51,8 @@ export const pageRoutes: Record<AppPage, string> = {
   settingsProfile: "/app/settings/profile",
   settingsProfileEdit: "/app/settings/profile/edit",
   settingsDevices: "/app/settings/devices",
-  upload: "/app/upload"
+  upload: "/app/upload",
+  admin: "/app/admin"
 };
 
 export const navItems: Array<{ page: AppPage; label: string; }> = [
@@ -73,6 +73,8 @@ export const sidebarItems: Array<{ page: AppPage; label: string; icon: React.Rea
   { page: "settingsCompanies", label: "Компании", icon: <Building2 size={19} /> },
   { page: "settings", label: "Настройки", icon: <Settings size={19} /> }
 ];
+
+export const adminSidebarItem = { page: "admin" as const, label: "Админ-панель", icon: <ShieldCheck size={19} /> };
 
 export const quickActionItems: Array<{ page: AppPage; label: string; icon: React.ReactNode; }> = [
   { page: "upload", label: "Загрузка", icon: <CloudUpload size={18} /> },
@@ -121,21 +123,7 @@ export function isSettingsPage(page: AppPage) {
 }
 
 export function readStoredSession(): SessionState | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-
-    const stored = JSON.parse(raw) as SessionState & { demo?: boolean; };
-    if (stored.demo) {
-      localStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-
-    return stored;
-  } catch {
-    localStorage.removeItem(SESSION_KEY);
-    return null;
-  }
+  return null;
 }
 
 export function pageFromPath(pathname: string): AppPage {
@@ -161,11 +149,7 @@ export function departmentIdFromPath(pathname: string) {
 }
 
 export function persistSession(session: SessionState | null) {
-  if (session) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  } else {
-    localStorage.removeItem(SESSION_KEY);
-  }
+  void session;
 }
 
 export function useRevealOnScroll<T extends HTMLElement>() {

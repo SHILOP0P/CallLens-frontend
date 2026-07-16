@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
-import { api } from "./api";
+import { api, ApiError, openAuthorizedEventStream } from "./api";
 import type {
   AnalysisInstruction,
   AnalysisResponse,
@@ -14,7 +14,8 @@ import type {
   SessionState,
   Subscription,
   TranscriptionResponse,
-  UserResponse
+  UserResponse,
+  AdminCapabilitiesResponse
 } from "./types";
 
 import {
@@ -46,6 +47,7 @@ import { AiReportsPage } from "./features/reports/AiReportsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { TariffsPage } from "./features/tariffs/TariffsPage";
 import { UploadPage } from "./features/upload/UploadPage";
+import { AdminPage } from "./features/admin/AdminPage";
 import {
   nextTimelineStatuses,
   parseCallStatusEvent,
@@ -61,6 +63,7 @@ function App() {
     };
   });
   const [session, setSession] = useState<SessionState | null>(initialAuth.session);
+  const [adminCapabilities, setAdminCapabilities] = useState<AdminCapabilitiesResponse | null>(null);
   const [authReady, setAuthReady] = useState(initialAuth.ready);
   const [showPublicLanding, setShowPublicLanding] = useState(
     () => !initialAuth.session || !window.location.pathname.startsWith("/app")
@@ -100,6 +103,22 @@ function App() {
     document.documentElement.dataset.theme = activeTheme;
     document.documentElement.style.colorScheme = activeTheme;
   }, [activeTheme]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!session) {
+      setAdminCapabilities(null);
+      return;
+    }
+    api.getAdminCapabilities()
+      .then((value) => {
+        if (!cancelled) setAdminCapabilities(value.permissions.includes("admin.panel.access") ? value : null);
+      })
+      .catch(() => {
+        if (!cancelled) setAdminCapabilities(null);
+      });
+    return () => { cancelled = true; };
+  }, [session]);
 
   useEffect(() => {
     if (authReady || session) return;
@@ -246,7 +265,11 @@ function App() {
         setWorkspaceReady(true);
       } catch (error) {
         if (cancelled) return;
-        returnToLanding();
+        if (error instanceof ApiError && error.status === 401) {
+          returnToLanding();
+        } else {
+          setWorkspaceReady(true);
+        }
       } finally {
         if (!cancelled) setLoadingWorkspace(false);
       }
@@ -316,7 +339,7 @@ function App() {
     if (!session || !selectedCall) return;
 
     const callId = selectedCall.id;
-    const source = new EventSource(api.callEventsUrl(callId), { withCredentials: true });
+    const source = openAuthorizedEventStream(api.callEventsUrl(callId));
     let closed = false;
 
     function closeStream() {
@@ -644,6 +667,7 @@ function App() {
       personalSubscription={personalSubscription}
       companySubscriptions={companySubscriptions}
       invitationCount={invitations.filter((invitation) => invitation.status === "pending").length}
+      adminCapabilities={adminCapabilities}
       onNavigate={navigate}
       onOpenCall={(callId) => {
         openCallPage(callId);
@@ -732,6 +756,8 @@ function App() {
       )}
 
       {page === "monitoring" && <MonitoringPage calls={calls} />}
+
+      {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} currentUserId={session.user.id} />}
 
       {page === "settings" && <SettingsPage onNavigate={navigate} />}
 
