@@ -25,8 +25,6 @@ import {
   getSystemTheme,
   pageFromPath,
   pageRoutes,
-  persistSession,
-  readStoredSession,
   readThemePreference,
   THEME_KEY,
   ThemePreference,
@@ -53,22 +51,13 @@ import {
   parseCallStatusEvent,
   timelineFromStatus
 } from "./shared/lib/call-status";
+import { useAuth } from "./features/auth/AuthProvider";
 
 function App() {
-  const [initialAuth] = useState(() => {
-    const storedSession = readStoredSession();
-    return {
-      session: storedSession,
-      ready: Boolean(storedSession)
-    };
-  });
-  const [session, setSession] = useState<SessionState | null>(initialAuth.session);
+  const { session, ready: authReady, setAuthenticatedUser, clearSession } = useAuth();
   const [adminCapabilities, setAdminCapabilities] = useState<AdminCapabilitiesResponse | null>(null);
-  const [authReady, setAuthReady] = useState(initialAuth.ready);
-  const [showPublicLanding, setShowPublicLanding] = useState(
-    () => !initialAuth.session || !window.location.pathname.startsWith("/app")
-  );
-  const [workspaceReady, setWorkspaceReady] = useState(initialAuth.ready);
+  const [showPublicLanding, setShowPublicLanding] = useState(true);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
   const [page, setPage] = useState<AppPage>(() => pageFromPath(window.location.pathname));
   const [selectedCompanyId, setSelectedCompanyId] = useState(() => companyIdFromPath(window.location.pathname));
   const [selectedDepartmentId, setSelectedDepartmentId] = useState(() => departmentIdFromPath(window.location.pathname));
@@ -121,47 +110,21 @@ function App() {
   }, [session]);
 
   useEffect(() => {
-    if (authReady || session) return;
-
-    let cancelled = false;
-
-    async function restoreSession() {
-      try {
-        const response = await api.refreshSession();
-        if (cancelled) return;
-
-        const restoredSession = { user: response.user };
-        const requestedAppPage = window.location.pathname.startsWith("/app");
-        persistSession(restoredSession);
-        setSession(restoredSession);
-        setShowPublicLanding(!requestedAppPage);
-        setWorkspaceReady(true);
-        setLoadingWorkspace(true);
-        setPage(pageFromPath(window.location.pathname));
-        setSelectedCompanyId(companyIdFromPath(window.location.pathname));
-        setSelectedDepartmentId(departmentIdFromPath(window.location.pathname));
-      } catch {
-        if (cancelled) return;
-        persistSession(null);
-        clearWorkspaceState();
-        setShowPublicLanding(true);
-        setWorkspaceReady(true);
-        if (window.location.pathname.startsWith("/app")) {
-          window.history.replaceState({}, "", "/");
-          setPage(pageFromPath(window.location.pathname));
-          setSelectedCompanyId("");
-          setSelectedDepartmentId("");
-        }
-      } finally {
-        if (!cancelled) setAuthReady(true);
-      }
+    if (!authReady) return;
+    const requestedAppPage = window.location.pathname.startsWith("/app");
+    setWorkspaceReady(true);
+    if (session) {
+      setShowPublicLanding(!requestedAppPage);
+      setLoadingWorkspace(true);
+      return;
     }
-
-    restoreSession();
-
-    return () => {
-      cancelled = true;
-    };
+    setShowPublicLanding(true);
+    if (requestedAppPage) {
+      window.history.replaceState({}, "", "/");
+      setPage(pageFromPath("/"));
+      setSelectedCompanyId("");
+      setSelectedDepartmentId("");
+    }
   }, [authReady, session]);
 
   useEffect(() => {
@@ -424,25 +387,21 @@ function App() {
   }
 
   function applySession(nextSession: SessionState) {
-    persistSession(nextSession);
-    setSession(nextSession);
+    setAuthenticatedUser(nextSession.user);
     setWorkspaceReady(true);
     setLoadingWorkspace(true);
     navigate("overview");
   }
 
   function updateSessionUser(user: UserResponse) {
-    const nextSession = { user };
-    persistSession(nextSession);
-    setSession(nextSession);
+    setAuthenticatedUser(user);
   }
 
   async function logout() {
     if (session) {
       await api.logout().catch(() => undefined);
     }
-    persistSession(null);
-    setSession(null);
+    clearSession();
     clearWorkspaceState();
     setWorkspaceReady(true);
     setShowPublicLanding(true);
@@ -454,8 +413,7 @@ function App() {
     if (session) {
       await api.logoutAll().catch(() => undefined);
     }
-    persistSession(null);
-    setSession(null);
+    clearSession();
     clearWorkspaceState();
     setWorkspaceReady(true);
     setShowPublicLanding(true);
@@ -534,8 +492,7 @@ function App() {
   }
 
   function returnToLanding() {
-    persistSession(null);
-    setSession(null);
+    clearSession();
     clearWorkspaceState();
     setWorkspaceReady(true);
     setShowPublicLanding(true);

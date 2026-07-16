@@ -1,9 +1,7 @@
-import { authStore } from "../../stores/auth-store";
-
 type StreamListener = (event: Event) => void;
 type RefreshTokens = () => Promise<unknown>;
 
-/** Native EventSource cannot set Authorization headers. */
+/** Fetch-based SSE keeps cookie auth and explicit 401 refresh support. */
 export class AuthorizedEventStream {
   private readonly controller = new AbortController();
   private readonly listeners = new Map<string, Set<StreamListener>>();
@@ -30,10 +28,7 @@ export class AuthorizedEventStream {
 
   private async connect(retryOnUnauthorized: boolean): Promise<void> {
     try {
-      const headers = new Headers();
-      if (authStore.accessToken) headers.set("Authorization", `Bearer ${authStore.accessToken}`);
-
-      const response = await fetch(this.url, { headers, signal: this.controller.signal });
+      const response = await fetch(this.url, { credentials: "include", signal: this.controller.signal });
       if (response.status === 401 && retryOnUnauthorized) {
         await this.refreshTokens();
         if (!this.closed) await this.connect(false);

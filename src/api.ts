@@ -61,13 +61,12 @@ import type {
   UserSessionsResponse,
   VisibilityScope
 } from "./types";
-import { authStore } from "./stores/auth-store";
 import { AuthorizedEventStream } from "./shared/lib/authorized-event-stream";
+import { coordinateRefresh } from "./features/auth/refresh-coordinator";
 
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 const apiRoot = `${configuredBase}/api/v1`;
 const authRefreshPath = "/auth/refresh";
-let refreshSessionPromise: Promise<AuthResponse> | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -289,26 +288,17 @@ function normalizeSubscriptionUsage(usage: RawSubscriptionUsageResponse): Subscr
 }
 
 function refreshSessionRequest() {
-  if (!authStore.refreshToken) {
-    return Promise.reject(new ApiError(401, "Необходимо войти в аккаунт", "unauthorized"));
-  }
-
-  if (!refreshSessionPromise) {
-    refreshSessionPromise = request<AuthResponse>(
-      authRefreshPath,
-      { method: "POST", body: JSON.stringify({ refresh_token: authStore.refreshToken }) },
-      { retryOnUnauthorized: false }
-    )
-      .then((response) => {
-        authStore.setTokens(response.access_token, response.refresh_token);
-        return response;
-      })
-      .finally(() => {
-        refreshSessionPromise = null;
-      });
-  }
-
-  return refreshSessionPromise;
+  return coordinateRefresh({
+    refresh: () => request<AuthResponse>(authRefreshPath, { method: "POST" }, { retryOnUnauthorized: false }),
+    probe: async () => {
+      try {
+        return await request<UserResponse>("/auth/me", {}, { retryOnUnauthorized: false });
+      } catch {
+        return null;
+      }
+    },
+    isConflict: (error) => error instanceof ApiError && error.status === 409 && error.code === "refresh_rotation_conflict"
+  });
 }
 
 async function request<T>(
@@ -318,17 +308,14 @@ async function request<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
 
-  if (authStore.accessToken && !headers.has("Authorization")) {
-    headers.set("Authorization", `Bearer ${authStore.accessToken}`);
-  }
-
   if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
   const response = await fetch(`${apiRoot}${path}`, {
     ...init,
-    headers
+    headers,
+    credentials: "include"
   });
 
   if (response.status === 204) {
@@ -358,11 +345,8 @@ async function request<T>(
 }
 
 async function requestBlob(path: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
-  const headers = new Headers();
-  if (authStore.accessToken) headers.set("Authorization", `Bearer ${authStore.accessToken}`);
-
   const response = await fetch(`${apiRoot}${path}`, {
-    headers
+    credentials: "include"
   });
 
   if (!response.ok) {
@@ -387,11 +371,8 @@ async function requestBlob(path: string, options: { retryOnUnauthorized?: boolea
 }
 
 async function requestAssetBlob(url: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
-  const headers = new Headers();
-  if (authStore.accessToken) headers.set("Authorization", `Bearer ${authStore.accessToken}`);
-
   const response = await fetch(url, {
-    headers
+    credentials: "include"
   });
 
   if (!response.ok) {
@@ -568,9 +549,6 @@ export const api = {
     return request<AuthResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(input)
-    }).then((response) => {
-      authStore.setTokens(response.access_token, response.refresh_token);
-      return response;
     });
   },
 
@@ -587,19 +565,11 @@ export const api = {
   },
 
   async logout() {
-    try {
-      await request<void>("/auth/logout", { method: "POST" });
-    } finally {
-      authStore.clear();
-    }
+    await request<void>("/auth/logout", { method: "POST" });
   },
 
   async logoutAll() {
-    try {
-      await request<void>("/auth/logout-all", { method: "POST" });
-    } finally {
-      authStore.clear();
-    }
+    await request<void>("/auth/logout-all", { method: "POST" });
   },
 
   refreshSession() {

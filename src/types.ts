@@ -75,8 +75,6 @@ export interface UserResponse {
 
 export interface AuthResponse {
   user: UserResponse;
-  access_token: string;
-  refresh_token: string;
 }
 
 export interface RegisterRequest {
