@@ -201,8 +201,8 @@ export function TranscriptPreview({
         {segments.map((segment, index) => (
           <div className="transcript-segment" key={`${segment.start_seconds ?? index}-${segment.text}`}>
             <div className="segment-meta">
-              <span>{formatSegmentTimeRange(segment.start_seconds, segment.end_seconds)}</span>
               <strong>{speakerLabel(segment.speaker)}</strong>
+              <span>{formatSegmentTimeRange(segment.start_seconds, segment.end_seconds)}</span>
             </div>
             <p>{segment.text}</p>
           </div>

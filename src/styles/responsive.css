@@ -241,7 +241,7 @@
   }
 
   .transcript-segment {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(96px, 0.3fr) minmax(0, 1fr);
   }
 
   .status-timeline {
