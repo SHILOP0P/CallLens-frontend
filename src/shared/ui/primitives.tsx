@@ -9,6 +9,7 @@ import {
 } from "react";
 import type {
   ChangeEvent,
+  CSSProperties,
   DragEvent,
   ReactNode,
   SelectHTMLAttributes
@@ -43,6 +44,7 @@ export function Logo({ onClick }: { onClick?: () => void }) {
 }
 
 type SelectControlOption = {
+  color?: string;
   disabled: boolean;
   key: string;
   label: string;
@@ -125,7 +127,15 @@ export function SelectControl({
           }
         }}
       >
-        <span>{selectedOption?.label ?? "Не выбрано"}</span>
+        <span className="select-value">
+          {selectedOption?.color && (
+            <i
+              className="select-option-color"
+              style={{ "--select-option-color": selectedOption.color } as CSSProperties}
+            />
+          )}
+          <span>{selectedOption?.label ?? "Не выбрано"}</span>
+        </span>
       </button>
       {name && <input type="hidden" name={name} value={currentValue} />}
       {open && (
@@ -140,7 +150,13 @@ export function SelectControl({
               aria-selected={option.value === currentValue}
               onClick={() => selectValue(option.value)}
             >
-              {option.label}
+              {option.color && (
+                <i
+                  className="select-option-color"
+                  style={{ "--select-option-color": option.color } as CSSProperties}
+                />
+              )}
+              <span>{option.label}</span>
             </button>
           ))}
         </span>
@@ -154,6 +170,7 @@ function collectSelectOptions(children: ReactNode): SelectControlOption[] {
     if (!isValidElement(child)) return [];
 
     const optionProps = child.props as {
+      "data-color"?: string;
       children?: ReactNode;
       disabled?: boolean;
       label?: string;
@@ -163,6 +180,7 @@ function collectSelectOptions(children: ReactNode): SelectControlOption[] {
     const optionValue = optionProps.value ?? label;
 
     return [{
+      color: optionProps["data-color"],
       disabled: Boolean(optionProps.disabled),
       key: child.key?.toString() ?? `${optionValue}-${index}`,
       label,

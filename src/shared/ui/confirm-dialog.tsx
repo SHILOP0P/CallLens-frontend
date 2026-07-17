@@ -2,6 +2,8 @@ import {
   AlertTriangle,
   X
 } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useEscapeDismiss } from "./dismissible-layer";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -26,16 +28,27 @@ export function ConfirmDialog({
   onConfirm,
   onCancel
 }: ConfirmDialogProps) {
+  useEscapeDismiss(open && !busy, onCancel);
+
   if (!open) return null;
 
-  return (
-    <div className="confirm-dialog-layer" role="presentation" onPointerDown={onCancel}>
-      <section
+  return createPortal(
+    <div
+      className="confirm-dialog-layer"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (!busy && event.target === event.currentTarget) onCancel();
+      }}
+    >
+      <form
         className={`confirm-dialog ${variant}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        onPointerDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!busy) onConfirm();
+        }}
       >
         <div className="confirm-dialog-icon" aria-hidden="true">
           <AlertTriangle size={22} />
@@ -51,9 +64,8 @@ export function ConfirmDialog({
           <div className="confirm-dialog-actions">
             <button
               className={`primary-button small ${variant === "danger" ? "danger-confirm" : ""}`}
-              type="button"
+              type="submit"
               disabled={busy}
-              onClick={onConfirm}
             >
               {busy ? "Выполняю..." : confirmLabel}
             </button>
@@ -62,7 +74,8 @@ export function ConfirmDialog({
             </button>
           </div>
         </div>
-      </section>
-    </div>
+      </form>
+    </div>,
+    document.body
   );
 }

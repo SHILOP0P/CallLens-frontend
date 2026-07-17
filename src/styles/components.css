@@ -5582,8 +5582,55 @@ html[data-theme="light"] .app-shell .admin-call-panel .admin-toolbar label { bac
 @media (max-width: 720px) { .admin-form-grid { grid-template-columns: 1fr; } .admin-sessions li { align-items: flex-start; flex-direction: column; } .app-shell .admin-heading { display: grid; grid-template-columns: 72px minmax(0, 1fr); --settings-heading-icon-size: 72px; gap: 10px; } .admin-heading .admin-role-badge { grid-column: 1 / -1; margin: 0; justify-self: start; } }
 
 /* Media calls and non-destructive refresh states */
+.batch-upload-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.batch-upload-item {
+  display: grid;
+  grid-template-columns: auto minmax(110px, 0.8fr) minmax(150px, 1.2fr) minmax(100px, 0.7fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+}
+
+.batch-upload-item > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.batch-upload-item input {
+  min-width: 0;
+}
+
+.batch-upload-item small {
+  color: var(--text-muted);
+}
+
+.batch-upload-item.uploading small { color: var(--accent); }
+.batch-upload-item.success small { color: var(--success); }
+.batch-upload-item.failed small { color: var(--danger); }
+
+@media (max-width: 720px) {
+  .batch-upload-item {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .batch-upload-item input,
+  .batch-upload-item small {
+    grid-column: 2 / -1;
+  }
+}
+
 .call-video-player {
   overflow: hidden;
+  margin-top: 18px;
   border: 1px solid var(--border);
   border-radius: 18px;
   background: color-mix(in srgb, var(--surface-2) 90%, transparent);

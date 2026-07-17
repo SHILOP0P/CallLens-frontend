@@ -488,9 +488,11 @@ export interface SubscriptionUsageResponse {
 
 export interface AnalyticsOverviewResponse {
   calls_total: number;
+  calls_created_today: number;
   calls_new: number;
   calls_processing: number;
   calls_transcribed: number;
+  calls_with_transcription: number;
   calls_analyzed: number;
   calls_failed: number;
   average_duration_seconds: number | null;

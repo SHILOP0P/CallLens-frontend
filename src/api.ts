@@ -656,7 +656,7 @@ export const api = {
 
   createCall(
     input: {
-      title: string;
+      title?: string;
       media: File;
       companyUuid?: string;
       departmentUuid?: string;
@@ -664,7 +664,7 @@ export const api = {
     }
   ) {
     const body = new FormData();
-    body.append("title", input.title);
+    if (input.title?.trim()) body.append("title", input.title.trim());
     body.append("media", input.media);
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
     if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);

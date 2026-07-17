@@ -11,7 +11,7 @@ import {
   UserRound
 } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
-import { api } from "../../api";
+import { ApiError, api } from "../../api";
 import type {
   AppPage,
   CompanyResponse,
@@ -20,8 +20,31 @@ import type {
 } from "../../types";
 
 import { formatDate } from "../../shared/lib/formatters";
-import { ProfileField } from "../../shared/ui/primitives";
+import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { CompanyMiniCard } from "../companies/CompaniesPage";
+
+const timeZoneOptions = [
+  { value: "Europe/Kaliningrad", label: "Калининград (UTC+2)" },
+  { value: "Europe/Moscow", label: "Москва (UTC+3)" },
+  { value: "Europe/Samara", label: "Самара (UTC+4)" },
+  { value: "Asia/Yekaterinburg", label: "Екатеринбург (UTC+5)" },
+  { value: "Asia/Omsk", label: "Омск (UTC+6)" },
+  { value: "Asia/Krasnoyarsk", label: "Красноярск (UTC+7)" },
+  { value: "Asia/Irkutsk", label: "Иркутск (UTC+8)" },
+  { value: "Asia/Yakutsk", label: "Якутск (UTC+9)" },
+  { value: "Asia/Vladivostok", label: "Владивосток (UTC+10)" },
+  { value: "Asia/Magadan", label: "Магадан (UTC+11)" },
+  { value: "Asia/Kamchatka", label: "Камчатка (UTC+12)" },
+  { value: "UTC", label: "UTC (всемирное время)" },
+  { value: "Europe/London", label: "Лондон" },
+  { value: "Europe/Berlin", label: "Берлин" },
+  { value: "Asia/Dubai", label: "Дубай" },
+  { value: "Asia/Almaty", label: "Алматы" },
+  { value: "Asia/Tashkent", label: "Ташкент" },
+  { value: "Asia/Tokyo", label: "Токио" },
+  { value: "America/New_York", label: "Нью-Йорк" },
+  { value: "America/Los_Angeles", label: "Лос-Анджелес" }
+];
 
 export function ProfilePage({
   session,
@@ -240,7 +263,15 @@ export function ProfileEditPage({
             </label>
             <label>
               Часовой пояс
-              <input value={timezone} onChange={(event) => setTimezone(event.target.value)} placeholder="Europe/Moscow" />
+              <SelectControl value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+                <option value="">Автоматически (часовой пояс браузера)</option>
+                {!timeZoneOptions.some((option) => option.value === timezone) && timezone && (
+                  <option value={timezone}>{timezone}</option>
+                )}
+                {timeZoneOptions.map((option) => (
+                  <option key={option.value} value={option.value}>{option.label}</option>
+                ))}
+              </SelectControl>
             </label>
             <label>
               Должность
@@ -349,6 +380,8 @@ export function DevicesPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [loggingOutAll, setLoggingOutAll] = useState(false);
+  const [endingSessionId, setEndingSessionId] = useState("");
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -406,6 +439,7 @@ export function DevicesPage({
             {loggingOutAll ? "Завершаю..." : "Завершить все сеансы"}
           </button>
         </div>
+        {actionError && <div className="form-error">{actionError}</div>}
         {loading ? (
           <div className="instruction-empty standalone">Загружаю устройства...</div>
         ) : error ? (
@@ -438,13 +472,22 @@ export function DevicesPage({
                     <button
                       className="ghost-button small"
                       type="button"
+                      disabled={endingSessionId === item.id}
                       onClick={async () => {
-                        await api.deleteSession(item.id);
-                        setSessions((current) => current.filter((sessionItem) => sessionItem.id !== item.id));
+                        setActionError("");
+                        setEndingSessionId(item.id);
+                        try {
+                          await api.deleteSession(item.id);
+                          setSessions((current) => current.filter((sessionItem) => sessionItem.id !== item.id));
+                        } catch (deleteError) {
+                          setActionError(sessionTerminationError(deleteError));
+                        } finally {
+                          setEndingSessionId("");
+                        }
                       }}
                     >
                       <Power size={15} />
-                      Завершить
+                      {endingSessionId === item.id ? "Завершаю..." : "Завершить"}
                     </button>
                   )}
                 </article>
@@ -455,6 +498,14 @@ export function DevicesPage({
       </section>
     </section>
   );
+}
+
+function sessionTerminationError(error: unknown) {
+  if (error instanceof ApiError && error.code === "session_trust_age_required") {
+    return "Для защиты аккаунта завершать отдельные сеансы можно через 24 часа после входа в текущий сеанс.";
+  }
+
+  return error instanceof Error ? error.message : "Не удалось завершить сеанс. Повторите попытку.";
 }
 
 function ProfileDataRow({

@@ -7,6 +7,7 @@ import {
   CloudUpload,
   FileText,
   LockKeyhole,
+  Menu,
   Moon,
   Play,
   RefreshCw,
@@ -23,6 +24,7 @@ import type {
 } from "../../types";
 
 import { AppTheme, ThemeToggleEvent, useRevealOnScroll } from "../../app/runtime";
+import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
 import { normalTimelineSteps, statusMeta } from "../../shared/lib/call-status";
 import { comparePlans } from "../../shared/lib/plans";
 import { Logo } from "../../shared/ui/primitives";
@@ -43,6 +45,7 @@ export function Landing({
   onToggleTheme: (event: ThemeToggleEvent) => void;
 }) {
   const [showAuth, setShowAuth] = useState<"login" | "register" | null>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const benefitsRef = useRef<HTMLElement | null>(null);
   const workflowRef = useRef<HTMLElement | null>(null);
   const securityRef = useRef<HTMLElement | null>(null);
@@ -160,13 +163,22 @@ export function Landing({
       <div className="landing-bg" />
       <header className="landing-header">
         <Logo />
-        <nav>
-          <a href="#features">Возможности</a>
-          <a href="#workflow">Как это работает</a>
-          <a href="#security">Безопасность</a>
-          <a href="#tariffs">Тарифы</a>
+        <nav className={mobileMenuOpen ? "mobile-open" : ""}>
+          <a href="#features" onClick={() => setMobileMenuOpen(false)}>Возможности</a>
+          <a href="#workflow" onClick={() => setMobileMenuOpen(false)}>Как это работает</a>
+          <a href="#security" onClick={() => setMobileMenuOpen(false)}>Безопасность</a>
+          <a href="#tariffs" onClick={() => setMobileMenuOpen(false)}>Тарифы</a>
         </nav>
         <div className="landing-actions">
+          <button
+            className="icon-button landing-menu-toggle"
+            type="button"
+            aria-label={mobileMenuOpen ? "Закрыть меню" : "Открыть меню"}
+            aria-expanded={mobileMenuOpen}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
           <button className="icon-button theme-toggle" type="button" onClick={onToggleTheme} aria-label={themeLabel}>
             <Moon size={19} fill={theme === "dark" ? "currentColor" : "none"} />
           </button>
@@ -330,6 +342,8 @@ export function AuthDialog({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
+  useEscapeDismiss(!busy, onClose);
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
@@ -363,8 +377,14 @@ export function AuthDialog({
   }
 
   return (
-    <div className="modal-layer" role="dialog" aria-modal="true">
-      <div className="auth-card">
+    <div
+      className="modal-layer"
+      role="presentation"
+      onPointerDown={(event) => {
+        if (!busy && event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="auth-card" role="dialog" aria-modal="true" aria-label={mode === "login" ? "Вход" : "Регистрация"}>
         <button className="icon-button close" onClick={onClose} aria-label="Закрыть">
           <X size={18} />
         </button>

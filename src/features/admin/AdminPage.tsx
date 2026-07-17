@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Building2, Headphones, RefreshCw, Search, ShieldCheck, UserRound, Users } from "lucide-react";
 import { api, ApiError, getAdminCallAudioBlob } from "../../api";
 import { isVideoCall } from "../../shared/lib/media";
+import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
 import { SelectControl } from "../../shared/ui/primitives";
 import type {
   AdminCapabilitiesResponse,
@@ -280,7 +281,9 @@ function UserAvatar({ user }: { user: UserResponse }) {
 }
 
 function ReasonDialog({ title, reason, busy, onReason, onCancel, onConfirm }: { title: string; reason: string; busy: boolean; onReason: (value: string) => void; onCancel: () => void; onConfirm: () => void }) {
-  return <div className="confirm-dialog-layer" role="presentation" onPointerDown={onCancel}><section className="confirm-dialog danger" role="dialog" aria-modal="true" aria-label={title} onPointerDown={(event) => event.stopPropagation()}><div className="confirm-dialog-content"><div className="confirm-dialog-head"><h2>{title}</h2></div><p>Причина обязательна для аудита действия.</p><label className="admin-dialog-field">Причина<input autoFocus value={reason} onChange={(event) => onReason(event.target.value)} /></label><div className="confirm-dialog-actions"><button className="primary-button small danger-confirm" type="button" disabled={busy || !reason.trim()} onClick={onConfirm}>{busy ? "Выполняю…" : "Подтвердить"}</button><button className="ghost-button small" type="button" disabled={busy} onClick={onCancel}>Отмена</button></div></div></section></div>;
+  useEscapeDismiss(!busy, onCancel);
+
+  return <div className="confirm-dialog-layer" role="presentation" onPointerDown={(event) => { if (!busy && event.target === event.currentTarget) onCancel(); }}><form className="confirm-dialog danger" role="dialog" aria-modal="true" aria-label={title} onSubmit={(event) => { event.preventDefault(); if (!busy && reason.trim()) onConfirm(); }}><div className="confirm-dialog-content"><div className="confirm-dialog-head"><h2>{title}</h2></div><p>Причина обязательна для аудита действия.</p><label className="admin-dialog-field">Причина<input autoFocus value={reason} onChange={(event) => onReason(event.target.value)} /></label><div className="confirm-dialog-actions"><button className="primary-button small danger-confirm" type="submit" disabled={busy || !reason.trim()}>{busy ? "Выполняю…" : "Подтвердить"}</button><button className="ghost-button small" type="button" disabled={busy} onClick={onCancel}>Отмена</button></div></div></form></div>;
 }
 
 function UsersTable({ users, onOpen }: { users: UserResponse[]; onOpen: (user: UserResponse) => void }) { return <div className="admin-table-wrap"><table><thead><tr><th>Пользователь</th><th>Роль</th><th>Создан</th><th /></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{fullName(user)}</strong><small>{user.username} · {user.email}</small></td><td><span className="chip">{roleLabel(user.role)}</span></td><td>{date(user.created_at)}</td><td><button className="ghost-button small" type="button" onClick={() => onOpen(user)}>Открыть</button></td></tr>)}</tbody></table>{users.length === 0 && <p className="admin-empty">Пользователи не найдены</p>}</div>; }

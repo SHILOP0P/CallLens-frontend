@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { flushSync } from "react-dom";
 import { api, ApiError, openAuthorizedEventStream } from "./api";
 import type {
   AnalysisInstruction,
@@ -19,18 +18,13 @@ import type {
 } from "./types";
 
 import {
-  AppTheme,
   companyIdFromPath,
   departmentIdFromPath,
-  getSystemTheme,
   pageFromPath,
-  pageRoutes,
-  readThemePreference,
-  THEME_KEY,
-  ThemePreference,
-  ThemeToggleEvent,
-  ViewTransitionDocument
 } from "./app/runtime";
+import { callIdFromLocation, pageUrl } from "./app/location";
+import { useTheme } from "./app/use-theme";
+import { loadOrganizationContext, loadWorkspaceContext } from "./app/workspace-loader";
 import { AnalysisPage } from "./features/analysis/AnalysisPage";
 import { CallsPage } from "./features/calls/CallsPage";
 import { CompaniesPage } from "./features/companies/CompaniesPage";
@@ -52,6 +46,8 @@ import {
   timelineFromStatus
 } from "./shared/lib/call-status";
 import { useAuth } from "./features/auth/AuthProvider";
+
+const callsRefreshIntervalMs = 5_000;
 
 function App() {
   const { session, ready: authReady, setAuthenticatedUser, clearSession } = useAuth();
@@ -75,23 +71,7 @@ function App() {
   const [selectedCallId, setSelectedCallId] = useState<string>(() => callIdFromLocation());
   const [loadingWorkspace, setLoadingWorkspace] = useState(() => Boolean(session));
   const [loadingCallDetails, setLoadingCallDetails] = useState<Record<string, boolean>>({});
-  const [themePreference, setThemePreference] = useState<ThemePreference>(() => readThemePreference());
-  const [systemTheme, setSystemTheme] = useState<AppTheme>(() => getSystemTheme());
-  const activeTheme = themePreference === "system" ? systemTheme : themePreference;
-
-  useEffect(() => {
-    const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const onChange = () => setSystemTheme(media.matches ? "dark" : "light");
-
-    onChange();
-    media.addEventListener("change", onChange);
-    return () => media.removeEventListener("change", onChange);
-  }, []);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = activeTheme;
-    document.documentElement.style.colorScheme = activeTheme;
-  }, [activeTheme]);
+  const { theme: activeTheme, toggleTheme } = useTheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -155,75 +135,28 @@ function App() {
       setLoadingWorkspace(true);
 
       try {
-        const [loadedCallsResponse, loadedCompanies, loadedInvitations, loadedPersonalSubscription] = await Promise.all([
-          api.listCalls(),
-          api.listCompanies(),
-          api.listMyInvitations().catch(() => []),
-          api.getSubscription().catch(() => null)
-        ]);
+        const loaded = await loadWorkspaceContext();
 
         if (cancelled) return;
 
-        const loadedCalls = callItems(loadedCallsResponse);
-        const loadedDepartments = (
-          await Promise.all(
-            loadedCompanies.map((company) =>
-              api.listDepartments(company.id).catch(() => [])
-            )
-          )
-        ).flat();
-
-        const loadedInstructions = (
-          await Promise.all([
-            api.listInstructions("personal").catch(() => []),
-            ...loadedCompanies.map((company) =>
-              api.listInstructions("company", company.id).catch(() => [])
-            ),
-            ...loadedDepartments.map((department) =>
-              api
-                .listInstructions("department", department.company_uuid, department.id)
-                .catch(() => [])
-            )
-          ])
-        ).flat();
-        const loadedDepartmentMembers = (
-          await Promise.all(
-            loadedDepartments.map((department) =>
-              api
-                .listDepartmentMembers(department.company_uuid, department.id)
-                .catch(() => [])
-            )
-          )
-        ).flat();
-        const loadedCompanySubscriptions = Object.fromEntries(
-          await Promise.all(
-            loadedCompanies.map(async (company) => [
-              company.id,
-              await api.getCompanySubscription(company.id).catch(() => null)
-            ])
-          )
-        ) as Record<string, Subscription | null>;
-
-        if (cancelled) return;
-
-        setCalls(loadedCalls);
+        setCalls(loaded.calls);
         setCallTimelines(
-          loadedCalls.reduce<Record<string, CallStatus[]>>((timelines, call) => {
+          loaded.calls.reduce<Record<string, CallStatus[]>>((timelines, call) => {
             timelines[call.id] = timelineFromStatus(call.status);
             return timelines;
           }, {})
         );
-        setCompanies(loadedCompanies);
-        setDepartments(loadedDepartments);
-        setDepartmentMembers(loadedDepartmentMembers);
-        setInvitations(loadedInvitations);
-        setInstructions(loadedInstructions);
-        setPersonalSubscription(loadedPersonalSubscription);
-        setCompanySubscriptions(loadedCompanySubscriptions);
+        setCompanies(loaded.companies);
+        setDepartments(loaded.departments);
+        setDepartmentMembers(loaded.departmentMembers);
+        setInvitations(loaded.invitations);
+        setInstructions(loaded.instructions);
+        setPersonalSubscription(loaded.personalSubscription);
+        setCompanySubscriptions(loaded.companySubscriptions);
         setSelectedCallId((current) =>
-          current && loadedCalls.some((call) => call.id === current)
+          current && loaded.calls.some((call) => call.id === current)
             ? current
-            : loadedCalls[0]?.id ?? ""
+            : loaded.calls[0]?.id ?? ""
         );
         setWorkspaceReady(true);
       } catch (error) {
@@ -244,6 +177,60 @@ function App() {
       cancelled = true;
     };
   }, [authReady, session]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    let cancelled = false;
+    let refreshing = false;
+
+    async function refreshCalls() {
+      if (refreshing) return;
+      refreshing = true;
+
+      try {
+        const response = await api.listCalls();
+        if (cancelled) return;
+
+        const refreshedCalls = Array.isArray(response) ? response : response.items;
+        setCalls(refreshedCalls);
+        setCallTimelines((current) =>
+          refreshedCalls.reduce<Record<string, CallStatus[]>>((timelines, call) => {
+            timelines[call.id] = nextTimelineStatuses(
+              current[call.id] ?? timelineFromStatus(call.status),
+              call.status
+            );
+            return timelines;
+          }, {})
+        );
+        setSelectedCallId((current) =>
+          current && refreshedCalls.some((call) => call.id === current)
+            ? current
+            : refreshedCalls[0]?.id ?? ""
+        );
+      } catch {
+        // Keep the last known list when a background refresh is temporarily unavailable.
+      } finally {
+        refreshing = false;
+      }
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") void refreshCalls();
+    }
+
+    void refreshCalls();
+    const refreshTimer = window.setInterval(() => void refreshCalls(), callsRefreshIntervalMs);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("focus", refreshWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("focus", refreshWhenVisible);
+    };
+  }, [session]);
 
   const selectedCall = useMemo(
     () => calls.find((call) => call.id === selectedCallId) ?? calls[0],
@@ -421,46 +408,6 @@ function App() {
     setPage("calls");
   }
 
-  function toggleTheme(event: ThemeToggleEvent) {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const originX = rect.left + rect.width / 2;
-    const originY = rect.top + rect.height / 2;
-    const maxX = Math.max(originX, window.innerWidth - originX);
-    const maxY = Math.max(originY, window.innerHeight - originY);
-    const radius = Math.hypot(maxX, maxY);
-    const root = document.documentElement;
-    const transitionDocument = document as ViewTransitionDocument;
-
-    root.style.setProperty("--theme-reveal-x", `${originX}px`);
-    root.style.setProperty("--theme-reveal-y", `${originY}px`);
-    root.style.setProperty("--theme-reveal-radius", `${radius}px`);
-
-    const applyTheme = () => {
-      flushSync(() => {
-        setThemePreference((current) => {
-          const currentTheme = current === "system" ? systemTheme : current;
-          const nextTheme: AppTheme = currentTheme === "dark" ? "light" : "dark";
-          localStorage.setItem(THEME_KEY, nextTheme);
-          return nextTheme;
-        });
-      });
-    };
-
-    if (!transitionDocument.startViewTransition) {
-      applyTheme();
-      return;
-    }
-
-    root.classList.add("theme-reveal-running");
-    const transition = transitionDocument.startViewTransition(applyTheme);
-    transition.finished.finally(() => {
-      root.classList.remove("theme-reveal-running");
-      root.style.removeProperty("--theme-reveal-x");
-      root.style.removeProperty("--theme-reveal-y");
-      root.style.removeProperty("--theme-reveal-radius");
-    });
-  }
-
   function openLanding() {
     setShowPublicLanding(true);
     window.history.pushState({}, "", "/");
@@ -501,50 +448,12 @@ function App() {
   }
 
   async function refreshOrganizationContext() {
-    const loadedCompanies = await api.listCompanies();
-    const loadedDepartments = (
-      await Promise.all(
-        loadedCompanies.map((company) =>
-          api.listDepartments(company.id).catch(() => [])
-        )
-      )
-    ).flat();
-    const loadedInstructions = (
-      await Promise.all([
-        api.listInstructions("personal").catch(() => []),
-        ...loadedCompanies.map((company) =>
-          api.listInstructions("company", company.id).catch(() => [])
-        ),
-        ...loadedDepartments.map((department) =>
-          api
-            .listInstructions("department", department.company_uuid, department.id)
-            .catch(() => [])
-        )
-      ])
-    ).flat();
-    const loadedDepartmentMembers = (
-      await Promise.all(
-        loadedDepartments.map((department) =>
-          api
-            .listDepartmentMembers(department.company_uuid, department.id)
-            .catch(() => [])
-        )
-      )
-    ).flat();
-    const loadedCompanySubscriptions = Object.fromEntries(
-      await Promise.all(
-        loadedCompanies.map(async (company) => [
-          company.id,
-          await api.getCompanySubscription(company.id).catch(() => null)
-        ])
-      )
-    ) as Record<string, Subscription | null>;
-
-    setCompanies(loadedCompanies);
-    setDepartments(loadedDepartments);
-    setDepartmentMembers(loadedDepartmentMembers);
-    setInstructions(loadedInstructions);
-    setCompanySubscriptions(loadedCompanySubscriptions);
+    const loaded = await loadOrganizationContext();
+    setCompanies(loaded.companies);
+    setDepartments(loaded.departments);
+    setDepartmentMembers(loaded.departmentMembers);
+    setInstructions(loaded.instructions);
+    setCompanySubscriptions(loaded.companySubscriptions);
   }
 
   async function deleteCall(callId: string) {
@@ -635,7 +544,10 @@ function App() {
       onLogout={logout}
     >
       {page === "overview" && (
-        <OverviewPage />
+          <OverviewPage
+            calls={calls}
+            callsVersion={calls.map((call) => `${call.id}:${call.status}:${call.created_at}`).join("|")}
+          />
       )}
 
       {page === "calls" && (
@@ -648,6 +560,7 @@ function App() {
           selectedCallTimeline={selectedCallTimeline}
           transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
           analysis={selectedCall ? analyses[selectedCall.id] : undefined}
+          analyses={analyses}
           session={session}
           onSelectCall={selectCall}
           onNavigate={navigate}
@@ -834,19 +747,3 @@ function App() {
 }
 
 export default App;
-
-function callItems(response: CallResponse[] | { items: CallResponse[] }) {
-  return Array.isArray(response) ? response : response.items;
-}
-
-function callIdFromLocation() {
-  return new URLSearchParams(window.location.search).get("call") ?? "";
-}
-
-function pageUrl(page: AppPage, callId: string) {
-  const base = pageRoutes[page];
-  if ((page === "calls" || page === "analysis") && callId) {
-    return `${base}?call=${encodeURIComponent(callId)}`;
-  }
-  return base;
-}

@@ -5,9 +5,11 @@ import {
   ChevronsLeft,
   ChevronsRight,
   LogOut,
+  Menu,
   Moon,
   Search,
   CheckCheck,
+  UserRound,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -26,6 +28,7 @@ import type {
 
 import { adminSidebarItem, AppTheme, isSettingsPage, sidebarItems, ThemeToggleEvent } from "../../app/runtime";
 import { Logo } from "../../shared/ui/primitives";
+import { useDismissibleLayer } from "../../shared/ui/dismissible-layer";
 
 const WORKSPACE_COMPANY_STORAGE_KEY = "calllens.activeWorkspaceCompanyId";
 const PERSONAL_WORKSPACE_VALUE = "__personal__";
@@ -69,7 +72,8 @@ export function AuthenticatedShell({
   const [teamOpen, setTeamOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [dateOpen, setDateOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [selectedCompanyId, setSelectedCompanyId] = useState(() => readStoredWorkspaceCompanyId() ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
@@ -78,11 +82,12 @@ export function AuthenticatedShell({
   const [unreadNotifications, setUnreadNotifications] = useState(invitationCount);
   const [personalUsage, setPersonalUsage] = useState<SubscriptionUsageResponse | null>(null);
   const [companyUsage, setCompanyUsage] = useState<Record<string, SubscriptionUsageResponse | null>>({});
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [currentTime, setCurrentTime] = useState(() => new Date());
   const teamPopoverRef = useRef<HTMLDivElement>(null);
   const searchPopoverRef = useRef<HTMLLabelElement>(null);
   const notificationPopoverRef = useRef<HTMLDivElement>(null);
+  const calendarPopoverRef = useRef<HTMLDivElement>(null);
+  const profilePopoverRef = useRef<HTMLDivElement>(null);
   const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
   const activeSidebarPage = activePage === "settingsCompanies" ? "settingsCompanies" : isSettingsPage(activePage) ? "settings" : activePage;
   const fullName = `${session.user.full_name} ${session.user.full_surname}`.trim();
@@ -91,6 +96,7 @@ export function AuthenticatedShell({
   const hasCompanies = companies.length > 0;
   const hasMultipleCompanies = companies.length > 1;
   const teamLabel = selectedCompany?.name ?? "Личный кабинет";
+  const displayTimeZone = session.user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const selectedCompanySubscription = selectedCompany?.id ? companySubscriptions[selectedCompany.id] : null;
   const selectedCompanyUsage = selectedCompany?.id ? companyUsage[selectedCompany.id] : undefined;
   const activeUsage = selectedCompany ? selectedCompanyUsage ?? null : personalUsage;
@@ -147,6 +153,11 @@ export function AuthenticatedShell({
   }, [companies, selectedCompanyId]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setCurrentTime(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadUsage() {
@@ -198,8 +209,6 @@ export function AuthenticatedShell({
         if (storedCompanyId !== null && storedCompanyId !== preferenceCompanyId) {
           persistPreferences({ active_company_uuid: storedCompanyId || null });
         }
-        setDateFrom(preferences.date_range.from ?? "");
-        setDateTo(preferences.date_range.to ?? "");
       }
       if (notificationResponse) {
         setNotifications(notificationResponse.notifications);
@@ -243,48 +252,14 @@ export function AuthenticatedShell({
     };
   }, [searchQuery]);
 
-  useEffect(() => {
-    if (!teamOpen) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!teamPopoverRef.current?.contains(event.target as Node)) {
-        setTeamOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
-  }, [teamOpen]);
-
-  useEffect(() => {
-    if (!searchOpen) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!searchPopoverRef.current?.contains(event.target as Node)) {
-        setSearchOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
-  }, [searchOpen]);
-
-  useEffect(() => {
-    if (!notificationsOpen) return;
-
-    function closeOnOutsideClick(event: PointerEvent) {
-      if (!notificationPopoverRef.current?.contains(event.target as Node)) {
-        setNotificationsOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", closeOnOutsideClick);
-    return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
-  }, [notificationsOpen]);
+  useDismissibleLayer(teamOpen, teamPopoverRef, () => setTeamOpen(false));
+  useDismissibleLayer(searchOpen, searchPopoverRef, () => setSearchOpen(false));
+  useDismissibleLayer(dateOpen, calendarPopoverRef, () => setDateOpen(false));
+  useDismissibleLayer(notificationsOpen, notificationPopoverRef, () => setNotificationsOpen(false));
+  useDismissibleLayer(profileOpen, profilePopoverRef, () => setProfileOpen(false));
 
   function persistPreferences(next: {
     active_company_uuid?: string | null;
-    date_range?: { from?: string | null; to?: string | null };
   }) {
     api.updatePreferences(next).catch(() => undefined);
   }
@@ -475,46 +450,38 @@ export function AuthenticatedShell({
               </div>
             )}
           </label>
-          <div className="header-popover-wrap">
+          <div className="header-popover-wrap" ref={calendarPopoverRef}>
             <button
-              className={`date-range-control ${calendarOpen ? "active" : ""}`}
+              className={`date-range-control ${dateOpen ? "active" : ""}`}
               type="button"
-              aria-expanded={calendarOpen}
-              onClick={() => setCalendarOpen((open) => !open)}
+              aria-expanded={dateOpen}
+              onClick={() => setDateOpen((open) => !open)}
             >
               <CalendarDays size={18} />
-              {formatDateRange(dateFrom, dateTo)}
+              {formatCurrentDate(currentTime, displayTimeZone)}
             </button>
-            {calendarOpen && (
+            {dateOpen && (
               <div className="header-popover calendar-popover">
                 <div className="popover-head">
-                  <strong>Период</strong>
-                  <button type="button" onClick={() => setCalendarOpen(false)} aria-label="Закрыть календарь">
+                  <strong>Текущая дата</strong>
+                  <button type="button" onClick={() => setDateOpen(false)} aria-label="Закрыть">
                     <X size={15} />
                   </button>
                 </div>
-                <label>
-                  С
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={(event) => {
-                      setDateFrom(event.target.value);
-                      persistPreferences({ date_range: { from: event.target.value || null, to: dateTo || null } });
-                    }}
-                  />
-                </label>
-                <label>
-                  По
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={(event) => {
-                      setDateTo(event.target.value);
-                      persistPreferences({ date_range: { from: dateFrom || null, to: event.target.value || null } });
-                    }}
-                  />
-                </label>
+                <p className="date-display-timezone">
+                  <span>Часовой пояс</span>
+                  <strong>{displayTimeZone}</strong>
+                </p>
+                <button
+                  className="date-timezone-action"
+                  type="button"
+                  onClick={() => {
+                    setDateOpen(false);
+                    onNavigate("settingsProfileEdit");
+                  }}
+                >
+                  Настроить часовой пояс
+                </button>
               </div>
             )}
           </div>
@@ -560,18 +527,43 @@ export function AuthenticatedShell({
           <button className="icon-button theme-toggle" type="button" onClick={onToggleTheme} aria-label={themeLabel}>
             <Moon size={19} fill={theme === "dark" ? "currentColor" : "none"} />
           </button>
-          <button
-            className="header-profile-link"
-            type="button"
-            onClick={() => onNavigate("settingsProfile")}
-            aria-label="Открыть профиль"
-          >
-            <span className="avatar" aria-hidden="true">{avatarInitial}</span>
-            <strong>{fullName || "Пользователь"}</strong>
-          </button>
-          <button className="icon-button logout" onClick={onLogout} aria-label="Выйти">
-            <LogOut size={18} />
-          </button>
+          <div className="header-popover-wrap" ref={profilePopoverRef}>
+            <button
+              className="header-profile-link"
+              type="button"
+              onClick={() => setProfileOpen((open) => !open)}
+              aria-label="Открыть меню профиля"
+              aria-expanded={profileOpen}
+            >
+              <span className="avatar" aria-hidden="true">{avatarInitial}</span>
+              <strong>{fullName || "Пользователь"}</strong>
+            </button>
+            {profileOpen && (
+              <div className="header-popover profile-popover">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    onNavigate("settingsProfile");
+                  }}
+                >
+                  <UserRound size={17} />
+                  <strong>Профиль</strong>
+                </button>
+                <button
+                  className="danger"
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    onLogout();
+                  }}
+                >
+                  <LogOut size={17} />
+                  <strong>Выйти</strong>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </header>
       <div className="workspace-frame">
@@ -623,6 +615,19 @@ export function AuthenticatedShell({
         </aside>
         <main className="workspace">{children}</main>
       </div>
+      <nav className="mobile-bottom-nav" aria-label="Основная навигация">
+        {[...sidebarItems.slice(0, 4), { page: "settings" as AppPage, label: "Ещё", icon: <Menu size={19} /> }].map((item) => (
+          <button
+            key={item.page}
+            className={activeSidebarPage === item.page || (item.page === "settings" && isSettingsPage(activePage)) ? "active" : ""}
+            type="button"
+            onClick={() => onNavigate(item.page)}
+          >
+            {item.icon}
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }
@@ -665,21 +670,18 @@ function formatShortDate(value: string) {
   return new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
 }
 
-function formatDateRange(from: string, to: string) {
-  const fromDate = new Date(from);
-  const toDate = new Date(to);
-  if (Number.isNaN(fromDate.getTime()) || Number.isNaN(toDate.getTime())) return "Выберите период";
+function formatCurrentDate(value: Date, timeZone?: string) {
+  const options: Intl.DateTimeFormatOptions = {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  };
 
-  const monthFormatter = new Intl.DateTimeFormat("ru-RU", { month: "short" });
-  const yearFormatter = new Intl.DateTimeFormat("ru-RU", { year: "numeric" });
-  const fromMonth = monthFormatter.format(fromDate).replace(".", "");
-  const toMonth = monthFormatter.format(toDate).replace(".", "");
-  const fromYear = yearFormatter.format(fromDate);
-  const toYear = yearFormatter.format(toDate);
-
-  if (fromYear === toYear) {
-    return `${fromDate.getDate()} ${fromMonth} - ${toDate.getDate()} ${toMonth} ${toYear}`;
+  try {
+    return new Intl.DateTimeFormat("ru-RU", { ...options, timeZone }).format(value);
+  } catch {
+    return new Intl.DateTimeFormat("ru-RU", options).format(value);
   }
-
-  return `${fromDate.getDate()} ${fromMonth} ${fromYear} - ${toDate.getDate()} ${toMonth} ${toYear}`;
 }

@@ -327,10 +327,6 @@ function analysisCardState(
   call: CallResponse,
   analysis?: AnalysisResponse
 ): CardProcessState {
-  if (isAnalysisDone(analysis) || call.status === "analyzed") {
-    return { label: "Анализ готов", tone: "ok" };
-  }
-
   if (analysis?.status === "failed") {
     return { label: "Ошибка анализа", tone: "bad" };
   }
@@ -341,6 +337,10 @@ function analysisCardState(
 
   if (call.status === "transcribed" || analysis?.status === "pending" || analysis?.status === "processing") {
     return { label: "Производится анализ транскрипции", tone: "warn", thinking: true };
+  }
+
+  if (isAnalysisDone(analysis) || call.status === "analyzed") {
+    return { label: "Анализ готов", tone: "ok" };
   }
 
   if (call.status === "processing") {

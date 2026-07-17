@@ -47,19 +47,29 @@ export function nextTimelineStatuses(previous: CallStatus[], status: CallStatus)
 
 export function callStatusChip(status: CallStatus, analysisStatus?: AnalysisStatus) {
   if (status === "failed") return statusMeta.failed.chip;
-  if (status === "transcribed" && analysisStatus !== "done") return "В обработке";
+  if (analysisStatus === "failed") return "Ошибка анализа";
+  if (status === "new") return "В очереди";
+  if (status === "processing") return "Транскрибируется";
+  if (status === "transcribed") return "Анализируется";
+  if (status === "analyzed" && analysisStatus !== undefined && analysisStatus !== "done") return "Анализируется";
   return statusMeta[status].chip;
 }
 
 export function callStatusTone(status: CallStatus, analysisStatus?: AnalysisStatus) {
   if (status === "failed" || analysisStatus === "failed") return "bad";
-  if (status === "processing" || (status === "transcribed" && analysisStatus !== "done")) return "warn";
+  if (
+    status === "new" ||
+    status === "processing" ||
+    status === "transcribed" ||
+    (status === "analyzed" && analysisStatus !== undefined && analysisStatus !== "done")
+  ) return "warn";
   return "ok";
 }
 
 export function activeCallProcess(status: CallStatus, analysisStatus?: AnalysisStatus) {
   if (status === "processing") return "transcription";
   if (status === "transcribed" && analysisStatus !== "done" && analysisStatus !== "failed") return "analysis";
+  if (status === "analyzed" && (analysisStatus === "pending" || analysisStatus === "processing")) return "analysis";
   return null;
 }
 

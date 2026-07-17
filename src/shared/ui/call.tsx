@@ -64,7 +64,7 @@ export function StatusTimeline({
             {step === "analyzed" && <Check size={19} />}
             {step === "failed" && <X size={19} />}
           </span>
-          <strong>{statusMeta[step].label}</strong>
+          <strong>{timelineStepLabel(step)}</strong>
           <small>{timelineStepCaption(step, index, current, currentIndex, analysisStatus)}</small>
         </div>
       ))}
@@ -111,9 +111,19 @@ function timelineStepCaption(
   if (step === "failed") return "ошибка";
   if (analysisStatus === "failed" && step === "analyzed") return "ошибка анализа";
   if (activeProcess === "transcription" && step === "processing") return "Транскрибируется";
-  if (activeProcess === "analysis" && step === "analyzed") return "Производится анализ транскрипции";
+  if (activeProcess === "analysis" && step === "analyzed") return "Анализируется";
+  if (step === "new" && current === "new") return "В очереди";
+  if (activeProcess && isTimelineStepReady(step, current, index, currentIndex, analysisStatus)) return "";
   if (isTimelineStepReady(step, current, index, currentIndex, analysisStatus)) return "готово";
   return "";
+}
+
+function timelineStepLabel(step: CallStatus) {
+  if (step === "new") return "Загрузка";
+  if (step === "processing") return "Транскрибация";
+  if (step === "transcribed") return "Подготовка анализа";
+  if (step === "analyzed") return "Анализ";
+  return statusMeta[step].label;
 }
 
 function isTimelineStepReady(

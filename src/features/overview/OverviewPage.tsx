@@ -8,10 +8,12 @@ import {
   Star,
   TriangleAlert
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import type {
-  AnalyticsOverviewResponse
+  AnalyticsOverviewResponse,
+  CallResponse,
+  ProcessingMonitoringResponse
 } from "../../types";
 
 import {
@@ -21,8 +23,9 @@ import {
 } from "../../shared/lib/analysis";
 import { formatDuration } from "../../shared/lib/formatters";
 
-export function OverviewPage() {
+export function OverviewPage({ calls, callsVersion }: { calls: CallResponse[]; callsVersion: string }) {
   const [analyticsOverview, setAnalyticsOverview] = useState<AnalyticsOverviewResponse | null>(null);
+  const [processingMonitoring, setProcessingMonitoring] = useState<ProcessingMonitoringResponse | null>(null);
   const avgDuration = analyticsOverview?.average_duration_seconds === null || analyticsOverview === null
     ? "Нет данных"
     : formatDuration(Math.round(analyticsOverview.average_duration_seconds));
@@ -30,6 +33,7 @@ export function OverviewPage() {
   const riskValue = analyticsOverview?.risks_count ?? null;
   const recommendationValue = analyticsOverview?.recommendations_count ?? null;
   const chartSeries = buildOverviewChartSeries(analyticsOverview);
+  const recentUploads = useMemo(() => buildRecentUploadChart(calls), [calls]);
   const qualityDonutPercent = analyticsScore.score === null ? 0 : (analyticsScore.score / analyticsScore.scale) * 100;
   const qualityDonutLabel = analyticsScore.score === null
     ? "нет данных"
@@ -41,7 +45,11 @@ export function OverviewPage() {
 
     async function loadOverview() {
       const overview = await api.getAnalyticsOverview().catch(() => null);
-      if (!cancelled) setAnalyticsOverview(overview);
+      const monitoring = await api.getProcessingMonitoring().catch(() => null);
+      if (!cancelled) {
+        setAnalyticsOverview(overview);
+        setProcessingMonitoring(monitoring);
+      }
     }
 
     function refreshWhenVisible() {
@@ -49,7 +57,7 @@ export function OverviewPage() {
     }
 
     void loadOverview();
-    intervalId = window.setInterval(loadOverview, 15000);
+    intervalId = window.setInterval(loadOverview, 5000);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     window.addEventListener("focus", refreshWhenVisible);
 
@@ -59,15 +67,21 @@ export function OverviewPage() {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener("focus", refreshWhenVisible);
     };
-  }, []);
+  }, [callsVersion]);
 
   return (
     <section className="dashboard-page app-page">
       <div className="dashboard-kpi-grid">
-        <MetricCard icon={<BarChart3 size={20} />} title="Всего звонков" value={metricCount(analyticsOverview?.calls_total)} points={chartSeries.totalCalls} note="загружено за период" />
-        <MetricCard icon={<Phone size={20} />} title="Новые" value={metricCount(analyticsOverview?.calls_new)} note="ожидают обработки" />
-        <MetricCard icon={<Activity size={20} />} title="В обработке" value={metricCount(analyticsOverview?.calls_processing)} note={`${analyticsOverview?.calls_failed ?? 0} ошибок`} />
-        <MetricCard icon={<FileText size={20} />} title="Расшифрованы" value={metricCount(analyticsOverview?.calls_transcribed)} note="готовы к анализу" />
+        <MetricCard icon={<BarChart3 size={20} />} title="Всего звонков" value={metricCount(analyticsOverview?.calls_total)} points={chartSeries.totalCalls} note="в выбранной области" />
+        <MetricCard
+          icon={<Phone size={20} />}
+          title="Новые сегодня"
+          value={metricCount(analyticsOverview?.calls_created_today)}
+          points={recentUploads}
+          note="за последние 24 часа"
+        />
+        <MetricCard icon={<Activity size={20} />} title="Звонки в обработке" value={metricCount(analyticsOverview?.calls_processing)} note={`${processingMonitoring?.queue.running ?? 0} задач выполняется`} />
+        <MetricCard icon={<FileText size={20} />} title="Расшифровка готова" value={metricCount(analyticsOverview?.calls_with_transcription)} note={`${analyticsOverview?.calls_transcribed ?? 0} ожидают анализа`} />
         <MetricCard icon={<CheckCircle2 size={20} />} title="С анализом" value={metricCount(analyticsOverview?.calls_analyzed)} tone="success" points={chartSeries.analyzedCalls} note="готовый результат анализа" />
         <MetricCard icon={<Clock3 size={20} />} title="Средняя длительность" value={avgDuration} points={chartSeries.duration} />
         <MetricCard icon={<TriangleAlert size={20} />} title="Риски" value={riskValue === null ? "Нет данных" : riskValue.toString()} tone="warning" points={chartSeries.risks} />
@@ -81,6 +95,7 @@ export function OverviewPage() {
           donutLabel={qualityDonutLabel}
         />
         <MetricCard icon={<FileText size={20} />} title="Рекомендации" value={recommendationValue === null ? "Нет данных" : recommendationValue.toString()} note="по результатам анализа" />
+        <MetricCard icon={<Activity size={20} />} title="Повторы задач" value={metricCount(processingMonitoring?.queue.retry)} note="ожидают повторной обработки" />
         <MetricCard icon={<TriangleAlert size={20} />} title="Ошибки" value={metricCount(analyticsOverview?.calls_failed)} tone="warning" note="требуют внимания" />
       </div>
 
@@ -343,7 +358,7 @@ function MiniSparkline({ points, tone }: { points: ChartPoint[]; tone: "accent" 
       </svg>
       {coordinates.map((point, index) => (
         <span
-          className={`chart-hit ${activeIndex === index ? "active" : ""} ${index === 0 ? "edge-start" : ""} ${index === coordinates.length - 1 ? "edge-end" : ""}`}
+          className={`chart-hit ${activeIndex === index ? "active" : ""} ${index <= 1 ? "edge-start" : ""} ${index >= coordinates.length - 2 ? "edge-end" : ""}`}
           style={{
             left: `${Math.max(10, Math.min(90, (point.x / 160) * 100))}%`,
             top: `${Math.max(12, Math.min(88, (point.y / 52) * 100))}%`
@@ -450,6 +465,49 @@ function buildOverviewChartSeries(overview: AnalyticsOverviewResponse | null) {
     risks: countChartPoints(charts?.risks_by_day, "рисков"),
     quality: qualityChartPoints(charts?.score_by_day, charts?.quality_by_day)
   };
+}
+
+function buildRecentUploadChart(calls: CallResponse[]): ChartPoint[] {
+  const bucketHours = 3;
+  const bucketMs = bucketHours * 60 * 60 * 1000;
+  const bucketCount = 8;
+  const rangeEnd = new Date();
+
+  rangeEnd.setMinutes(0, 0, 0);
+  rangeEnd.setHours(rangeEnd.getHours() + 1);
+
+  const rangeEndMs = rangeEnd.getTime();
+  const rangeStartMs = rangeEndMs - bucketMs * bucketCount;
+  const buckets = Array.from({ length: bucketCount }, (_, index) => {
+    const start = rangeStartMs + index * bucketMs;
+    return { start, end: start + bucketMs, count: 0 };
+  });
+
+  calls.forEach((call) => {
+    const uploadedAt = new Date(call.created_at).getTime();
+    if (!Number.isFinite(uploadedAt) || uploadedAt < rangeStartMs || uploadedAt > rangeEndMs) return;
+
+    const bucketIndex = Math.min(bucketCount - 1, Math.floor((uploadedAt - rangeStartMs) / bucketMs));
+    buckets[bucketIndex].count += 1;
+  });
+
+  return buckets.map((bucket) => {
+    const startLabel = chartTimeLabel(bucket.start);
+    const endLabel = chartTimeLabel(bucket.end);
+    return {
+      label: startLabel,
+      value: bucket.count,
+      display: `${bucket.count} ${pluralizeCalls(bucket.count)}`,
+      detail: `${startLabel}–${endLabel} · загрузки`
+    };
+  });
+}
+
+function chartTimeLabel(value: number) {
+  return new Date(value).toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function overviewScore(overview: AnalyticsOverviewResponse | null) {

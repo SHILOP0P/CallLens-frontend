@@ -32,9 +32,20 @@ import type {
 import { formatDate, formatDuration } from "../../shared/lib/formatters";
 import { StatusChip } from "../../shared/ui/call";
 import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
+import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
 import { CallListSkeleton } from "../../shared/ui/loading";
 import { SelectControl } from "../../shared/ui/primitives";
 import { CallDetailPanel } from "./CallDetailPanel";
+import {
+  callSearchText,
+  folderScopeLabel,
+  formatUsername,
+  friendlyCallActionError,
+  isWithinPeriod,
+  loadCallFoldersForContext,
+  managerLabel,
+  periodStart
+} from "./call-page-utils";
 
 export function CallsPage({
   calls,
@@ -45,6 +56,7 @@ export function CallsPage({
   selectedCallTimeline,
   transcription,
   analysis,
+  analyses,
   session,
   loading,
   loadingDetails,
@@ -61,6 +73,7 @@ export function CallsPage({
   selectedCallTimeline?: CallStatus[];
   transcription?: TranscriptionResponse;
   analysis?: AnalysisResponse;
+  analyses: Record<string, AnalysisResponse>;
   session: SessionState;
   loading: boolean;
   loadingDetails: boolean;
@@ -109,6 +122,7 @@ export function CallsPage({
   };
   const hasBackendFilters = Object.values(filterInput).some(Boolean);
   const displayedCalls = serverCalls ?? calls;
+  const callsRefreshKey = calls.map((call) => `${call.id}:${call.status}`).join("|");
   const filteredCalls = hasBackendFilters ? displayedCalls : calls.filter((call) => {
     const query = searchQuery.trim().toLowerCase();
     const matchesScope = effectiveScopeFilter === "all" || call.visibility_scope === effectiveScopeFilter;
@@ -412,6 +426,9 @@ export function CallsPage({
     setPendingDelete(null);
   }
 
+  useEscapeDismiss(folderEditorOpen && !folderBusyId, cancelFolderEdit);
+  useEscapeDismiss(Boolean(editingCall) && !callBusyId, cancelCallRename);
+
   useEffect(() => {
     if (!openCallMenuId && !openFolderMenuId) return;
 
@@ -449,6 +466,18 @@ export function CallsPage({
   useEffect(() => {
     void refreshFolders();
   }, [companiesFolderKey, departmentsFolderKey]);
+
+  useEffect(() => {
+    const callsById = new Map(calls.map((call) => [call.id, call]));
+    setFolderCallsById((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([folderId, folderCalls]) => [
+          folderId,
+          folderCalls.map((call) => callsById.get(call.id) ?? call)
+        ])
+      )
+    );
+  }, [callsRefreshKey]);
 
   useEffect(() => {
     if (visibleFolders.length === 0) {
@@ -553,7 +582,7 @@ export function CallsPage({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [hasBackendFilters, searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter, selectedFolderId]);
+  }, [hasBackendFilters, searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter, selectedFolderId, callsRefreshKey]);
 
   function renderSidebarCallRow(call: CallResponse, folderId?: string) {
     const selected = selectedCallId === call.id;
@@ -583,7 +612,7 @@ export function CallsPage({
           <Play size={14} fill="currentColor" />
         </span>
         <span className="call-row-main">
-          <StatusChip status={call.status} analysisStatus={selected ? analysis?.status : undefined} />
+          <StatusChip status={call.status} analysisStatus={analyses[call.id]?.status} />
           <strong>{call.title}</strong>
           <small>
             {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)}
@@ -845,8 +874,23 @@ export function CallsPage({
         />
       </section>
       {folderEditorOpen && (
-        <div className="call-folder-modal-layer" role="presentation">
-          <section className="call-folder-modal" role="dialog" aria-modal="true" aria-label={editingFolderId ? "Редактировать папку" : "Новая папка"}>
+        <div
+          className="call-folder-modal-layer"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (!folderBusyId && event.target === event.currentTarget) cancelFolderEdit();
+          }}
+        >
+          <form
+            className="call-folder-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={editingFolderId ? "Редактировать папку" : "Новая папка"}
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitFolderForm();
+            }}
+          >
             <div className="call-folder-modal-head">
               <div>
                 <strong>{editingFolderId ? "Редактировать папку" : "Новая папка"}</strong>
@@ -956,9 +1000,8 @@ export function CallsPage({
               <div className="call-folder-form-actions">
                 <button
                   className="primary-button small"
-                  type="button"
+                  type="submit"
                   disabled={folderBusyId === "create" || (Boolean(editingFolderId) && folderBusyId === editingFolderId)}
-                  onClick={submitFolderForm}
                 >
                   <Check size={15} />
                   {editingFolderId ? "Сохранить" : "Создать"}
@@ -968,12 +1011,27 @@ export function CallsPage({
                 </button>
               </div>
             </div>
-          </section>
+          </form>
         </div>
       )}
       {editingCall && (
-        <div className="call-folder-modal-layer" role="presentation">
-          <section className="call-folder-modal call-title-modal" role="dialog" aria-modal="true" aria-label="Переименовать звонок">
+        <div
+          className="call-folder-modal-layer"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (!callBusyId && event.target === event.currentTarget) cancelCallRename();
+          }}
+        >
+          <form
+            className="call-folder-modal call-title-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Переименовать звонок"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submitCallRename();
+            }}
+          >
             <div className="call-folder-modal-head">
               <div>
                 <strong>Переименовать звонок</strong>
@@ -992,12 +1050,6 @@ export function CallsPage({
                   maxLength={255}
                   autoFocus
                   onChange={(event) => setCallTitleDraft(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      event.preventDefault();
-                      void submitCallRename();
-                    }
-                  }}
                 />
                 <span>{callTitleDraft.length} / 255</span>
               </div>
@@ -1005,9 +1057,8 @@ export function CallsPage({
             <div className="call-title-modal-actions">
               <button
                 className="primary-button small"
-                type="button"
+                type="submit"
                 disabled={callBusyId === editingCall.id || !callTitleDraft.trim()}
-                onClick={() => void submitCallRename()}
               >
                 <Check size={15} />
                 Сохранить
@@ -1016,7 +1067,7 @@ export function CallsPage({
                 Отмена
               </button>
             </div>
-          </section>
+          </form>
         </div>
       )}
       {pendingDeleteCopy && (
@@ -1124,99 +1175,4 @@ function buildFolderPayload(
       color: color || null
     }
   };
-}
-
-function folderScopeLabel(folder: CallFolderResponse) {
-  if (folder.scope === "personal") return "Личная";
-  if (folder.scope === "company") return "Компания";
-  if (folder.scope === "department") return "Отдел";
-  return folder.scope || "Область";
-}
-
-async function loadCallFoldersForContext(
-  companies: CompanyResponse[],
-  departments: DepartmentResponse[]
-) {
-  const requests = [
-    api.listCallFolders({ scope: "personal", limit: 100, offset: 0 }),
-    ...companies.map((company) =>
-      api.listCallFolders({
-        scope: "company",
-        company_uuid: company.id,
-        limit: 100,
-        offset: 0
-      })
-    ),
-    ...departments.map((department) =>
-      api.listCallFolders({
-        scope: "department",
-        company_uuid: department.company_uuid,
-        department_uuid: department.id,
-        limit: 100,
-        offset: 0
-      })
-    )
-  ];
-  const responses = await Promise.all(
-    requests.map((request) => request.catch(() => ({ items: [] as CallFolderResponse[] })))
-  );
-  const folders = new Map<string, CallFolderResponse>();
-
-  responses.forEach((response) => {
-    response.items.forEach((folder) => folders.set(folder.id, folder));
-  });
-
-  return Array.from(folders.values());
-}
-
-function managerLabel(
-  manager: { id: string; full_name: string; full_surname: string; username: string },
-  session: SessionState
-) {
-  if (manager.id === session.user.id) {
-    return `${session.user.full_name} ${session.user.full_surname}`.trim() || "Мои звонки";
-  }
-
-  const fullName = `${manager.full_name} ${manager.full_surname}`.trim();
-  return fullName || formatUsername(manager.username) || `Пользователь ${manager.id.slice(0, 8)}`;
-}
-
-function isWithinPeriod(value: string, period: "all" | "7d" | "30d") {
-  if (period === "all") return true;
-
-  const createdAt = new Date(value).getTime();
-  if (Number.isNaN(createdAt)) return false;
-
-  const days = period === "7d" ? 7 : 30;
-  return Date.now() - createdAt <= days * 24 * 60 * 60 * 1000;
-}
-
-function periodStart(period: "all" | "7d" | "30d") {
-  if (period === "all") return undefined;
-  const date = new Date();
-  date.setDate(date.getDate() - (period === "7d" ? 7 : 30));
-  return date.toISOString();
-}
-
-function formatUsername(username: string) {
-  const trimmed = username.trim();
-  if (!trimmed) return "";
-  return trimmed.startsWith("@") ? trimmed : `@${trimmed}`;
-}
-
-function callSearchText(call: CallResponse) {
-  const maybeNamedCall = call as CallResponse & { name?: unknown };
-  return [
-    call.title,
-    typeof maybeNamedCall.name === "string" ? maybeNamedCall.name : "",
-    call.original_filename
-  ].join(" ").toLowerCase();
-}
-
-function friendlyCallActionError(error: unknown, fallback: string) {
-  if (error instanceof ApiError) {
-    if (error.code === "invalid_call_title") return "Введите название звонка.";
-    if (error.code === "call_not_found") return "Звонок не найден.";
-  }
-  return error instanceof Error ? error.message : fallback;
 }

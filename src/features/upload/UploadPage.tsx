@@ -8,9 +8,10 @@ import {
   FileText,
   Pencil,
   Upload,
-  UsersRound
+  UsersRound,
+  X
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import type {
   AnalysisInstruction,
@@ -28,6 +29,19 @@ import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/ac
 import { callScopeLabel } from "../../shared/lib/formatters";
 import { FileDropZone, SelectControl } from "../../shared/ui/primitives";
 import { availableInstructionsForContext, InstructionChoiceList, instructionContextHint, InstructionMiniList, StepItem } from "../instructions/instruction-components";
+
+const maxBatchFiles = 10;
+const mediaAccept = ".mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm,.mkv,audio/*,video/mp4,video/quicktime,video/webm,video/x-matroska";
+const uploadModeStorageKey = "calllens-upload-mode";
+
+type UploadMode = "single" | "multiple";
+type BatchUploadItem = {
+  id: string;
+  file: File;
+  title: string;
+  status: "pending" | "uploading" | "success" | "failed";
+  error?: string;
+};
 
 export function UploadPage({
   session,
@@ -48,8 +62,11 @@ export function UploadPage({
   onNavigate: (page: AppPage) => void;
   onUploaded: (call: CallResponse) => void;
 }) {
+  const [uploadMode, setUploadMode] = useState<UploadMode>(readStoredUploadMode);
   const [title, setTitle] = useState("");
   const [media, setMedia] = useState<File | null>(null);
+  const [batchItems, setBatchItems] = useState<BatchUploadItem[]>([]);
+  const [batchDragActive, setBatchDragActive] = useState(false);
   const [scope, setScope] = useState<VisibilityScope>("personal");
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [departmentId, setDepartmentId] = useState(
@@ -116,6 +133,14 @@ export function UploadPage({
       setScope("personal");
     }
   }, [availableCallScopes, scope]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(uploadModeStorageKey, uploadMode);
+    } catch {
+      // The upload mode remains available for the current page when storage is unavailable.
+    }
+  }, [uploadMode]);
 
   useEffect(() => {
     if (scope === "personal") return;
@@ -187,27 +212,68 @@ export function UploadPage({
     );
   }
 
+  function selectBatchFiles(files: FileList | null) {
+    const selected = Array.from(files ?? []);
+    if (selected.length === 0) return;
+
+    const knownFiles = new Set(batchItems.map((item) => batchFileKey(item.file)));
+    const newFiles = selected.filter((file) => {
+      const key = batchFileKey(file);
+      if (knownFiles.has(key)) return false;
+      knownFiles.add(key);
+      return true;
+    });
+    if (newFiles.length === 0) return;
+
+    if (batchItems.length + newFiles.length > maxBatchFiles) {
+      setError(`Всего можно выбрать не более ${maxBatchFiles} звонков.`);
+      return;
+    }
+
+    setError("");
+    setBatchItems((items) => [...items, ...newFiles.map((file, index) => ({
+      id: `${file.name}-${file.lastModified}-${Date.now()}-${index}`,
+      file,
+      title: titleFromFilename(file.name),
+      status: "pending" as const
+    }))]);
+  }
+
+  function handleBatchDrag(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setBatchDragActive(event.type === "dragenter" || event.type === "dragover");
+  }
+
+  function handleBatchDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    setBatchDragActive(false);
+    selectBatchFiles(event.dataTransfer.files);
+  }
+
+  function updateBatchItem(id: string, update: Partial<Pick<BatchUploadItem, "title" | "status" | "error">>) {
+    setBatchItems((items) => items.map((item) => item.id === id ? { ...item, ...update } : item));
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError("");
 
-    if (!title.trim()) {
+    if (uploadMode === "single" && !title.trim()) {
       setError("Введите название звонка.");
       return;
     }
 
-    if (!media) {
-	  setError("Выберите аудио- или видеофайл.");
+    if (uploadMode === "single" && !media) {
+      setError("Выберите аудио- или видеофайл.");
       return;
     }
 
-    const payload = {
-      title: title.trim(),
-      media,
-      companyUuid: scope === "company" || scope === "department" ? companyId : undefined,
-      departmentUuid: scope === "department" ? departmentId : undefined,
-      useCustomInstructions: selectedInstructionIds.length > 0
-    };
+    if (uploadMode === "multiple" && (batchItems.length === 0 || batchItems.length > maxBatchFiles)) {
+      setError(`Выберите от 1 до ${maxBatchFiles} аудио- или видеофайлов.`);
+      return;
+    }
 
     if ((scope === "company" || scope === "department") && !companyId) {
       setError("Выберите компанию.");
@@ -221,11 +287,43 @@ export function UploadPage({
 
     setBusy(true);
     try {
-      const created = await api.createCall(payload);
-      if (folderId) {
-        await api.assignCallToFolder(folderId, created.id);
+      const sharedInput = {
+        companyUuid: scope === "company" || scope === "department" ? companyId : undefined,
+        departmentUuid: scope === "department" ? departmentId : undefined,
+        useCustomInstructions: selectedInstructionIds.length > 0
+      };
+      if (uploadMode === "single" && media) {
+        const created = await api.createCall({ ...sharedInput, title: title.trim(), media });
+        if (folderId) await api.assignCallToFolder(folderId, created.id);
+        onUploaded(created);
+      } else {
+        const queue = [...batchItems];
+        const results: boolean[] = [];
+        const uploadBatchItem = async (item: BatchUploadItem) => {
+          updateBatchItem(item.id, { status: "uploading", error: undefined });
+          try {
+            const created = await api.createCall({ ...sharedInput, title: item.title.trim() || undefined, media: item.file });
+            if (folderId) await api.assignCallToFolder(folderId, created.id);
+            onUploaded(created);
+            updateBatchItem(item.id, { status: "success" });
+            return true;
+          } catch (uploadError) {
+            updateBatchItem(item.id, {
+              status: "failed",
+              error: uploadError instanceof Error ? uploadError.message : "Не удалось загрузить звонок."
+            });
+            return false;
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(3, queue.length) }, async () => {
+          while (queue.length > 0) {
+            const item = queue.shift();
+            if (item) results.push(await uploadBatchItem(item));
+          }
+        }));
+        const failed = results.filter((result) => !result).length;
+        if (failed > 0) setError(`Не удалось загрузить ${failed} из ${batchItems.length} звонков. Их можно повторить.`);
       }
-      onUploaded(created);
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : "Не удалось загрузить звонок");
     } finally {
@@ -251,30 +349,83 @@ export function UploadPage({
 
       <form className="upload-form glass" onSubmit={submit}>
         <h1>Загрузить звонок</h1>
-        <label>
-          Название звонка
-          <div className="input-with-counter">
-            <input
-              value={title}
-              maxLength={255}
-              required
-              placeholder="Например: обсуждение условий договора с клиентом"
-              onChange={(event) => setTitle(event.target.value)}
-            />
-            <span>{title.length} / 255</span>
-          </div>
-        </label>
         <div>
-          <span className="field-title">Запись звонка</span>
-          <FileDropZone
-            file={media}
-            icon={media?.type.startsWith("video/") ? <FileVideo size={24} /> : <FileAudio size={24} />}
-            accept=".mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm,.mkv,audio/*,video/mp4,video/quicktime,video/webm,video/x-matroska"
-            buttonLabel="Выбрать запись"
-            emptyLabel="Перетащите аудио или видео сюда"
-            onFile={setMedia}
-          />
+          <span className="field-title">Режим загрузки</span>
+          <div className="segmented scope">
+            <button type="button" className={uploadMode === "single" ? "active" : ""} disabled={busy} onClick={() => setUploadMode("single")}>
+              Один звонок
+            </button>
+            <button type="button" className={uploadMode === "multiple" ? "active" : ""} disabled={busy} onClick={() => setUploadMode("multiple")}>
+              Несколько звонков
+            </button>
+          </div>
+        </div>
+        {uploadMode === "single" && (
+          <label>
+            Название звонка
+            <div className="input-with-counter">
+              <input
+                value={title}
+                maxLength={255}
+                required
+                placeholder="Например: обсуждение условий договора с клиентом"
+                onChange={(event) => setTitle(event.target.value)}
+              />
+              <span>{title.length} / 255</span>
+            </div>
+          </label>
+        )}
+        <div>
+          <span className="field-title">{uploadMode === "single" ? "Запись звонка" : `Записи звонков (до ${maxBatchFiles})`}</span>
+          {uploadMode === "single" ? (
+            <FileDropZone
+              file={media}
+              icon={media?.type.startsWith("video/") ? <FileVideo size={24} /> : <FileAudio size={24} />}
+              accept={mediaAccept}
+              buttonLabel="Выбрать запись"
+              emptyLabel="Перетащите аудио или видео сюда"
+              onFile={setMedia}
+            />
+          ) : (
+            <label
+              className={`file-dropzone ${batchDragActive ? "dragging" : ""}`}
+              onDragEnter={handleBatchDrag}
+              onDragOver={handleBatchDrag}
+              onDragLeave={handleBatchDrag}
+              onDrop={handleBatchDrop}
+            >
+              <input
+                type="file"
+                multiple
+                accept={mediaAccept}
+                disabled={busy}
+                onChange={(event) => {
+                  selectBatchFiles(event.target.files);
+                  event.target.value = "";
+                }}
+              />
+              <span className="file-dropzone-icon"><FileAudio size={24} /></span>
+              <span className="file-dropzone-copy">
+                <strong>{batchItems.length ? `Выбрано файлов: ${batchItems.length}` : "Выберите до 10 файлов"}</strong>
+                <small>Для каждого автоматически будет задано название из имени файла.</small>
+              </span>
+              <span className="ghost-button file-dropzone-button">Выбрать файлы</span>
+            </label>
+          )}
           <small>Аудио: MP3, WAV, M4A, OGG. Видео: MP4, MOV, WEBM, MKV. Максимальный размер: 100 МБ.</small>
+          {uploadMode === "multiple" && batchItems.length > 0 && (
+            <div className="batch-upload-list">
+              {batchItems.map((item) => (
+                <div className={`batch-upload-item ${item.status}`} key={item.id}>
+                  <FileAudio size={17} />
+                  <span title={item.file.name}>{item.file.name}</span>
+                  <input aria-label={`Название ${item.file.name}`} value={item.title} maxLength={255} disabled={busy} onChange={(event) => updateBatchItem(item.id, { title: event.target.value })} />
+                  <small>{batchStatusLabel(item)}</small>
+                  {!busy && <button className="icon-button" type="button" aria-label={`Удалить ${item.file.name}`} onClick={() => setBatchItems((items) => items.filter((current) => current.id !== item.id))}><X size={16} /></button>}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div>
           <span className="field-title">Куда добавить звонок?</span>
@@ -330,7 +481,7 @@ export function UploadPage({
           >
             <option value="">Без папки</option>
             {callFolders.map((folder) => (
-              <option key={folder.id} value={folder.id}>
+              <option key={folder.id} value={folder.id} data-color={folder.color || "#ff7a43"}>
                 {folder.name}
               </option>
             ))}
@@ -381,7 +532,7 @@ export function UploadPage({
         <div className="form-actions">
           <button className="primary-button" type="submit" disabled={busy}>
             <CloudUpload size={18} />
-            {busy ? "Загружаю..." : "Загрузить и поставить в очередь"}
+            {busy ? "Загружаю..." : uploadMode === "multiple" ? "Загрузить всё и поставить в очередь" : "Загрузить и поставить в очередь"}
           </button>
           <button className="ghost-button" type="button" onClick={() => onNavigate("calls")}>
             Отмена
@@ -409,4 +560,28 @@ function folderFiltersForUpload(
   return companyId && departmentId
     ? { scope, company_uuid: companyId, department_uuid: departmentId }
     : null;
+}
+
+function titleFromFilename(filename: string) {
+  const withoutExtension = filename.replace(/\.[^.]+$/, "").trim();
+  return withoutExtension || "Звонок";
+}
+
+function batchFileKey(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function readStoredUploadMode(): UploadMode {
+  try {
+    return window.localStorage.getItem(uploadModeStorageKey) === "multiple" ? "multiple" : "single";
+  } catch {
+    return "single";
+  }
+}
+
+function batchStatusLabel(item: BatchUploadItem) {
+  if (item.status === "uploading") return "Загружается";
+  if (item.status === "success") return "Поставлен в очередь";
+  if (item.status === "failed") return item.error ?? "Ошибка загрузки";
+  return "Готов к загрузке";
 }

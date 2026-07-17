@@ -681,7 +681,13 @@ function CallReportsSection({
         </div>
       </section>
 
-      <aside className="glass-panel entity-detail-panel">
+      <form
+        className="glass-panel entity-detail-panel"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (selectedCall) onCreateCallReport();
+        }}
+      >
         <FileDown size={34} />
         <h2>Новый AI-отчет</h2>
         <p>Выберите звонок с готовым AI-анализом и формат отчета.</p>
@@ -719,7 +725,7 @@ function CallReportsSection({
             )}
           </div>
         </div>
-        <button className="primary-button" type="button" disabled={!selectedCall} onClick={onCreateCallReport}>
+        <button className="primary-button" type="submit" disabled={!selectedCall}>
           <Plus size={17} />
           Создать {reportFormatLabel(selectedFormat)}
         </button>
@@ -736,7 +742,7 @@ function CallReportsSection({
             </button>
           ))}
         </div>
-      </aside>
+      </form>
     </div>
   );
 }
@@ -826,7 +832,13 @@ function DeepAnalysisSection({
           </label>
         </div>
         {actionError && <div className="form-error">{friendlyDeepActionError(actionError)}</div>}
-        <div className="deep-analysis-form">
+        <form
+          className="deep-analysis-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!busy) onCreateAnalysis();
+          }}
+        >
           <label>
             Область
             <SelectControl
@@ -946,12 +958,12 @@ function DeepAnalysisSection({
             </label>
           </div>
           <div className="deep-create-actions">
-            <button className="primary-button deep-create-button" type="button" disabled={busy} onClick={onCreateAnalysis}>
+            <button className="primary-button deep-create-button" type="submit" disabled={busy}>
               <Plus size={17} />
               {busy ? "Создаю..." : "Создать глубокий анализ"}
             </button>
           </div>
-        </div>
+        </form>
       </section>
 
       <div className="deep-analysis-content-grid">
@@ -1649,7 +1661,13 @@ function AggregateReportsPanel({
   onDelete: (report: AggregateReportResponse) => void;
 }) {
   return (
-    <section className="glass-panel aggregate-report-panel deep-analysis-export-panel">
+    <form
+      className="glass-panel aggregate-report-panel deep-analysis-export-panel"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (analysis.status === "done" && busyReportId !== "create") onCreate();
+      }}
+    >
       <div className="card-title">
         <div>
           <h3>Экспорт глубокого анализа</h3>
@@ -1671,9 +1689,8 @@ function AggregateReportsPanel({
       </div>
       <button
         className="primary-button"
-        type="button"
+        type="submit"
         disabled={analysis.status !== "done" || busyReportId === "create"}
-        onClick={onCreate}
       >
         <Plus size={17} />
         Создать {reportFormatLabel(selectedFormat)}
@@ -1703,6 +1720,7 @@ function AggregateReportsPanel({
             <div className="report-actions">
               <button
                 className="icon-button"
+                type="button"
                 aria-label="Скачать отчет глубокого анализа"
                 onClick={() => onDownload(report)}
                 disabled={report.status !== "ready" || busyReportId === report.id}
@@ -1711,6 +1729,7 @@ function AggregateReportsPanel({
               </button>
               <button
                 className="icon-button danger-icon"
+                type="button"
                 aria-label="Удалить отчет глубокого анализа"
                 onClick={() => onDelete(report)}
                 disabled={busyReportId === report.id}
@@ -1721,7 +1740,7 @@ function AggregateReportsPanel({
           </div>
         ))}
       </div>
-    </section>
+    </form>
   );
 }
 
