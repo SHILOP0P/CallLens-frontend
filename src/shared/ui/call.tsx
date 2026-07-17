@@ -231,5 +231,12 @@ export function transcriptionSegments(transcription?: TranscriptionResponse) {
   const segments = transcription?.segments;
   if (!Array.isArray(segments)) return [];
 
-  return segments.filter((segment) => segment.text.trim().length > 0);
+  const nonEmptySegments = segments.filter((segment) => segment.text.trim().length > 0);
+
+  // A continuous transcript must not be presented as a diarized dialogue.
+  // This also keeps old Start transcriptions readable after the tariff rule
+  // changed: no speaker label means no segment metadata at all.
+  if (nonEmptySegments.some((segment) => !segment.speaker?.trim())) return [];
+
+  return nonEmptySegments;
 }
