@@ -125,6 +125,7 @@ const apiErrorMessages: Record<string, string> = {
   export_access_denied: "Экспорт отчетов недоступен на текущем тарифе.",
   unsupported_report_format: "Этот формат экспорта не поддерживается.",
   report_not_found: "Отчет не найден.",
+  report_already_exists: "Отчет этого формата уже создан или формируется. Используйте запись в списке ниже.",
   report_file_not_found: "Файл отчета недоступен",
   report_not_ready: "Отчет еще формируется.",
   report_expired: "Срок хранения отчета истек",
@@ -521,6 +522,12 @@ export const api = {
       body: JSON.stringify({ tag })
     });
   },
+  updateAdminCompanyTag(companyId: string, tag: string) {
+    return request<CompanyResponse>(`/admin/companies/${encodeURIComponent(companyId)}/tag`, {
+      method: "PATCH",
+      body: JSON.stringify({ tag })
+    });
+  },
 
   getAdminSubscription(kind: "users" | "companies", id: string) {
     return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription`);
@@ -535,6 +542,12 @@ export const api = {
   cancelAdminSubscription(kind: "users" | "companies", id: string, reason: string) {
     return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription/cancel`, {
       method: "POST", body: JSON.stringify({ reason })
+    });
+  },
+  resetAdminUsage(kind: "users" | "companies", id: string, reason: string) {
+    return request<void>(`/admin/${kind}/${encodeURIComponent(id)}/usage/reset`, {
+      method: "POST",
+      body: JSON.stringify({ reason })
     });
   },
 
@@ -838,6 +851,9 @@ export const api = {
         body: JSON.stringify({ status })
       }
     );
+  },
+  leaveCompany(companyId: string) {
+    return request<CompanyMemberListItemResponse>(`/companies/${encodeURIComponent(companyId)}/leave`, { method: "POST" });
   },
 
   listDepartmentMembers(companyId: string, departmentId: string) {

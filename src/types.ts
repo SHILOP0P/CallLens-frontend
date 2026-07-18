@@ -123,8 +123,6 @@ export interface UpdateAdminUserProfileRequest {
   full_surname?: string;
   username?: string;
   post?: string;
-  phone?: string;
-  timezone?: string;
   reason: string;
 }
 

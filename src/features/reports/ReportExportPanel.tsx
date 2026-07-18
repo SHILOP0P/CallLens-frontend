@@ -122,6 +122,7 @@ export function ReportExportPanel({
       }
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Не удалось создать отчет");
+		await refreshReports().catch(() => undefined);
     } finally {
       setBusyFormat(null);
     }
@@ -180,18 +181,23 @@ export function ReportExportPanel({
       </div>
       <div className="report-format-grid">
         {reportFormats.map((item) => (
+          (() => {
+            const existing = reports.find((report) => report.format === item.format && (report.status === "ready" || report.status === "pending"));
+            return (
           <button
             className="report-format-button"
             key={item.format}
             onClick={() => createReport(item.format)}
-            disabled={!analysisReady || exportBlocked || busyFormat !== null}
+            disabled={!analysisReady || exportBlocked || busyFormat !== null || Boolean(existing)}
           >
             <FileDown size={18} />
             <span>
               <strong>{item.label}</strong>
-              <small>{busyFormat === item.format ? "Создаю отчет..." : item.description}</small>
+              <small>{busyFormat === item.format ? "Создаю отчет..." : existing ? (existing.status === "ready" ? "Уже готов — ниже" : "Уже формируется") : item.description}</small>
             </span>
           </button>
+            );
+          })()
         ))}
       </div>
       {exportBlocked && (

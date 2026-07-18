@@ -27,6 +27,7 @@ import { departmentRoleText, formatDate, membershipStatusText } from "../../shar
 import { CallListSkeleton } from "../../shared/ui/loading";
 import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { InvitationCreatePanel } from "../invitations/InvitationsPage";
+import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 
 export function CompaniesPage({
   session,
@@ -40,6 +41,7 @@ export function CompaniesPage({
   selectedDepartmentId,
   onCompanyCreated,
   onDepartmentCreated,
+  onCompanyLeft,
   onNavigate,
   onOpenCompany,
   onOpenDepartment,
@@ -56,6 +58,7 @@ export function CompaniesPage({
   selectedDepartmentId: string;
   onCompanyCreated: (company: CompanyResponse) => void | Promise<void>;
   onDepartmentCreated: (department: DepartmentResponse) => void;
+  onCompanyLeft: (companyId: string) => void;
   onNavigate: (page: AppPage) => void;
   onOpenCompany: (companyId: string) => void;
   onOpenDepartment: (companyId: string, departmentId: string) => void;
@@ -118,6 +121,7 @@ export function CompaniesPage({
         session={session}
         onNavigate={onNavigate}
         onDepartmentCreated={onDepartmentCreated}
+        onCompanyLeft={onCompanyLeft}
         onOpenDepartment={onOpenDepartment}
         onInvitationCreated={onInvitationCreated}
       />
@@ -363,6 +367,7 @@ export function CompanyWorkspace({
   session,
   onNavigate,
   onDepartmentCreated,
+  onCompanyLeft,
   onOpenDepartment,
   onInvitationCreated
 }: {
@@ -371,6 +376,7 @@ export function CompanyWorkspace({
   session: SessionState;
   onNavigate: (page: AppPage) => void;
   onDepartmentCreated: (department: DepartmentResponse) => void;
+  onCompanyLeft: (companyId: string) => void;
   onOpenDepartment: (companyId: string, departmentId: string) => void;
   onInvitationCreated: (invitation: Invitation) => void;
 }) {
@@ -392,6 +398,24 @@ export function CompanyWorkspace({
   }
 
   const isManager = company.manager_user_uuid === session.user.id;
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState("");
+
+  async function leaveCompany() {
+    setLeaving(true);
+    setLeaveError("");
+    try {
+      await api.leaveCompany(company!.id);
+      onCompanyLeft(company!.id);
+      onNavigate("settingsCompanies");
+    } catch (error) {
+      setLeaveError(error instanceof Error ? error.message : "Не удалось покинуть компанию");
+      setLeaveOpen(false);
+    } finally {
+      setLeaving(false);
+    }
+  }
 
   return (
     <section className="company-workspace-layout">
@@ -414,6 +438,7 @@ export function CompanyWorkspace({
           <ProfileField label="Отделов" value={departments.length.toString()} />
         </div>
         <CompanySubscriptionStatus company={company} isManager={isManager} onNavigate={onNavigate} />
+        {!isManager && <div className="company-workspace-leave"><button className="ghost-button danger" type="button" onClick={() => setLeaveOpen(true)}>Покинуть компанию</button>{leaveError && <p className="form-error">{leaveError}</p>}</div>}
       </div>
 
       <div className="company-workspace-grid">
@@ -469,6 +494,7 @@ export function CompanyWorkspace({
           </section>
         )}
       </div>
+      <ConfirmDialog open={leaveOpen} title="Покинуть компанию?" message="Вы потеряете доступ к звонкам, отделам и инструкциям этой компании. Вернуться можно будет только по новому приглашению." confirmLabel="Покинуть компанию" busy={leaving} variant="danger" onCancel={() => setLeaveOpen(false)} onConfirm={() => void leaveCompany()} />
     </section>
   );
 }

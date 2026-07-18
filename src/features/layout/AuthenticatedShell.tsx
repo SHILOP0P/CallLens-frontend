@@ -535,7 +535,7 @@ export function AuthenticatedShell({
               aria-label="Открыть меню профиля"
               aria-expanded={profileOpen}
             >
-              <span className="avatar" aria-hidden="true">{avatarInitial}</span>
+              <span className="avatar" aria-hidden="true">{session.user.avatar_url ? <img src={session.user.avatar_url} alt="" /> : avatarInitial}</span>
               <strong>{fullName || "Пользователь"}</strong>
             </button>
             {profileOpen && (

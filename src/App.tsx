@@ -627,7 +627,7 @@ function App() {
 
       {page === "monitoring" && <MonitoringPage calls={calls} />}
 
-      {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} currentUserId={session.user.id} />}
+      {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} />}
 
       {page === "settings" && <SettingsPage onNavigate={navigate} />}
 
@@ -685,6 +685,12 @@ function App() {
             await refreshOrganizationContext().catch(() => undefined);
           }}
           onDepartmentCreated={(department) => setDepartments((current) => [department, ...current])}
+          onCompanyLeft={(companyId) => {
+            setCompanies((current) => current.filter((company) => company.id !== companyId));
+            setDepartments((current) => current.filter((department) => department.company_uuid !== companyId));
+            setSelectedCompanyId("");
+            setSelectedDepartmentId("");
+          }}
           onNavigate={navigate}
           onOpenCompany={openCompany}
           onOpenDepartment={openDepartment}

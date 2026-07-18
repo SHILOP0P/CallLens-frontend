@@ -5464,6 +5464,17 @@ html[data-theme="dark"] .app-shell .admin-toolbar label input { padding-left: 6p
 
 .admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .admin-heading { --settings-heading-icon-size: 110px; max-width: none; margin-bottom: 30px; }
+.admin-profile-heading { --admin-profile-avatar-size: 144px; }
+.admin-profile-heading .admin-avatar {
+  flex: 0 0 var(--admin-profile-avatar-size);
+  width: var(--admin-profile-avatar-size);
+  height: var(--admin-profile-avatar-size);
+}
+.admin-profile-heading > div {
+  min-height: var(--admin-profile-avatar-size);
+  position: relative;
+  padding-right: 202px;
+}
 .admin-heading > div { padding-right: 24px; }
 .admin-heading .eyebrow { margin-bottom: 2px; }
 .admin-heading .admin-role-badge { align-self: center; margin-left: auto; white-space: nowrap; }
@@ -5479,24 +5490,39 @@ html[data-theme="dark"] .app-shell .admin-toolbar label input { padding-left: 6p
     justify-self: start;
     margin: 0;
   }
-  .app-shell .admin-profile-heading .settings-heading-icon {
-    grid-column: 1;
-    grid-row: 1;
-    align-self: start;
-    width: var(--settings-heading-icon-size);
-    height: var(--settings-heading-icon-size);
-  }
   .app-shell .admin-profile-heading > div { grid-column: 2; grid-row: 1; }
   .app-shell .admin-profile-heading .admin-avatar {
     grid-column: 1;
     grid-row: 2;
     justify-self: start;
   }
+
+  .app-shell .admin-profile-heading {
+    display: flex;
+    grid-template-columns: none;
+    gap: 16px;
+  }
+  .app-shell .admin-profile-heading .admin-avatar {
+    grid-column: auto;
+    grid-row: auto;
+    justify-self: auto;
+  }
 }
 .admin-section-summary { margin:0; padding:12px 18px 2px; color:var(--muted); font-size:13px; font-weight:700; }
 .admin-profile-heading { margin-top: 24px; }
 .admin-profile-heading > div { gap: 7px; }
 .admin-profile-heading .chip { width: fit-content; margin-top: 2px; }
+.admin-profile-role {
+  position: absolute;
+  top: 50%;
+  right: 18px;
+  margin: 0 !important;
+  padding: 8px 12px;
+  transform: translateY(-50%);
+  border: 1px solid color-mix(in srgb, var(--success) 36%, transparent);
+  background: color-mix(in srgb, var(--success) 16%, var(--surface));
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--success) 16%, transparent);
+}
 .admin-action-block > label,
 .admin-form-grid label,
 .admin-subscription > label,
@@ -5512,6 +5538,23 @@ html[data-theme="dark"] .app-shell .admin-toolbar label input { padding-left: 6p
 .admin-sessions li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
 .admin-sessions small { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.35; }
 .admin-button-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.admin-alert { position: fixed; z-index: 200; top: 22px; right: 22px; display: flex; align-items: center; gap: 10px; width: min(390px, calc(100vw - 32px)); padding: 12px 12px 12px 14px; border: 1px solid color-mix(in srgb, var(--success) 38%, var(--border)); border-radius: 14px; color: var(--text); background: color-mix(in srgb, var(--success) 13%, var(--surface)); box-shadow: 0 16px 38px rgba(33, 70, 45, .22); animation: admin-alert-in .22s ease-out; }
+.admin-alert.error { border-color: color-mix(in srgb, var(--danger) 42%, var(--border)); background: color-mix(in srgb, var(--danger) 12%, var(--surface)); }
+.admin-alert > svg { flex: 0 0 auto; color: var(--success); }
+.admin-alert.error > svg { color: var(--danger); }
+.admin-alert span { flex: 1; font-size: 13px; font-weight: 700; line-height: 1.35; }
+.admin-alert .icon-button { width: 28px; height: 28px; padding: 0; }
+@keyframes admin-alert-in { from { opacity: 0; transform: translateY(-8px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (max-width: 720px) { .admin-alert { top: 12px; right: 16px; } }
+.admin-action-button { transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease, background-color .16s ease; }
+.admin-action-button:not(:disabled):hover { transform: translateY(-2px); box-shadow: 0 8px 18px rgba(82, 54, 37, .16); }
+.admin-action-button:not(:disabled):active { transform: translateY(1px) scale(.98); box-shadow: none; }
+.admin-required-field { color: var(--danger) !important; }
+.admin-required-field input { border-color: var(--danger) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 16%, transparent); animation: admin-required-pulse .45s ease; }
+.admin-action-status { margin: 0; color: var(--warning); font-size: 12px; line-height: 1.4; }
+.admin-usage-reset > p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+.admin-reset-button { justify-self: start; }
+@keyframes admin-required-pulse { 50% { transform: translateX(3px); } }
 .admin-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; }
 .admin-panel-head h3 { margin:0; }
 .admin-calls { display:grid; gap:8px; padding:0; margin:0; list-style:none; }
@@ -5538,11 +5581,31 @@ html[data-theme="dark"] .app-shell .admin-sessions li { border-color: var(--app-
 html[data-theme="dark"] .app-shell .admin-calls button { border-color:var(--app-panel-line); background:var(--app-panel-soft); }
 
 html[data-theme="light"] .app-shell .admin-page {
-  padding: 0 0 44px;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  position: relative;
+  isolation: isolate;
+  padding: 26px;
+  border: 1px solid rgba(141, 101, 79, 0.18);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 76% 10%, rgba(255, 157, 101, 0.16), transparent 30%),
+    radial-gradient(circle at 8% 88%, rgba(244, 171, 84, 0.12), transparent 28%),
+    linear-gradient(145deg, rgba(255, 250, 245, 0.76), rgba(244, 235, 226, 0.6));
+  box-shadow: var(--app-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(18px) saturate(1.06);
+  -webkit-backdrop-filter: blur(18px) saturate(1.06);
+}
+html[data-theme="light"] .app-shell .admin-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.22;
+  background:
+    linear-gradient(90deg, rgba(255, 250, 245, 0.44), transparent 48%),
+    url("/assets/calllens-hero-background.png") left center / cover;
+  mix-blend-mode: multiply;
+  border-radius: inherit;
 }
 html[data-theme="light"] .app-shell .admin-page-head h1 { color: #2f2119; }
 html[data-theme="light"] .app-shell .admin-page-head p,
@@ -5578,7 +5641,7 @@ html[data-theme="light"] .app-shell .chip { color: #247544; background: rgba(63,
 html[data-theme="light"] .app-shell .admin-role-badge { color:#1d6d3b; background:rgba(232, 248, 236, 0.96); border:1px solid rgba(43, 128, 69, 0.22); box-shadow:0 8px 20px rgba(51, 110, 63, 0.12); }
 html[data-theme="light"] .app-shell .admin-call-panel .admin-toolbar { background:rgba(255, 250, 245, 0.76); }
 html[data-theme="light"] .app-shell .admin-call-panel .admin-toolbar label { background:rgba(255, 255, 255, 0.92); border:1px solid rgba(141, 101, 79, 0.14); }
-@media (max-width:720px){html[data-theme="light"] .app-shell .admin-page{padding:0 0 28px}}
+@media (max-width:720px){html[data-theme="light"] .app-shell .admin-page{padding:18px 14px;border-radius:18px}}
 @media (max-width: 720px) { .admin-form-grid { grid-template-columns: 1fr; } .admin-sessions li { align-items: flex-start; flex-direction: column; } .app-shell .admin-heading { display: grid; grid-template-columns: 72px minmax(0, 1fr); --settings-heading-icon-size: 72px; gap: 10px; } .admin-heading .admin-role-badge { grid-column: 1 / -1; margin: 0; justify-self: start; } }
 
 /* Media calls and non-destructive refresh states */
@@ -5678,14 +5741,11 @@ html[data-theme="light"] .app-shell .admin-call-panel .admin-toolbar label { bac
 
 .admin-profile-heading .admin-avatar {
   display: grid;
-  flex: 0 0 66px;
-  width: 66px;
-  height: 66px;
   padding: 0;
   place-items: center;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 20px;
+  border-radius: 16px;
   font-family: inherit;
   font-size: 20px;
   font-weight: 800;
@@ -5708,6 +5768,8 @@ html[data-theme="light"] .app-shell .admin-profile-heading .admin-avatar { borde
   .call-video-meta { align-items: stretch; flex-direction: column; }
   .call-video-meta .ghost-button { justify-content: center; }
   .admin-profile-heading .admin-avatar { grid-column: 1; grid-row: 2; justify-self: start; }
+  .admin-profile-heading > div { padding-right: 12px; }
+  .admin-profile-role { position: static; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

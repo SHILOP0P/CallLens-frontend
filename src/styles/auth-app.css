@@ -414,6 +414,27 @@ html[data-theme="light"] .calendar-popover {
   font-size: 42px;
 }
 
+.avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.profile-avatar-panel .avatar.edit-preview { width: clamp(128px, 16vw, 164px); height: auto; aspect-ratio: 1; margin: 2px auto 6px; overflow: hidden; border: 2px solid rgba(255, 255, 255, .28); box-shadow: 0 14px 30px rgba(65, 37, 26, .18); }
+.profile-avatar-panel .avatar.edit-preview img { display: block; }
+.avatar-editor { grid-template-columns: minmax(0, 1fr); width: min(520px, calc(100vw - 24px)); max-width: none; max-height: calc(100dvh - 20px); overflow: hidden; color: #fffaf5; background: linear-gradient(145deg, rgba(65, 43, 34, .99), rgba(29, 22, 19, .99)); border-color: rgba(255, 224, 208, .26); border-radius: 18px; }
+.avatar-editor .confirm-dialog-content { gap: clamp(8px, 1.5dvh, 14px); }
+.avatar-editor h2 { color: #fffaf5; font-size: clamp(18px, 2.5dvh, 24px); }
+.avatar-editor .confirm-dialog-content > p { color: rgba(255, 241, 233, .8); font-size: clamp(13px, 1.8dvh, 15px); line-height: 1.42; }
+.avatar-crop-preview { position: relative; width: min(clamp(142px, 32dvh, 252px), 62vw); height: auto; aspect-ratio: 1; margin: 0 auto; overflow: hidden; border: 2px solid rgba(255, 236, 225, .42); border-radius: 50%; background: #15231f; cursor: grab; display: grid; place-items: center; touch-action: none; user-select: none; box-shadow: 0 14px 32px rgba(0, 0, 0, .3); }
+.avatar-crop-preview:active { cursor: grabbing; }
+.avatar-crop-preview img { width: 100%; height: 100%; object-fit: cover; pointer-events: none; transition: transform .12s ease; }
+.avatar-editor-zoom-hint { display: flex; align-items: center; gap: 8px; margin: 0; padding: 9px 11px; border-radius: 11px; color: #ffe7dc !important; background: rgba(255, 130, 91, .13); font-size: 13px !important; font-weight: 700; line-height: 1.35 !important; }
+.avatar-editor-zoom-hint svg { flex: 0 0 auto; color: #ff9a76; }
+.avatar-editor-control { display: grid; gap: 7px; padding: 10px 12px; border: 1px solid rgba(255, 228, 216, .18); border-radius: 12px; background: rgba(255, 255, 255, .07); }
+.avatar-editor-control-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.avatar-editor-control-head span { display: inline-flex; align-items: center; gap: 8px; color: #fffaf5; font-size: 14px; font-weight: 800; }
+.avatar-editor-control-head output { min-width: 52px; padding: 3px 8px; border-radius: 999px; color: #fffaf5; background: rgba(255, 255, 255, .12); font-size: 13px; font-weight: 800; text-align: center; }
+.avatar-editor-control input { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.avatar-editor .confirm-dialog-actions { justify-content: center; gap: 8px; }
+.avatar-editor .confirm-dialog-actions button { flex: 0 1 auto; }
+@media (max-width: 480px) { .confirm-dialog-layer { padding: 10px; } .avatar-editor { width: 100%; padding: 13px; } .avatar-editor .confirm-dialog-actions button { flex: 1 1 0; min-width: 0; } }
+
 .profile-block strong,
 .profile-block span {
   display: block;
@@ -855,6 +876,10 @@ html[data-theme="light"] .app-sidebar {
   max-width: 940px;
 }
 
+.settings-heading.admin-profile-heading {
+  max-width: none;
+}
+
 .settings-heading > div {
   flex: 1 1 auto;
   display: grid;
@@ -865,6 +890,10 @@ html[data-theme="light"] .app-sidebar {
   padding: 8px 12px 10px;
   background: linear-gradient(90deg, rgba(18, 14, 11, 0.42), rgba(18, 14, 11, 0.18) 72%, rgba(18, 14, 11, 0));
   border-radius: 8px;
+}
+
+.settings-heading.admin-profile-heading > div {
+  background: linear-gradient(90deg, rgba(18, 14, 11, 0.44), rgba(18, 14, 11, 0.3) 100%);
 }
 
 .settings-heading p {
@@ -3376,6 +3405,10 @@ html[data-theme="light"] .app-shell .settings-heading > div {
   background: linear-gradient(90deg, rgba(255, 250, 245, 0.78), rgba(255, 250, 245, 0.52) 76%, rgba(255, 250, 245, 0));
 }
 
+html[data-theme="light"] .app-shell .settings-heading.admin-profile-heading > div {
+  background: linear-gradient(90deg, rgba(255, 250, 245, 0.82), rgba(255, 250, 245, 0.68) 100%);
+}
+
 html[data-theme="light"] .app-shell .readable-heading {
   background: linear-gradient(90deg, rgba(255, 250, 245, 0.82), rgba(255, 250, 245, 0.58) 76%, rgba(255, 250, 245, 0));
   box-shadow: 0 14px 34px rgba(139, 77, 48, 0.1);
@@ -4688,6 +4721,7 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
     rgba(12, 8, 6, 0.64);
   backdrop-filter: blur(12px) saturate(1.08);
   -webkit-backdrop-filter: blur(12px) saturate(1.08);
+  overscroll-behavior: contain;
 }
 
 .confirm-dialog {

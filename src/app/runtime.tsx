@@ -127,6 +127,7 @@ export function readStoredSession(): SessionState | null {
 }
 
 export function pageFromPath(pathname: string): AppPage {
+  if (/^\/app\/admin\/(?:users|companies)\/[^/]+$/.test(pathname)) return "admin";
   if (/^\/app\/settings\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";
   if (/^\/app\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";
   if (pathname === "/app/settings/profile/edit") return "settingsProfileEdit";

@@ -22,6 +22,7 @@ import type {
 import { formatDate } from "../../shared/lib/formatters";
 import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { CompanyMiniCard } from "../companies/CompaniesPage";
+import { AvatarEditor } from "./AvatarEditor";
 
 const timeZoneOptions = [
   { value: "Europe/Kaliningrad", label: "Калининград (UTC+2)" },
@@ -172,6 +173,7 @@ export function ProfileEditPage({
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const avatarInitial = profileInitial(session.user.full_name || session.user.full_surname || session.user.username);
   const avatarUrl = session.user.avatar_url;
 
@@ -305,14 +307,8 @@ export function ProfileEditPage({
               onChange={async (event) => {
                 const file = event.target.files?.[0];
                 if (!file) return;
-                setError("");
-                try {
-                  const response = await api.uploadAvatar(file);
-                  onUserUpdated({ ...session.user, avatar_url: response.avatar_url });
-                  setSuccess("Аватар обновлен.");
-                } catch (avatarError) {
-                  setError(avatarError instanceof Error ? avatarError.message : "Не удалось загрузить аватар");
-                }
+                if (!file.type.startsWith("image/")) { setError("Выберите изображение."); return; }
+                setAvatarFile(file); event.target.value = "";
               }}
             />
           </label>
@@ -330,6 +326,7 @@ export function ProfileEditPage({
           <ProfileField label="Дата регистрации" value={formatDate(session.user.created_at)} />
         </aside>
       </div>
+      {avatarFile && <AvatarEditor file={avatarFile} busy={busy} onCancel={() => setAvatarFile(null)} onSave={async (file) => { setBusy(true); setError(""); try { const response = await api.uploadAvatar(file); onUserUpdated({ ...session.user, avatar_url: `${response.avatar_url}?v=${Date.now()}` }); setSuccess("Аватар обновлен."); setAvatarFile(null); } catch (avatarError) { setError(avatarError instanceof Error ? avatarError.message : "Не удалось загрузить аватар"); } finally { setBusy(false); } }} />}
 
       <div className="profile-edit-grid single">
         <form

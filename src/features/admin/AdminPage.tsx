@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Building2, Headphones, RefreshCw, Search, ShieldCheck, UserRound, Users } from "lucide-react";
+import { ArrowLeft, Building2, CheckCircle2, Headphones, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 import { api, ApiError, getAdminCallAudioBlob } from "../../api";
 import { isVideoCall } from "../../shared/lib/media";
 import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
@@ -17,10 +17,39 @@ import type {
 
 type AdminSection = "users" | "companies";
 type SubscriptionOwner = "users" | "companies";
+type AdminDetailRoute = { section: AdminSection; id: string } | null;
+type AdminAlert = { id: number; message: string; tone: "success" | "error" };
+
+const adminAlertEvent = "calllens:admin-alert";
 
 const has = (capabilities: AdminCapabilitiesResponse, permission: string) => capabilities.permissions.includes(permission);
 
-export function AdminPage({ capabilities, currentUserId }: { capabilities: AdminCapabilitiesResponse; currentUserId: string }) {
+function showAdminAlert(message: string, tone: AdminAlert["tone"] = "success") {
+  window.dispatchEvent(new CustomEvent<AdminAlert>(adminAlertEvent, { detail: { id: Date.now(), message, tone } }));
+}
+
+function AdminAlertViewport() {
+  const [alert, setAlert] = useState<AdminAlert | null>(null);
+  useEffect(() => {
+    const onAlert = (event: Event) => setAlert((event as CustomEvent<AdminAlert>).detail);
+    window.addEventListener(adminAlertEvent, onAlert);
+    return () => window.removeEventListener(adminAlertEvent, onAlert);
+  }, []);
+  useEffect(() => {
+    if (!alert) return;
+    const timeout = window.setTimeout(() => setAlert(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [alert]);
+  if (!alert) return null;
+  return <div className={`admin-alert ${alert.tone}`} role="status"><CheckCircle2 size={18} /><span>{alert.message}</span><button className="icon-button" type="button" aria-label="Закрыть уведомление" onClick={() => setAlert(null)}><X size={16} /></button></div>;
+}
+
+function adminDetailFromPath(pathname: string): AdminDetailRoute {
+  const match = pathname.match(/^\/app\/admin\/(users|companies)\/([^/]+)$/);
+  return match ? { section: match[1] as AdminSection, id: decodeURIComponent(match[2]) } : null;
+}
+
+export function AdminPage({ capabilities }: { capabilities: AdminCapabilitiesResponse }) {
   const availableSections = useMemo<AdminSection[]>(() => [
     ...(has(capabilities, "admin.users.read") ? ["users" as const] : []),
     ...(has(capabilities, "admin.companies.read") ? ["companies" as const] : [])
@@ -36,6 +65,7 @@ export function AdminPage({ capabilities, currentUserId }: { capabilities: Admin
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState<Record<AdminSection, boolean>>({ users: false, companies: false });
   const [notice, setNotice] = useState("");
+  const [routeLoading, setRouteLoading] = useState(() => Boolean(adminDetailFromPath(window.location.pathname)));
   const requestSequence = useRef(0);
 
   const load = useCallback(async (nextSection: AdminSection, search: string) => {
@@ -71,10 +101,44 @@ export function AdminPage({ capabilities, currentUserId }: { capabilities: Admin
     void load(section, "");
   }, [load, section]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function restoreDetailFromRoute() {
+      const route = adminDetailFromPath(window.location.pathname);
+      if (!route) {
+        setSelectedUser(null);
+        setSelectedCompany(null);
+        setRouteLoading(false);
+        return;
+      }
+      setRouteLoading(true);
+      setNotice("");
+      try {
+        if (route.section === "users") {
+          if (!has(capabilities, "admin.users.read")) return;
+          const user = await api.getAdminUser(route.id);
+          if (!cancelled) { setSection("users"); setSelectedCompany(null); setSelectedUser(user); }
+        } else {
+          if (!has(capabilities, "admin.companies.read")) return;
+          const company = await api.getAdminCompany(route.id);
+          if (!cancelled) { setSection("companies"); setSelectedUser(null); setSelectedCompany(company); }
+        }
+      } catch (error) {
+        if (!cancelled) setNotice(message(error));
+      } finally {
+        if (!cancelled) setRouteLoading(false);
+      }
+    }
+    void restoreDetailFromRoute();
+    window.addEventListener("popstate", restoreDetailFromRoute);
+    return () => { cancelled = true; window.removeEventListener("popstate", restoreDetailFromRoute); };
+  }, [capabilities]);
+
   async function openUser(user: UserResponse) {
     setNotice("");
     try {
       setSelectedUser(await api.getAdminUser(user.id));
+      window.history.pushState({}, "", `/app/admin/users/${encodeURIComponent(user.id)}`);
     } catch (error) {
       setNotice(message(error));
     }
@@ -84,6 +148,7 @@ export function AdminPage({ capabilities, currentUserId }: { capabilities: Admin
     setNotice("");
     try {
       setSelectedCompany(await api.getAdminCompany(company.id));
+      window.history.pushState({}, "", `/app/admin/companies/${encodeURIComponent(company.id)}`);
     } catch (error) {
       setNotice(message(error));
     }
@@ -99,14 +164,24 @@ export function AdminPage({ capabilities, currentUserId }: { capabilities: Admin
     setCompanies((items) => items.map((item) => item.id === updated.id ? updated : item));
   }
 
-  if (selectedUser) {
-    return <UserDetail user={selectedUser} capabilities={capabilities} onBack={() => setSelectedUser(null)} onUpdated={replaceUser} />;
-  }
-  if (selectedCompany) {
-    return <CompanyDetail company={selectedCompany} capabilities={capabilities} currentUserId={currentUserId} onBack={() => setSelectedCompany(null)} onUpdated={replaceCompany} />;
+  function closeDetail(section: AdminSection) {
+    setSelectedUser(null);
+    setSelectedCompany(null);
+    setSection(section);
+    window.history.pushState({}, "", "/app/admin");
   }
 
-  return <section className="admin-page">
+  if (routeLoading) {
+    return <><AdminAlertViewport /><section className="admin-page"><p className="admin-empty">Открываю карточку…</p></section></>;
+  }
+  if (selectedUser) {
+    return <><AdminAlertViewport /><UserDetail user={selectedUser} capabilities={capabilities} onBack={() => closeDetail("users")} onUpdated={replaceUser} /></>;
+  }
+  if (selectedCompany) {
+    return <><AdminAlertViewport /><CompanyDetail company={selectedCompany} capabilities={capabilities} onBack={() => closeDetail("companies")} onUpdated={replaceCompany} /></>;
+  }
+
+  return <><AdminAlertViewport /><section className="admin-page">
     <AdminHeading capabilities={capabilities} />
     <div className="admin-layout">
       <nav className="admin-nav" aria-label="Административные разделы">
@@ -128,7 +203,7 @@ export function AdminPage({ capabilities, currentUserId }: { capabilities: Admin
         </>
       </div>
     </div>
-  </section>;
+  </section></>;
 }
 
 function AdminHeading({ capabilities }: { capabilities: AdminCapabilitiesResponse }) {
@@ -141,12 +216,13 @@ function UserDetail({ user, capabilities, onBack, onUpdated }: { user: UserRespo
   const canManageRole = canChangeRole(capabilities, user.role);
   return <section className="admin-page admin-user-page">
     <div className="settings-back-row"><button className="ghost-button small" type="button" onClick={onBack}><ArrowLeft size={16} />К пользователям</button></div>
-    <header className="admin-page-head app-page-heading settings-heading admin-heading admin-profile-heading"><span className="settings-heading-icon" aria-hidden="true"><UserRound size={30} /></span><div><p className="eyebrow">КАРТОЧКА ПОЛЬЗОВАТЕЛЯ</p><h1>{fullName(user)}</h1><p>{user.username} · {user.email}</p><span className="chip">{roleLabel(user.role)}</span></div><UserAvatar user={user} /></header>
+    <header className="admin-page-head app-page-heading settings-heading admin-heading admin-profile-heading"><UserAvatar user={user} /><div><p className="eyebrow">КАРТОЧКА ПОЛЬЗОВАТЕЛЯ</p><h1>{fullName(user)}</h1><p>{user.username}</p><span className="chip admin-profile-role">{roleLabel(user.role)}</span></div></header>
     {notice && <p className="admin-notice" role="status">{notice}</p>}
     <div className="admin-profile-grid">
       <section className="admin-detail"><h2>Профиль</h2><UserFacts user={user} />
         {canEditProfile && <ProfileEditor user={user} onSaved={onUpdated} onNotice={setNotice} />}
         {canManageRole && <RoleEditor user={user} capabilities={capabilities} onSaved={onUpdated} onNotice={setNotice} />}
+        {has(capabilities, "admin.subscriptions.manage") && <UsageResetPanel kind="users" id={user.id} />}
       </section>
       <section className="admin-detail"><h2>Доступ и безопасность</h2>
         {has(capabilities, "admin.sessions.read") && <SessionsPanel userId={user.id} canManage={has(capabilities, "admin.sessions.manage")} onNotice={setNotice} />}
@@ -158,16 +234,16 @@ function UserDetail({ user, capabilities, onBack, onUpdated }: { user: UserRespo
 }
 
 function UserFacts({ user }: { user: UserResponse }) {
-  return <dl><dt>Роль</dt><dd>{roleLabel(user.role)}</dd><dt>Имя пользователя</dt><dd>{user.username}</dd><dt>Должность</dt><dd>{user.post || "Не указана"}</dd><dt>Телефон</dt><dd>{user.phone || "Не указан"}</dd><dt>Часовой пояс</dt><dd>{user.timezone || "Не указан"}</dd><dt>Создан</dt><dd>{date(user.created_at)}</dd></dl>;
+  return <dl><dt>Роль</dt><dd>{roleLabel(user.role)}</dd><dt>Имя пользователя</dt><dd>{user.username}</dd><dt>Должность</dt><dd>{user.post || "Не указана"}</dd><dt>Создан</dt><dd>{date(user.created_at)}</dd></dl>;
 }
 
 function ProfileEditor({ user, onSaved, onNotice }: { user: UserResponse; onSaved: (user: UserResponse) => void; onNotice: (notice: string) => void }) {
-  const [values, setValues] = useState({ full_name: user.full_name, full_surname: user.full_surname, username: user.username, post: user.post ?? "", phone: user.phone ?? "", timezone: user.timezone ?? "", reason: "" });
+  const [values, setValues] = useState({ full_name: user.full_name, full_surname: user.full_surname, username: user.username, post: user.post ?? "", reason: "" });
   const [busy, setBusy] = useState(false);
   function setField(field: keyof typeof values, value: string) { setValues((current) => ({ ...current, [field]: value })); }
   async function save() {
     const changed: Partial<UpdateAdminUserProfileRequest> = {};
-    (["full_name", "full_surname", "username", "post", "phone", "timezone"] as const).forEach((field) => {
+    (["full_name", "full_surname", "username", "post"] as const).forEach((field) => {
       const value = values[field].trim();
       if (value && value !== (user[field] ?? "")) changed[field] = value;
     });
@@ -178,7 +254,7 @@ function ProfileEditor({ user, onSaved, onNotice }: { user: UserResponse; onSave
     try {
       onSaved(await api.updateAdminUserProfile(user.id, { ...changed, reason: values.reason.trim() }));
       setValues((current) => ({ ...current, reason: "" }));
-      onNotice("Профиль обновлён");
+      onNotice("Профиль обновлён"); showAdminAlert("Профиль пользователя обновлён");
     } catch (error) {
       onNotice(error instanceof ApiError && error.code === "user_already_exists" ? "Этот username уже занят" : message(error));
     } finally { setBusy(false); }
@@ -186,7 +262,6 @@ function ProfileEditor({ user, onSaved, onNotice }: { user: UserResponse; onSave
   return <div className="admin-action-block"><h3>Редактировать профиль</h3><div className="admin-form-grid">
     <label>Имя<input value={values.full_name} onChange={(event) => setField("full_name", event.target.value)} /></label><label>Фамилия<input value={values.full_surname} onChange={(event) => setField("full_surname", event.target.value)} /></label>
     <label>Username<input value={values.username} onChange={(event) => setField("username", event.target.value)} /></label><label>Должность<input value={values.post} onChange={(event) => setField("post", event.target.value)} /></label>
-    <label>Телефон<input value={values.phone} onChange={(event) => setField("phone", event.target.value)} /></label><label>Часовой пояс<input value={values.timezone} onChange={(event) => setField("timezone", event.target.value)} /></label>
   </div><label>Причина<textarea value={values.reason} onChange={(event) => setField("reason", event.target.value)} placeholder="Обязательна для аудита" /></label><button className="primary-button small" type="button" disabled={busy} onClick={() => void save()}>{busy ? "Сохраняю…" : "Сохранить профиль"}</button></div>;
 }
 
@@ -201,7 +276,7 @@ function RoleEditor({ user, capabilities, onSaved, onNotice }: { user: UserRespo
     setBusy(true);
     try {
       onSaved(await api.changeAdminUserRole(user.id, { role, expected_role: user.role, reason: reason.trim() }));
-      setReason(""); onNotice("Роль пользователя обновлена");
+      setReason(""); onNotice("Роль пользователя обновлена"); showAdminAlert("Роль пользователя обновлена");
     } catch (error) {
       if (error instanceof ApiError && error.code === "admin_user_role_changed") {
         try { onSaved(await api.getAdminUser(user.id)); } catch { /* The conflict message remains actionable even if reload fails. */ }
@@ -226,24 +301,24 @@ function SessionsPanel({ userId, canManage, onNotice }: { userId: string; canMan
     try {
       if (pending.id) await api.revokeAdminUserSession(userId, pending.id, reason.trim()); else await api.revokeAllAdminUserSessions(userId, reason.trim());
       setSessions((items) => pending.id ? items.filter((item) => item.id !== pending.id) : []);
-      setPending(null); setReason(""); onNotice("Сессии пользователя завершены");
+      setPending(null); setReason(""); onNotice("Сессии пользователя завершены"); showAdminAlert("Сессии пользователя завершены");
     } catch (error) { onNotice(message(error)); } finally { setBusy(false); }
   }
   if (!available) return null;
   return <div className="admin-action-block"><h3>Сессии</h3>{loading ? <p className="admin-session-summary">Загрузка сессий…</p> : sessions.length ? <ul className="admin-sessions">{sessions.map((item) => <li key={item.id}><span><strong>{item.current ? "Текущая сессия" : "Сессия"}</strong><small>{item.user_agent || "Устройство не определено"} · {item.ip || "IP скрыт"}<br />{date(item.last_seen_at || item.created_at)}</small></span>{canManage && <button className="ghost-button small" type="button" onClick={() => setPending({ id: item.id, label: "Завершить сессию" })}>Завершить</button>}</li>)}</ul> : <p className="admin-session-summary">Активных сессий нет</p>}{canManage && sessions.length > 0 && <button className="admin-session-danger" type="button" onClick={() => setPending({ label: "Завершить все сессии" })}>Завершить все сессии</button>}{pending && <ReasonDialog title={pending.label} busy={busy} reason={reason} onReason={setReason} onCancel={() => setPending(null)} onConfirm={() => void revoke()} />}</div>;
 }
 
-function CompanyDetail({ company, capabilities, currentUserId, onBack, onUpdated }: { company: CompanyResponse; capabilities: AdminCapabilitiesResponse; currentUserId: string; onBack: () => void; onUpdated: (company: CompanyResponse) => void }) {
+function CompanyDetail({ company, capabilities, onBack, onUpdated }: { company: CompanyResponse; capabilities: AdminCapabilitiesResponse; onBack: () => void; onUpdated: (company: CompanyResponse) => void }) {
   const [notice, setNotice] = useState("");
-  const canEditTag = company.manager_user_uuid === currentUserId;
+  const canEditTag = has(capabilities, "admin.companies.manage") || capabilities.role === "admin" || capabilities.role === "superadmin";
   const [tag, setTag] = useState(company.tag ?? "");
   const [busy, setBusy] = useState(false);
   async function saveTag() {
     if (!tag.trim()) return setNotice("Введите тег компании");
     setBusy(true);
-    try { onUpdated(await api.updateCompanyTag(company.id, tag)); setNotice("Тег компании обновлён"); } catch (error) { setNotice(message(error)); } finally { setBusy(false); }
+    try { onUpdated(await api.updateAdminCompanyTag(company.id, tag)); setNotice("Тег компании обновлён"); showAdminAlert("Тег компании обновлён"); } catch (error) { setNotice(message(error)); showAdminAlert(message(error), "error"); } finally { setBusy(false); }
   }
-  return <section className="admin-page admin-user-page"><button className="text-button" type="button" onClick={onBack}>← К компаниям</button><header className="admin-page-head"><div><p className="eyebrow">КАРТОЧКА КОМПАНИИ</p><h1>{company.name}</h1><p>{company.tag || "Тег не задан"}</p></div><span className="admin-avatar">{company.name.slice(0, 2).toUpperCase()}</span></header>{notice && <p className="admin-notice" role="status">{notice}</p>}<div className="admin-profile-grid"><section className="admin-detail"><h2>Компания</h2><dl><dt>Тег</dt><dd>{company.tag || "Тег не задан"}</dd><dt>Создана</dt><dd>{date(company.created_at)}</dd><dt>Лимит участников</dt><dd>{company.member_limit}</dd></dl>{canEditTag && <div className="admin-action-block"><h3>Изменить тег</h3><label>Тег<input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="@calllens_team" /></label><button className="primary-button small" type="button" disabled={busy} onClick={() => void saveTag()}>{busy ? "Сохраняю…" : "Сохранить тег"}</button></div>}</section><section className="admin-detail">{has(capabilities, "admin.subscriptions.read") && <SubscriptionPanel kind="companies" id={company.id} canManage={has(capabilities, "admin.subscriptions.manage")} />}</section></div></section>;
+  return <section className="admin-page admin-user-page"><button className="text-button" type="button" onClick={onBack}>← К компаниям</button><header className="admin-page-head"><div><p className="eyebrow">КАРТОЧКА КОМПАНИИ</p><h1>{company.name}</h1><p>{company.tag || "Тег не задан"}</p></div></header>{notice && <p className="admin-notice" role="status">{notice}</p>}<div className="admin-profile-grid"><section className="admin-detail"><h2>Компания</h2><dl><dt>Тег</dt><dd>{company.tag || "Тег не задан"}</dd><dt>Создана</dt><dd>{date(company.created_at)}</dd></dl>{canEditTag && <div className="admin-action-block"><h3>Изменить тег</h3><label>Тег<input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="@calllens_team" /></label><button className="primary-button small" type="button" disabled={busy} onClick={() => void saveTag()}>{busy ? "Сохраняю…" : "Сохранить тег"}</button></div>}{has(capabilities, "admin.subscriptions.manage") && <UsageResetPanel kind="companies" id={company.id} />}</section><section className="admin-detail">{has(capabilities, "admin.subscriptions.read") && <SubscriptionPanel kind="companies" id={company.id} canManage={has(capabilities, "admin.subscriptions.manage")} />}</section></div></section>;
 }
 
 function SubscriptionPanel({ kind, id, canManage }: { kind: SubscriptionOwner; id: string; canManage: boolean }) {
@@ -254,13 +329,30 @@ function SubscriptionPanel({ kind, id, canManage }: { kind: SubscriptionOwner; i
   const [planCode, setPlanCode] = useState("");
   const [endsAt, setEndsAt] = useState("");
   const [reason, setReason] = useState("");
+  const [reasonInvalid, setReasonInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
+  const reasonRef = useRef<HTMLInputElement>(null);
   useEffect(() => { let alive = true; Promise.all([api.getAdminSubscription(kind, id), api.listPlans()]).then(([current, allPlans]) => { if (!alive) return; setSubscription(current); setStatus(""); const allowed = allPlans.plans.filter((plan) => plan.type === (kind === "users" ? "personal" : "business")); setPlans(allowed); setPlanCode(allowed[0]?.code ?? ""); }).catch((error) => { if (!alive) return; if (error instanceof ApiError && (error.status === 401 || error.status === 403)) { setAvailable(false); return; } setStatus(error instanceof ApiError && error.code === "subscription_not_found" ? "Активной подписки нет" : message(error)); api.listPlans().then((response) => { if (alive) { const allowed = response.plans.filter((plan) => plan.type === (kind === "users" ? "personal" : "business")); setPlans(allowed); setPlanCode(allowed[0]?.code ?? ""); } }).catch(() => undefined); }); return () => { alive = false; }; }, [id, kind]);
-  async function grant() { if (!planCode || !endsAt || !reason.trim()) return; setBusy(true); try { const updated = await api.grantAdminSubscription(kind, id, { plan_code: planCode as Plan["code"], ends_at: new Date(`${endsAt}T23:59:59`).toISOString(), reason: reason.trim() }); setSubscription(updated); setStatus(""); setReason(""); } catch (error) { setStatus(message(error)); } finally { setBusy(false); } }
-  async function cancel() { if (!reason.trim()) return setStatus("Укажите причину отмены"); setBusy(true); try { const updated = await api.cancelAdminSubscription(kind, id, reason.trim()); setSubscription(updated); setReason(""); } catch (error) { setStatus(message(error)); } finally { setBusy(false); } }
+  function requireReason(action: string) { if (reason.trim()) return true; setReasonInvalid(true); setStatus(`Укажите причину: ${action}.`); reasonRef.current?.focus(); return false; }
+  async function grant() { if (!requireReason("она обязательна для аудита")) return; if (!planCode || !endsAt) return setStatus("Выберите тариф и дату окончания"); setBusy(true); try { const updated = await api.grantAdminSubscription(kind, id, { plan_code: planCode as Plan["code"], ends_at: new Date(`${endsAt}T23:59:59`).toISOString(), reason: reason.trim() }); setSubscription(updated); setStatus(""); setReason(""); showAdminAlert("Подписка выдана или продлена"); } catch (error) { setStatus(message(error)); showAdminAlert(message(error), "error"); } finally { setBusy(false); } }
+  async function cancel() { if (!requireReason("она обязательна для отмены")) return; setBusy(true); try { const updated = await api.cancelAdminSubscription(kind, id, reason.trim()); setSubscription(updated); setReason(""); showAdminAlert("Подписка отменена"); } catch (error) { setStatus(message(error)); showAdminAlert(message(error), "error"); } finally { setBusy(false); } }
   const subscriptionPlanName = subscription ? plans.find((plan) => plan.code === subscription.plan_code)?.name ?? subscription.plan_code : "";
   if (!available) return null;
-  return <div className="admin-subscription"><strong>Подписка</strong><p>{subscription ? `${subscriptionPlanName} · ${subscription.status}` : status}</p>{subscription?.ends_at && <small>Действует до {date(subscription.ends_at)}</small>}{canManage && <><label>Тариф<SelectControl value={planCode} onChange={(event) => setPlanCode(event.target.value)}>{plans.map((plan) => <option key={plan.code} value={plan.code}>{plan.name}</option>)}</SelectControl></label><label>Дата окончания<input type="date" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></label><label>Причина<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Обязательна для аудита" /></label><div className="admin-button-row"><button className="primary-button small" type="button" disabled={busy || !planCode || !endsAt || !reason.trim()} onClick={() => void grant()}>{subscription ? "Продлить / выдать" : "Выдать подписку"}</button>{subscription && <button className="ghost-button small" type="button" disabled={busy || !reason.trim()} onClick={() => void cancel()}>Отменить</button>}</div></>}</div>;
+  return <div className="admin-subscription"><strong>Подписка</strong><p>{subscription ? `${subscriptionPlanName} · ${subscription.status}` : status}</p>{subscription?.ends_at && <small>Действует до {date(subscription.ends_at)}</small>}{canManage && <><label>Тариф<SelectControl value={planCode} onChange={(event) => setPlanCode(event.target.value)}>{plans.map((plan) => <option key={plan.code} value={plan.code}>{plan.name}</option>)}</SelectControl></label><label>Дата окончания<input type="date" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></label><label className={reasonInvalid ? "admin-required-field" : undefined}>Причина<input ref={reasonRef} aria-invalid={reasonInvalid} value={reason} onChange={(event) => { setReason(event.target.value); setReasonInvalid(false); }} placeholder="Обязательна для аудита" /></label><div className="admin-button-row"><button className="primary-button small admin-action-button" type="button" disabled={busy} onClick={() => void grant()}>{subscription ? "Продлить / выдать" : "Выдать подписку"}</button>{subscription && <button className="ghost-button small admin-action-button" type="button" disabled={busy} onClick={() => void cancel()}>Отменить</button>}</div></>}</div>;
+}
+
+function UsageResetPanel({ kind, id }: { kind: SubscriptionOwner; id: string }) {
+  const [reason, setReason] = useState("");
+  const [reasonInvalid, setReasonInvalid] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("");
+  const reasonRef = useRef<HTMLInputElement>(null);
+  async function resetUsage() {
+    if (!reason.trim()) { setReasonInvalid(true); setStatus("Укажите причину сброса лимитов."); reasonRef.current?.focus(); return; }
+    setBusy(true); setStatus("");
+    try { await api.resetAdminUsage(kind, id, reason.trim()); setReason(""); setStatus("Лимиты минут и глубокого анализа сброшены."); showAdminAlert("Лимиты использования сброшены"); } catch (error) { setStatus(message(error)); showAdminAlert(message(error), "error"); } finally { setBusy(false); }
+  }
+  return <div className="admin-action-block admin-usage-reset"><h3>Сброс лимитов</h3><p>Сбрасывает использованные минуты и счётчик глубокого анализа активной подписки.</p><label className={reasonInvalid ? "admin-required-field" : undefined}>Причина<input ref={reasonRef} aria-invalid={reasonInvalid} value={reason} onChange={(event) => { setReason(event.target.value); setReasonInvalid(false); }} placeholder="Обязательна для аудита" /></label>{status && <p className="admin-action-status" role="status">{status}</p>}<button className="ghost-button small admin-action-button admin-reset-button" type="button" disabled={busy} onClick={() => void resetUsage()}>{busy ? "Сбрасываю…" : "Сбросить лимиты"}</button></div>;
 }
 
 function UserCallsPanel({ user }: { user: UserResponse }) {
