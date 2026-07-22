@@ -20,7 +20,7 @@ const settingsIcons: Partial<Record<AppPage, React.ReactNode>> = {
 
 export function SettingsPage({ onNavigate }: { onNavigate: (page: AppPage) => void; }) {
   return (
-    <section className="settings-overview app-page">
+    <section className="settings-overview app-page atmospheric-page">
       <div className="app-page-heading settings-heading">
         <span className="settings-heading-icon" aria-hidden="true">
           <Settings size={28} />

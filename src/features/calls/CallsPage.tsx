@@ -676,7 +676,7 @@ export function CallsPage({
     : false;
 
   return (
-    <section className="calls-layout">
+    <section className="calls-layout atmospheric-page">
       <aside className="calls-sidebar glass">
         <div className="panel-heading">
           <div>

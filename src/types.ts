@@ -17,6 +17,12 @@ export type AppPage =
 export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
 export type VisibilityScope = "personal" | "company" | "department";
 export type InstructionScope = "personal" | "company" | "department";
+export type PromptPerspective = "business" | "personal";
+
+export interface PromptIndustry { key: string; perspective: PromptPerspective; title: string; sort_order: number; }
+export interface PromptTopic { key: string; industry_key: string; title: string; prompt_module: string; sort_order: number; source?: "manual" | "recommended" | "auto"; }
+export interface PromptProfile { id: string; owner_user_id?: string; title: string; perspective: PromptPerspective; industry_key: string; description: string; is_default: boolean; topics: PromptTopic[]; }
+export interface PromptUserSettings { user_id: string; description: string; industries: PromptIndustry[]; topics: PromptTopic[]; }
 export type InvitationStatus = "pending" | "accepted" | "declined" | "canceled" | "expired";
 export type CompanyRole = "employee";
 export type DepartmentRole = "employee" | "department_leader";
@@ -111,6 +117,9 @@ export interface UserSessionResponse {
 
 export interface UserSessionsResponse {
   sessions: UserSessionResponse[];
+  can_manage_other_sessions?: boolean;
+  available_at?: string | null;
+  retry_after_seconds?: number;
 }
 
 export interface AdminCapabilitiesResponse {

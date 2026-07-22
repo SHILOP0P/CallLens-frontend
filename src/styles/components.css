@@ -5691,6 +5691,81 @@ html[data-theme="light"] .app-shell .admin-call-panel .admin-toolbar label { bac
   }
 }
 
+.prompt-context-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-2) 76%, transparent);
+}
+.prompt-context-heading { display: flex; min-width: 0; align-items: flex-start; gap: 10px; color: var(--accent); }
+.prompt-context-heading > div { min-width: 0; color: var(--text); }
+.prompt-context-heading small { display: block; margin-top: 3px; color: var(--text-muted); line-height: 1.4; }
+.prompt-context-card label { display: grid; gap: 6px; min-width: 0; color: var(--text-muted); font-size: 13px; }
+.prompt-context-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.prompt-recommend { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
+.prompt-recommend input { min-width: 0; }
+.prompt-save { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.prompt-save input:not([type="checkbox"]) { min-width: 0; }
+.prompt-save label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.prompt-topic-list, .prompt-selected, .prompt-industry-row { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.prompt-topic-section, .prompt-selected-section { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
+.prompt-topic-section > strong { color: var(--text-muted); font-size: 13px; font-weight: 600; }
+.prompt-selected-section { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+.prompt-selected-section > strong { color: var(--accent); font-size: 13px; }
+.prompt-topic, .prompt-industry { display: inline-flex; max-width: 100%; align-items: center; gap: 5px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; line-height: 1.25; text-align: left; }
+.prompt-topic:hover, .prompt-topic.active { border-color: color-mix(in srgb, var(--accent) 66%, var(--border)); background: color-mix(in srgb, var(--accent) 15%, var(--surface)); }
+.prompt-industry { color: var(--text-muted); font-size: 12px; }
+.prompt-industry:hover, .prompt-industry.active { border-color: color-mix(in srgb, var(--accent) 52%, var(--border)); color: var(--text); }
+.prompt-selected span { display: inline-flex; min-width: 0; align-items: center; gap: 5px; padding: 6px 8px 6px 10px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 17%, var(--surface)); color: var(--text); font-size: 13px; }
+.prompt-selected span button { display: grid; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; place-items: center; background: transparent; color: inherit; }
+.prompt-selected span button:hover { background: color-mix(in srgb, var(--accent) 25%, transparent); }
+.prompt-actions { display: flex; justify-content: flex-end; }
+.session-control-status { margin: 0 0 14px; color: var(--text-muted); font-size: 13px; }
+.session-control-status.ready { color: var(--success, #4eaa76); }
+.session-control-status.waiting { color: var(--warning, #d89742); }
+@media (max-width: 620px) { .prompt-context-grid, .prompt-recommend, .prompt-save { grid-template-columns: minmax(0, 1fr); } .prompt-recommend .ghost-button, .prompt-save .ghost-button { justify-content: center; } .prompt-save label { white-space: normal; } }
+
+/* Atmospheric headers keep the workspace sections visually connected to administration. */
+.app-shell .atmospheric-page {
+  position: relative;
+  isolation: isolate;
+  padding: 26px;
+  border: 1px solid rgba(255, 250, 245, .1);
+  border-radius: 24px;
+  background: linear-gradient(145deg, rgba(30, 21, 17, .74), rgba(20, 17, 15, .68));
+  box-shadow: var(--app-shadow), inset 0 1px 0 rgba(255, 255, 255, .07);
+  backdrop-filter: blur(18px) saturate(1.08);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+}
+.app-shell .atmospheric-page::before {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  border-radius: inherit;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(22, 15, 12, .54), rgba(22, 15, 12, .24) 54%, rgba(22, 15, 12, .08)), url("/assets/workspace-atmosphere-v2.png") center / cover;
+  opacity: .42;
+  mix-blend-mode: screen;
+}
+.app-shell .atmospheric-page > * { position: relative; z-index: 1; }
+html[data-theme="light"] .app-shell .atmospheric-page {
+  border-color: rgba(141, 101, 79, .18);
+  background: linear-gradient(145deg, rgba(255, 251, 246, .94), rgba(244, 232, 220, .88));
+  box-shadow: 0 18px 42px rgba(104, 65, 41, .12), inset 0 1px 0 rgba(255, 255, 255, .82);
+}
+html[data-theme="light"] .app-shell .atmospheric-page::before {
+  background-image: linear-gradient(90deg, rgba(255, 251, 246, .76), rgba(255, 245, 237, .42) 52%, rgba(255, 245, 237, .16)), url("/assets/workspace-atmosphere-v2.png");
+  opacity: .24;
+  mix-blend-mode: multiply;
+}
+@media (max-width: 720px) {
+  .app-shell .atmospheric-page { padding: 18px 14px; border-radius: 18px; }
+}
+
 .call-video-player {
   overflow: hidden;
   margin-top: 18px;

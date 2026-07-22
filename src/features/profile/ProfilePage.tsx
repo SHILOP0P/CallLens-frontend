@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   UserRound
 } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { ApiError, api } from "../../api";
 import type {
   AppPage,
@@ -23,6 +23,7 @@ import { formatDate } from "../../shared/lib/formatters";
 import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { CompanyMiniCard } from "../companies/CompaniesPage";
 import { AvatarEditor } from "./AvatarEditor";
+import { PromptContextSelector } from "../upload/PromptContextSelector";
 
 const timeZoneOptions = [
   { value: "Europe/Kaliningrad", label: "Калининград (UTC+2)" },
@@ -329,6 +330,7 @@ export function ProfileEditPage({
       {avatarFile && <AvatarEditor file={avatarFile} busy={busy} onCancel={() => setAvatarFile(null)} onSave={async (file) => { setBusy(true); setError(""); try { const response = await api.uploadAvatar(file); onUserUpdated({ ...session.user, avatar_url: `${response.avatar_url}?v=${Date.now()}` }); setSuccess("Аватар обновлен."); setAvatarFile(null); } catch (avatarError) { setError(avatarError instanceof Error ? avatarError.message : "Не удалось загрузить аватар"); } finally { setBusy(false); } }} />}
 
       <div className="profile-edit-grid single">
+        <PromptContextSelector disabled={busy} title="Темы анализа по умолчанию" description="Эти темы будут предложены при загрузке звонка. Там их можно изменить только для конкретной записи." />
         <form
           className="profile-edit-form glass-panel"
           onSubmit={async (event) => {
@@ -379,13 +381,17 @@ export function DevicesPage({
   const [loggingOutAll, setLoggingOutAll] = useState(false);
   const [endingSessionId, setEndingSessionId] = useState("");
   const [actionError, setActionError] = useState("");
+  const [sessionControl, setSessionControl] = useState({ canManage: false, availableAt: null as string | null, retryAfterSeconds: 0 });
 
   useEffect(() => {
     let cancelled = false;
 
     api.listSessions()
       .then((response) => {
-        if (!cancelled) setSessions(response.sessions);
+        if (!cancelled) {
+          setSessions(response.sessions);
+          setSessionControl({ canManage: response.can_manage_other_sessions ?? true, availableAt: response.available_at ?? null, retryAfterSeconds: response.retry_after_seconds ?? 0 });
+        }
       })
       .catch((loadError) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить устройства");
@@ -398,6 +404,14 @@ export function DevicesPage({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!actionError) return;
+    const timeout = window.setTimeout(() => setActionError(""), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [actionError]);
+
+  const sessionControlMessage = useMemo(() => sessionControl.canManage ? "Можно завершать другие активные сеансы." : `Завершение других сеансов станет доступно ${formatSessionAvailability(sessionControl.availableAt, sessionControl.retryAfterSeconds)}.`, [sessionControl]);
 
   return (
     <section className="devices-page app-page settings-subpage-layout">
@@ -426,16 +440,25 @@ export function DevicesPage({
           <button
             className="primary-button small"
             type="button"
-            disabled={loggingOutAll}
+            disabled={loggingOutAll || !sessionControl.canManage}
             onClick={async () => {
               setLoggingOutAll(true);
-              await onLogoutAll();
+              setActionError("");
+              try {
+                await onLogoutAll();
+              } catch (logoutError) {
+                const availability = sessionControlFromError(logoutError);
+                if (availability) setSessionControl(availability);
+                setActionError(sessionTerminationError(logoutError));
+                setLoggingOutAll(false);
+              }
             }}
           >
             <Power size={16} />
             {loggingOutAll ? "Завершаю..." : "Завершить все сеансы"}
           </button>
         </div>
+        <p className={`session-control-status ${sessionControl.canManage ? "ready" : "waiting"}`}>{sessionControlMessage}</p>
         {actionError && <div className="form-error">{actionError}</div>}
         {loading ? (
           <div className="instruction-empty standalone">Загружаю устройства...</div>
@@ -469,7 +492,7 @@ export function DevicesPage({
                     <button
                       className="ghost-button small"
                       type="button"
-                      disabled={endingSessionId === item.id}
+                      disabled={endingSessionId === item.id || !sessionControl.canManage}
                       onClick={async () => {
                         setActionError("");
                         setEndingSessionId(item.id);
@@ -477,6 +500,8 @@ export function DevicesPage({
                           await api.deleteSession(item.id);
                           setSessions((current) => current.filter((sessionItem) => sessionItem.id !== item.id));
                         } catch (deleteError) {
+                          const availability = sessionControlFromError(deleteError);
+                          if (availability) setSessionControl(availability);
                           setActionError(sessionTerminationError(deleteError));
                         } finally {
                           setEndingSessionId("");
@@ -503,6 +528,28 @@ function sessionTerminationError(error: unknown) {
   }
 
   return error instanceof Error ? error.message : "Не удалось завершить сеанс. Повторите попытку.";
+}
+
+function sessionControlFromError(error: unknown) {
+  if (!(error instanceof ApiError) || error.code !== "session_trust_age_required") return null;
+  return {
+    canManage: false,
+    availableAt: typeof error.details?.available_at === "string" ? error.details.available_at : null,
+    retryAfterSeconds: typeof error.details?.retry_after_seconds === "number" ? error.details.retry_after_seconds : 0
+  };
+}
+
+function formatSessionAvailability(availableAt: string | null, retryAfterSeconds: number) {
+  if (availableAt) {
+    const date = new Date(availableAt);
+    if (!Number.isNaN(date.getTime())) return `после ${formatDate(date.toISOString())}`;
+  }
+  if (retryAfterSeconds > 0) {
+    const hours = Math.floor(retryAfterSeconds / 3600);
+    const minutes = Math.ceil((retryAfterSeconds % 3600) / 60);
+    return hours > 0 ? `через ${hours} ч ${minutes} мин` : `через ${minutes} мин`;
+  }
+  return "после подтверждения текущего сеанса";
 }
 
 function ProfileDataRow({

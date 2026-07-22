@@ -129,7 +129,7 @@ export function CompaniesPage({
   }
 
   return (
-    <section className="companies-page app-page">
+    <section className="companies-page app-page atmospheric-page">
       <div className="settings-back-row">
         <button className="ghost-button small" type="button" onClick={onBackToSettings}>
           <ArrowLeft size={16} />

@@ -24,6 +24,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    const clearExpiredSession = () => setSession(null);
+    window.addEventListener("calllens:session-expired", clearExpiredSession);
+    return () => window.removeEventListener("calllens:session-expired", clearExpiredSession);
+  }, []);
+
   const value = useMemo<AuthContextValue>(() => ({
     ready,
     session,

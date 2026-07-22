@@ -42,7 +42,7 @@ export function MonitoringPage({ calls }: { calls: CallResponse[]; }) {
 
   const queue = monitoring?.queue;
   return (
-    <section className="monitoring-page app-page">
+    <section className="monitoring-page app-page atmospheric-page">
       <div className="app-page-heading readable-heading">
         <h1>Мониторинг</h1>
         <p>Состояние обработки звонков: очередь, ошибки, повторы и среднее время.</p>

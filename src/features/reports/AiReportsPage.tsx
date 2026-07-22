@@ -448,7 +448,7 @@ export function AiReportsPage({
   }
 
   return (
-    <section className="reports-page app-page">
+    <section className="reports-page app-page atmospheric-page">
       <div className="app-page-heading readable-heading">
         <h1>AI-отчеты</h1>
         <p>Экспорт, статусы, история отчетов и глубокий анализ выбранных периодов.</p>

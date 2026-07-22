@@ -42,7 +42,7 @@ function CallVideoPlayer({ call }: { call: CallResponse }) {
       cancelled = true;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [call, source]);
+  }, [source]);
 
   function downloadVideo() {
     if (!videoBlob) return;

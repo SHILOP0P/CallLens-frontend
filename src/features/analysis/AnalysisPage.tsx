@@ -106,7 +106,7 @@ export function AnalysisPage({
   }
 
   return (
-    <section className="analysis-layout">
+    <section className="analysis-layout atmospheric-page">
       <aside className="calls-sidebar glass">
         <div className="panel-heading">
           <h2>AI-аналитика</h2>

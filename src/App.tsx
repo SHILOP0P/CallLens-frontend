@@ -398,7 +398,7 @@ function App() {
 
   async function logoutAllSessions() {
     if (session) {
-      await api.logoutAll().catch(() => undefined);
+      await api.logoutAll();
     }
     clearSession();
     clearWorkspaceState();

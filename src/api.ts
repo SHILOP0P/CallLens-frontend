@@ -31,6 +31,11 @@ import type {
   InvitationDepartmentRole,
   InvitationStatus,
   InstructionScope,
+  PromptIndustry,
+  PromptPerspective,
+  PromptProfile,
+  PromptUserSettings,
+  PromptTopic,
   ListAggregateAnalysesResponse,
   ListAggregateReportsResponse,
   ListDeepAnalysesQuery,
@@ -67,16 +72,23 @@ import { coordinateRefresh } from "./features/auth/refresh-coordinator";
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 const apiRoot = `${configuredBase}/api/v1`;
 const authRefreshPath = "/auth/refresh";
+const sessionExpiredEvent = "calllens:session-expired";
+
+function notifySessionExpired() {
+  window.dispatchEvent(new Event(sessionExpiredEvent));
+}
 
 export class ApiError extends Error {
   status: number;
   code?: string;
+  details?: Record<string, unknown>;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -198,6 +210,11 @@ function isRecord(value: unknown): value is ApiPayload {
 function getApiErrorCode(payload: unknown) {
   if (!isRecord(payload) || !isRecord(payload.error)) return undefined;
   return typeof payload.error.code === "string" ? payload.error.code : undefined;
+}
+
+function getApiErrorDetails(payload: unknown) {
+  if (!isRecord(payload) || !isRecord(payload.error) || !isRecord(payload.error.details)) return undefined;
+  return payload.error.details;
 }
 
 function getApiErrorMessage(payload: unknown, status: number, path: string, init: RequestInit) {
@@ -336,10 +353,12 @@ async function request<T>(
       }
     }
 
+    if (response.status === 401 && !path.startsWith("/auth/")) notifySessionExpired();
+
     const code = getApiErrorCode(payload);
     const message = getApiErrorMessage(payload, response.status, path, init);
 
-    throw new ApiError(response.status, message, code);
+    throw new ApiError(response.status, message, code, getApiErrorDetails(payload));
   }
 
   return payload as T;
@@ -365,7 +384,9 @@ async function requestBlob(path: string, options: { retryOnUnauthorized?: boolea
       }
     }
 
-    throw new ApiError(response.status, message, code);
+    if (response.status === 401) notifySessionExpired();
+
+    throw new ApiError(response.status, message, code, getApiErrorDetails(payload));
   }
 
   return response.blob();
@@ -391,7 +412,9 @@ async function requestAssetBlob(url: string, options: { retryOnUnauthorized?: bo
       }
     }
 
-    throw new ApiError(response.status, message, code);
+    if (response.status === 401) notifySessionExpired();
+
+    throw new ApiError(response.status, message, code, getApiErrorDetails(payload));
   }
 
   return response.blob();
@@ -686,6 +709,32 @@ export const api = {
     }
 
     return request<CallResponse>("/calls", { method: "POST", body });
+  },
+
+  listPromptIndustries(perspective?: PromptPerspective) {
+    return request<PromptIndustry[]>(`/prompt-catalog/industries${queryString({ perspective })}`);
+  },
+
+  listPromptTopics(industry_key: string, q?: string) {
+    return request<PromptTopic[]>(`/prompt-catalog/topics${queryString({ industry_key, q })}`);
+  },
+
+  recommendPromptTopics(input: { perspective: PromptPerspective; description: string }) {
+    return request<PromptTopic[]>("/prompt-catalog/recommendations", { method: "POST", body: JSON.stringify(input) });
+  },
+
+  listPromptProfiles() { return request<PromptProfile[]>("/prompt-profiles"); },
+
+  getPromptSettings() { return request<PromptUserSettings>("/prompt-settings"); },
+  savePromptSettings(input: { description: string; industry_keys: string[]; topic_keys: string[] }) { return request<PromptUserSettings>("/prompt-settings", { method: "PUT", body: JSON.stringify(input) }); },
+
+  savePromptProfile(input: Omit<PromptProfile, "id"> & { id?: string }) {
+    const path = input.id ? `/prompt-profiles/${encodeURIComponent(input.id)}` : "/prompt-profiles";
+    return request<PromptProfile>(path, { method: input.id ? "PATCH" : "POST", body: JSON.stringify(input) });
+  },
+
+  putCallPromptContext(callId: string, input: { profile_id?: string; topic_keys: string[] }) {
+    return request(`/calls/${encodeURIComponent(callId)}/prompt-context`, { method: "PUT", body: JSON.stringify(input) });
   },
 
   updateCallTitle(callId: string, title: string) {
