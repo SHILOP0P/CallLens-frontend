@@ -287,6 +287,24 @@ export function InstructionsPage({
             onFile={setFile}
           />
         </div>
+        <details className="instruction-template-example">
+          <summary>Пример эффективной инструкции</summary>
+          <pre>{`# Контроль следующего шага
+
+## Цель
+Проверить, договорились ли участники о конкретном продолжении.
+
+## Критерии
+- Названо следующее действие.
+- Указан ответственный.
+- Указан срок.
+
+## Доказательства
+Используй только точные цитаты из разговора.
+
+## Рекомендация
+Если договорённость неполная, укажи, чего именно не хватает.`}</pre>
+        </details>
         {error && <div className="form-error">{error}</div>}
         <button className="primary-button" disabled={busy}>
           {busy ? "Загружаю..." : "Сохранить инструкцию"}

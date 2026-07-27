@@ -39,6 +39,11 @@ export type AnalysisDetails = {
   confidence?: string;
 };
 
+export type AnalysisAdditionalField = {
+  label: string;
+  value: string | string[];
+};
+
 export const answerStatusLabels: Record<string, string> = {
   answered: "Ответ дан",
   partially_answered: "Частично отвечено",
@@ -114,12 +119,26 @@ export function isAnalysisDone(analysis?: AnalysisResponse) {
 }
 
 export function analysisRecord(analysis?: AnalysisResponse) {
-  const result = analysis?.result_json;
-  if (!isPlainRecord(result)) {
-    return {};
-  }
+  const persistedResult = unwrapEmbeddedAnalysisRecord(recordFromUnknown(analysis?.result_json));
+  if (persistedResult) return persistedResult;
 
-  return result;
+  const malformedPersistedResult = recoverMalformedAnalysisRecord(analysis?.result_json);
+  if (malformedPersistedResult) return malformedPersistedResult;
+
+  // Older completed analyses may have their JSON in result_text after a provider
+  // response was persisted before result_json. Render that payload structurally
+  // instead of exposing raw JSON to the user.
+  const fallback = unwrapEmbeddedAnalysisRecord(recordFromUnknown(analysis?.result_text));
+  if (fallback) return fallback;
+
+  const malformedFallback = recoverMalformedAnalysisRecord(analysis?.result_text);
+  if (malformedFallback) return malformedFallback;
+
+  return {};
+}
+
+export function analysisFormatError(analysis?: AnalysisResponse) {
+  return stringValue(analysisRecord(analysis).analysis_format_error);
 }
 
 export function analysisV2Result(analysis?: AnalysisResponse): AnalysisV2Result | null {
@@ -299,6 +318,39 @@ export function analysisDetails(analysis?: AnalysisResponse): AnalysisDetails {
   };
 }
 
+// Composed prompt profiles may add their own fields without changing the core
+// analysis contract. Preserve those values for the renderer instead of silently
+// dropping them when a new profile is introduced.
+export function analysisAdditionalFields(analysis?: AnalysisResponse): AnalysisAdditionalField[] {
+  const record = analysisRecord(analysis);
+  const knownKeys = new Set([
+    "schema_version", "summary", "topics", "dialogue_tone", "client_questions",
+    "question_coverage", "manager_quality", "call_outcome", "score", "score_scale",
+    "score_breakdown", "criteria_results", "customer_objections", "risks", "next_steps",
+    "next_step", "next_step_quality", "business_outcome", "customer_signals", "issue_codes",
+    "evidence_quotes", "confidence", "raw_response"
+  ]);
+
+  return Object.entries(record).flatMap<AnalysisAdditionalField>(([key, value]) => {
+    if (knownKeys.has(key)) return [];
+    const text = stringValue(value);
+    if (text) return [{ label: humanizeAnalysisKey(key), value: text }];
+    const items = stringList(value);
+    if (items.length > 0) return [{ label: humanizeAnalysisKey(key), value: items }];
+    if (isPlainRecord(value)) {
+      const nested = Object.entries(value).flatMap(([nestedKey, nestedValue]) => {
+        const nestedText = stringValue(nestedValue);
+        const nestedItems = stringList(nestedValue);
+        if (nestedText) return [`${humanizeAnalysisKey(nestedKey)}: ${nestedText}`];
+        if (nestedItems.length > 0) return [`${humanizeAnalysisKey(nestedKey)}: ${nestedItems.join("; ")}`];
+        return [];
+      });
+      return nested.length > 0 ? [{ label: humanizeAnalysisKey(key), value: nested }] : [];
+    }
+    return [];
+  });
+}
+
 export function questionList(value: unknown): AnalysisQuestion[] {
   if (!Array.isArray(value)) return [];
 
@@ -332,6 +384,77 @@ export function recordField(record: Record<string, unknown>, key: string) {
 
 export function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function recordFromUnknown(value: unknown): Record<string, unknown> | undefined {
+  let candidate = value;
+  // Some providers serialize their structured result twice. Decode a bounded
+  // number of times so both an object and a JSON string use the structured view.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (isPlainRecord(candidate)) return candidate;
+    if (typeof candidate !== "string") return undefined;
+    try {
+      candidate = JSON.parse(candidate.trim());
+    } catch {
+      return undefined;
+    }
+  }
+  return isPlainRecord(candidate) ? candidate : undefined;
+}
+
+function unwrapEmbeddedAnalysisRecord(record?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!record) return undefined;
+
+  // A provider can return the complete structured document as `summary` of an
+  // outer response. Check it before accepting the outer schema marker: some
+  // saved responses have `schema_version: 2` both outside and inside the
+  // serialized summary, and returning early would expose the JSON verbatim.
+  const embedded = recordFromUnknown(record.summary);
+  if (embedded && hasStructuredAnalysisFields(embedded)) return embedded;
+
+  const recovered = recoverMalformedAnalysisRecord(record.summary);
+  if (recovered) return recovered;
+
+  return record;
+}
+
+function recoverMalformedAnalysisRecord(value: unknown): Record<string, unknown> | undefined {
+  const content = typeof value === "string"
+    ? value.trim()
+    : isPlainRecord(value) ? stringValue(value.summary) : undefined;
+
+  if (!content || !looksLikeIncompleteStructuredAnalysis(content)) return undefined;
+
+  return {
+    summary: extractJSONStringField(content, "summary") ?? "Провайдер не завершил структурированный анализ.",
+    analysis_format_error: "Провайдер вернул оборванный структурированный ответ. Запустите анализ повторно."
+  };
+}
+
+function looksLikeIncompleteStructuredAnalysis(content: string) {
+  const trimmed = content.trim();
+  return trimmed.startsWith("{") &&
+    (trimmed.includes('"schema_version"') || trimmed.includes('"criteria_results"'));
+}
+
+function extractJSONStringField(content: string, key: string) {
+  const match = content.match(new RegExp(`"${key}"\\s*:\\s*("(?:\\\\.|[^"\\\\])*")`));
+  if (!match) return undefined;
+
+  try {
+    return stringValue(JSON.parse(match[1]));
+  } catch {
+    return undefined;
+  }
+}
+
+function hasStructuredAnalysisFields(record: Record<string, unknown>) {
+  return (
+    numberValue(record.schema_version) === 2 ||
+    numberValue(record.score_scale) === 100 ||
+    Array.isArray(record.criteria_results) ||
+    Array.isArray(record.topics)
+  );
 }
 
 export function stringValue(value: unknown) {
@@ -402,11 +525,15 @@ function criteriaResultList(value: unknown): AnalysisV2CriteriaResult[] {
     const result = {
       code: stringValue(item.code) ?? "",
       title: stringValue(item.title) ?? stringValue(item.code) ?? "Критерий",
+      topic: stringValue(item.topic) ?? stringValue(item.title) ?? "Не указано",
       status,
       points_awarded: numberValue(item.points_awarded) ?? 0,
       points_max: numberValue(item.points_max) ?? 0,
+      score: numberValue(item.score) ?? 0,
+      quote: stringValue(item.quote) ?? stringList(item.evidence_quotes)[0] ?? "Не указано",
       evidence_quotes: stringList(item.evidence_quotes),
       issue: stringValue(item.issue) ?? "",
+      explanation: stringValue(item.explanation) ?? stringValue(item.issue) ?? "",
       recommendation: stringValue(item.recommendation) ?? ""
     };
 
@@ -438,4 +565,8 @@ function booleanValue(value: unknown) {
 
 function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
+}
+
+function humanizeAnalysisKey(key: string) {
+  return key.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase());
 }

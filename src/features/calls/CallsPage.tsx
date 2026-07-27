@@ -12,9 +12,11 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { ApiError, api } from "../../api";
 import type {
   AnalysisResponse,
+  AnalysisInstruction,
   AppPage,
   CallFolderResponse,
   CallResponse,
@@ -102,6 +104,7 @@ export function CallsPage({
   const [folderCallsLoading, setFolderCallsLoading] = useState(false);
   const [expandedFolderIds, setExpandedFolderIds] = useState<Record<string, boolean>>({});
   const [folderForm, setFolderForm] = useState<FolderFormState>(() => emptyFolderForm());
+  const [folderInstructionOptions, setFolderInstructionOptions] = useState<AnalysisInstruction[]>([]);
   const [openFolderMenuId, setOpenFolderMenuId] = useState("");
   const [openCallMenuId, setOpenCallMenuId] = useState("");
   const [editingCall, setEditingCall] = useState<CallResponse | null>(null);
@@ -133,6 +136,25 @@ export function CallsPage({
 
     return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod;
   });
+
+  useEffect(() => {
+    if (!folderEditorOpen) return;
+    let cancelled = false;
+    const companyUuid = folderForm.scope === "personal" ? undefined : folderForm.company_uuid || undefined;
+    const departmentUuid = folderForm.scope === "department" ? folderForm.department_uuid || undefined : undefined;
+    api.listInstructions({
+      scope: folderForm.scope,
+      company_uuid: companyUuid,
+      department_uuid: departmentUuid
+    }).then((items) => {
+      if (!cancelled) setFolderInstructionOptions(items.filter((item) => item.is_active));
+    }).catch(() => {
+      if (!cancelled) setFolderInstructionOptions([]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [folderEditorOpen, folderForm.company_uuid, folderForm.department_uuid, folderForm.scope]);
   const managerOptions = filterOptions?.managers ?? [];
   const visibleFolders = callFolders.filter((folder) =>
     effectiveScopeFilter === "all" || folder.scope === effectiveScopeFilter
@@ -216,6 +238,7 @@ export function CallsPage({
       name: folder.name,
       description: folder.description ?? "",
       color: folder.color ?? folderPalette[0]
+      ,instruction_uuids: folder.instructions?.map((instruction) => instruction.id) ?? []
     });
     setFolderEditorOpen(true);
   }
@@ -240,6 +263,7 @@ export function CallsPage({
     try {
       if (editingFolderId) {
         await api.updateCallFolder(editingFolderId, payload.value as UpdateCallFolderRequest);
+        await api.replaceCallFolderInstructions(editingFolderId, folderForm.instruction_uuids);
       } else {
         await api.createCallFolder(payload.value as CreateCallFolderRequest);
       }
@@ -779,7 +803,9 @@ export function CallsPage({
                       />
                       <span>
                         <strong title={folder.name}>{folder.name}</strong>
-                        <small>{folderScopeLabel(folder)} · {folder.calls_count} звонков</small>
+                        <small>
+                          {folderScopeLabel(folder)} · {folder.calls_count} звонков · {folder.instructions?.length ?? 0} инструкций
+                        </small>
                       </span>
                     </button>
                     <div
@@ -821,6 +847,13 @@ export function CallsPage({
                   </div>
                   {expanded && (
                     <div className="call-folder-child-list">
+                      {(folder.instructions?.length ?? 0) > 0 && (
+                        <div className="folder-instruction-chips call-folder-tree-instructions" aria-label="Инструкции папки">
+                          {folder.instructions.map((instruction) => (
+                            <span key={instruction.id}>{instruction.title}</span>
+                          ))}
+                        </div>
+                      )}
                       {folderLoading ? (
                         <div className="call-folder-child-empty">Загружаю звонки...</div>
                       ) : folderCalls.length === 0 ? (
@@ -873,7 +906,7 @@ export function CallsPage({
           showReports
         />
       </section>
-      {folderEditorOpen && (
+      {folderEditorOpen && createPortal(
         <div
           className="call-folder-modal-layer"
           role="presentation"
@@ -997,6 +1030,31 @@ export function CallsPage({
                   ))}
                 </div>
               </div>
+              <fieldset className="call-folder-instructions">
+                <legend>Инструкции папки</legend>
+                <small>Они автоматически применятся к каждому новому звонку в этой папке.</small>
+                {folderInstructionOptions.length === 0 ? (
+                  <div className="instruction-empty compact">Для выбранной области нет активных инструкций.</div>
+                ) : (
+                  <div className="call-folder-instruction-options">
+                    {folderInstructionOptions.map((instruction) => (
+                      <label key={instruction.id}>
+                        <input
+                          type="checkbox"
+                          checked={folderForm.instruction_uuids.includes(instruction.id)}
+                          onChange={() => setFolderForm((current) => ({
+                            ...current,
+                            instruction_uuids: current.instruction_uuids.includes(instruction.id)
+                              ? current.instruction_uuids.filter((id) => id !== instruction.id)
+                              : [...current.instruction_uuids, instruction.id]
+                          }))}
+                        />
+                        <span>{instruction.title}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
               <div className="call-folder-form-actions">
                 <button
                   className="primary-button small"
@@ -1012,7 +1070,8 @@ export function CallsPage({
               </div>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body
       )}
       {editingCall && (
         <div
@@ -1100,6 +1159,7 @@ type FolderFormState = {
   name: string;
   description: string;
   color: string;
+  instruction_uuids: string[];
 };
 
 const folderPalette = [
@@ -1127,6 +1187,7 @@ function emptyFolderForm(): FolderFormState {
     name: "",
     description: "",
     color: folderPalette[0]
+    ,instruction_uuids: []
   };
 }
 
@@ -1152,6 +1213,7 @@ function buildFolderPayload(
         name,
         description: description || null,
         color: color || null
+        ,instruction_uuids: form.instruction_uuids
       }
     };
   }
@@ -1173,6 +1235,7 @@ function buildFolderPayload(
       name,
       description: description || null,
       color: color || null
+      ,instruction_uuids: form.instruction_uuids
     }
   };
 }

@@ -23,7 +23,7 @@ import { formatDate } from "../../shared/lib/formatters";
 import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { CompanyMiniCard } from "../companies/CompaniesPage";
 import { AvatarEditor } from "./AvatarEditor";
-import { PromptContextSelector } from "../upload/PromptContextSelector";
+import { AnalysisPersonalizationCard } from "../analysis-context/AnalysisPersonalizationCard";
 
 const timeZoneOptions = [
   { value: "Europe/Kaliningrad", label: "Калининград (UTC+2)" },
@@ -330,7 +330,13 @@ export function ProfileEditPage({
       {avatarFile && <AvatarEditor file={avatarFile} busy={busy} onCancel={() => setAvatarFile(null)} onSave={async (file) => { setBusy(true); setError(""); try { const response = await api.uploadAvatar(file); onUserUpdated({ ...session.user, avatar_url: `${response.avatar_url}?v=${Date.now()}` }); setSuccess("Аватар обновлен."); setAvatarFile(null); } catch (avatarError) { setError(avatarError instanceof Error ? avatarError.message : "Не удалось загрузить аватар"); } finally { setBusy(false); } }} />}
 
       <div className="profile-edit-grid single">
-        <PromptContextSelector disabled={busy} title="Темы анализа по умолчанию" description="Эти темы будут предложены при загрузке звонка. Там их можно изменить только для конкретной записи." />
+        <AnalysisPersonalizationCard
+          scope="personal"
+          ownerUuid={session.user.id}
+          title="Персонализация анализа"
+          description="Этот текст используется только для ваших личных звонков и помогает анализатору учитывать ваш контекст."
+          editable={!busy}
+        />
         <form
           className="profile-edit-form glass-panel"
           onSubmit={async (event) => {

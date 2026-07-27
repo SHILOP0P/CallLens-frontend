@@ -236,16 +236,16 @@ function analysisResultState(
   tone: "ok" | "warn" | "bad";
   thinking?: boolean;
 } {
-  if (isAnalysisDone(analysis) || call?.status === "analyzed") {
-    return { label: "Готово", tone: "ok" };
-  }
-
   if (analysis?.status === "failed" || call?.status === "failed") {
     return { label: "Ошибка анализа", tone: "bad" };
   }
 
   if (call?.status === "transcribed" || analysis?.status === "pending" || analysis?.status === "processing") {
     return { label: "Производится анализ транскрипции", tone: "warn", thinking: true };
+  }
+
+  if (isAnalysisDone(analysis) || call?.status === "analyzed") {
+    return { label: "Готово", tone: "ok" };
   }
 
   return { label: "Ожидает", tone: "warn" };

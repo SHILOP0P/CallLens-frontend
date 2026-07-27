@@ -17,57 +17,43 @@ export function CallMediaPlayer({ call }: { call: CallResponse }) {
 }
 
 function CallVideoPlayer({ call }: { call: CallResponse }) {
-  const [videoUrl, setVideoUrl] = useState("");
-  const [videoBlob, setVideoBlob] = useState<Blob | null>(null);
   const [error, setError] = useState("");
+  const [downloading, setDownloading] = useState(false);
   const source = useMemo(() => getCallMediaUrl(call), [call.id, call.media_url, call.audio_url]);
 
-  useEffect(() => {
-    let cancelled = false;
-    let objectUrl = "";
-    setVideoUrl("");
-    setVideoBlob(null);
-    setError("");
-    getCallMediaBlob(call)
-      .then((blob) => {
-        if (cancelled) return;
-        objectUrl = URL.createObjectURL(blob);
-        setVideoBlob(blob);
-        setVideoUrl(objectUrl);
-      })
-      .catch((loadError) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Видео недоступно");
-      });
-    return () => {
-      cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [source]);
-
-  function downloadVideo() {
-    if (!videoBlob) return;
-    const downloadUrl = URL.createObjectURL(videoBlob);
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = mediaDownloadName(call);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+  async function downloadVideo() {
+    setDownloading(true);
+    try {
+      const blob = await getCallMediaBlob(call);
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = mediaDownloadName(call);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Видео недоступно");
+    } finally {
+      setDownloading(false);
+    }
   }
 
   return (
     <div className={`call-video-player ${error ? "video-error-state" : ""}`}>
-      {videoUrl ? (
-        <video controls preload="metadata" src={videoUrl} aria-label={`Видеозапись звонка ${call.title}`} />
-      ) : (
-        <div className="call-video-placeholder" role="status">
-          {error || "Загружаю видеозапись…"}
-        </div>
-      )}
+      <video
+        controls
+        crossOrigin="use-credentials"
+        preload="metadata"
+        src={source}
+        aria-label={`Видеозапись звонка ${call.title}`}
+        onError={() => setError("Видео недоступно")}
+      />
+      {error && <div className="call-video-placeholder" role="status">{error}</div>}
       <div className="call-video-meta">
         <span>{call.original_filename}</span>
-        <button className="ghost-button small" type="button" disabled={!videoBlob} onClick={downloadVideo}>
+        <button className="ghost-button small" type="button" disabled={downloading} onClick={downloadVideo}>
           <Download size={15} />
           Скачать видео
         </button>

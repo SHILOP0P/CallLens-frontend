@@ -6,6 +6,8 @@ import type {
   AdminUsersResponse,
   AggregateReportResponse,
   AnalysisInstruction,
+  AnalysisPersonalization,
+  AnalysisPersonalizationScope,
   AnalysisResponse,
   AuthResponse,
   AnalyticsOverviewResponse,
@@ -31,11 +33,6 @@ import type {
   InvitationDepartmentRole,
   InvitationStatus,
   InstructionScope,
-  PromptIndustry,
-  PromptPerspective,
-  PromptProfile,
-  PromptUserSettings,
-  PromptTopic,
   ListAggregateAnalysesResponse,
   ListAggregateReportsResponse,
   ListDeepAnalysesQuery,
@@ -697,6 +694,7 @@ export const api = {
       companyUuid?: string;
       departmentUuid?: string;
       useCustomInstructions?: boolean;
+      folderUuid?: string;
     }
   ) {
     const body = new FormData();
@@ -704,6 +702,7 @@ export const api = {
     body.append("media", input.media);
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
     if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
+    if (input.folderUuid) body.append("folder_uuid", input.folderUuid);
     if (typeof input.useCustomInstructions === "boolean") {
       body.append("use_custom_instructions", String(input.useCustomInstructions));
     }
@@ -711,30 +710,20 @@ export const api = {
     return request<CallResponse>("/calls", { method: "POST", body });
   },
 
-  listPromptIndustries(perspective?: PromptPerspective) {
-    return request<PromptIndustry[]>(`/prompt-catalog/industries${queryString({ perspective })}`);
+  getAnalysisPersonalization(scope: AnalysisPersonalizationScope, ownerUuid: string, companyUuid?: string) {
+    return request<AnalysisPersonalization>(`/analysis-personalization${queryString({
+      scope,
+      owner_uuid: ownerUuid,
+      company_uuid: companyUuid
+    })}`);
   },
 
-  listPromptTopics(industry_key: string, q?: string) {
-    return request<PromptTopic[]>(`/prompt-catalog/topics${queryString({ industry_key, q })}`);
-  },
-
-  recommendPromptTopics(input: { perspective: PromptPerspective; description: string }) {
-    return request<PromptTopic[]>("/prompt-catalog/recommendations", { method: "POST", body: JSON.stringify(input) });
-  },
-
-  listPromptProfiles() { return request<PromptProfile[]>("/prompt-profiles"); },
-
-  getPromptSettings() { return request<PromptUserSettings>("/prompt-settings"); },
-  savePromptSettings(input: { description: string; industry_keys: string[]; topic_keys: string[] }) { return request<PromptUserSettings>("/prompt-settings", { method: "PUT", body: JSON.stringify(input) }); },
-
-  savePromptProfile(input: Omit<PromptProfile, "id"> & { id?: string }) {
-    const path = input.id ? `/prompt-profiles/${encodeURIComponent(input.id)}` : "/prompt-profiles";
-    return request<PromptProfile>(path, { method: input.id ? "PATCH" : "POST", body: JSON.stringify(input) });
-  },
-
-  putCallPromptContext(callId: string, input: { profile_id?: string; topic_keys: string[] }) {
-    return request(`/calls/${encodeURIComponent(callId)}/prompt-context`, { method: "PUT", body: JSON.stringify(input) });
+  saveAnalysisPersonalization(scope: AnalysisPersonalizationScope, ownerUuid: string, content: string, companyUuid?: string) {
+    return request<AnalysisPersonalization>(`/analysis-personalization${queryString({
+      scope,
+      owner_uuid: ownerUuid,
+      company_uuid: companyUuid
+    })}`, { method: "PUT", body: JSON.stringify({ content }) });
   },
 
   updateCallTitle(callId: string, title: string) {
@@ -774,6 +763,13 @@ export const api = {
     return request<CallFolderResponse>(`/call-folders/${encodeURIComponent(folderId)}`, {
       method: "PATCH",
       body: JSON.stringify(input)
+    });
+  },
+
+  replaceCallFolderInstructions(folderId: string, instructionUuids: string[]) {
+    return request<CallFolderResponse>(`/call-folders/${encodeURIComponent(folderId)}/instructions`, {
+      method: "PUT",
+      body: JSON.stringify({ instruction_uuids: instructionUuids })
     });
   },
 

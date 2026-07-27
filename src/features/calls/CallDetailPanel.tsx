@@ -237,7 +237,7 @@ export function CallDetailPanel({
             {contextLabel(call, companies, departments)}
           </small>
           {score.score !== null && (
-            <span className="call-score-chip">Оценка {formatScore(score.score)} / {score.scale}</span>
+            <span className="call-score-chip">Оценка {formatScore(score.percent)} / 100</span>
           )}
         </div>
       </div>

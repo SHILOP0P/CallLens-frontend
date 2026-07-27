@@ -17,12 +17,13 @@ export type AppPage =
 export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
 export type VisibilityScope = "personal" | "company" | "department";
 export type InstructionScope = "personal" | "company" | "department";
-export type PromptPerspective = "business" | "personal";
-
-export interface PromptIndustry { key: string; perspective: PromptPerspective; title: string; sort_order: number; }
-export interface PromptTopic { key: string; industry_key: string; title: string; prompt_module: string; sort_order: number; source?: "manual" | "recommended" | "auto"; }
-export interface PromptProfile { id: string; owner_user_id?: string; title: string; perspective: PromptPerspective; industry_key: string; description: string; is_default: boolean; topics: PromptTopic[]; }
-export interface PromptUserSettings { user_id: string; description: string; industries: PromptIndustry[]; topics: PromptTopic[]; }
+export type AnalysisPersonalizationScope = "personal" | "company" | "department";
+export interface AnalysisPersonalization {
+  scope: AnalysisPersonalizationScope;
+  owner_uuid: string;
+  content: string;
+  updated_at?: string;
+}
 export type InvitationStatus = "pending" | "accepted" | "declined" | "canceled" | "expired";
 export type CompanyRole = "employee";
 export type DepartmentRole = "employee" | "department_leader";
@@ -266,7 +267,7 @@ export interface AnalysisResponse {
   status: "pending" | "processing" | "done" | "failed" | string;
   provider: string;
   model?: string | null;
-  result_json: Record<string, unknown> | unknown[] | null;
+  result_json: Record<string, unknown> | unknown[] | string | null;
   result_text?: string | null;
   error_message?: string | null;
   created_at: string;
@@ -295,11 +296,15 @@ export interface AnalysisV2CriteriaResult {
     | "custom_instruction_match"
     | string;
   title: string;
+  topic: string;
   status: CriteriaStatus | string;
   points_awarded: number;
   points_max: number;
+  score: number;
+  quote: string;
   evidence_quotes: string[];
   issue: string;
+  explanation: string;
   recommendation: string;
 }
 
@@ -567,6 +572,7 @@ export interface CallFolderResponse {
   created_by_user_uuid: string;
   created_at: string;
   updated_at: string;
+  instructions: AnalysisInstruction[];
 }
 
 export interface CallFoldersListResponse {
@@ -583,12 +589,14 @@ export interface CreateCallFolderRequest {
   name: string;
   description?: string | null;
   color?: string | null;
+  instruction_uuids?: string[];
 }
 
 export interface UpdateCallFolderRequest {
   name?: string;
   description?: string | null;
   color?: string | null;
+  instruction_uuids?: string[];
 }
 
 export interface AssignCallToFolderRequest {

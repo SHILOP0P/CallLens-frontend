@@ -4,6 +4,8 @@ import type {
 
 import {
   analysisDetails,
+  analysisAdditionalFields,
+  analysisFormatError,
   AnalysisQuestion,
   analysisScore100,
   analysisV2Result,
@@ -51,12 +53,27 @@ export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisRespon
     return <p className="muted">Запустите анализ после готовой расшифровки.</p>;
   }
 
+  const details = analysisDetails(analysis);
+  const formatError = analysisFormatError(analysis);
+  if (formatError) {
+    return (
+      <div className="analysis-structured">
+        <AnalysisSection title="Резюме">
+          <p>{details.summary}</p>
+        </AnalysisSection>
+        <AnalysisSection title="Анализ не завершён">
+          <p className="analysis-empty">{formatError}</p>
+        </AnalysisSection>
+      </div>
+    );
+  }
+
   const v2 = analysisV2Result(analysis);
   if (v2) {
     return <AnalysisV2View analysis={analysis} />;
   }
 
-  const details = analysisDetails(analysis);
+  const additionalFields = analysisAdditionalFields(analysis);
 
   return (
     <div className="analysis-structured">
@@ -118,6 +135,19 @@ export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisRespon
         </div>
       </AnalysisSection>
 
+      {additionalFields.length > 0 && (
+        <AnalysisSection title="Дополнительные результаты анализа">
+          <div className="analysis-columns">
+            {additionalFields.map((field) => (
+              <div key={field.label}>
+                <strong>{field.label}</strong>
+                {Array.isArray(field.value) ? <AnalysisStringList items={field.value} emptyLabel="" /> : <p>{field.value}</p>}
+              </div>
+            ))}
+          </div>
+        </AnalysisSection>
+      )}
+
       <AnalysisSection title="Итог, риски и следующие шаги">
         <div className="analysis-kv-grid">
           <AnalysisKeyValue label="Итог звонка" value={details.callOutcome} />
@@ -145,23 +175,26 @@ export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisRespon
 function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
   const result = analysisV2Result(analysis);
   const score = analysisScore100(analysis);
+  const additionalFields = analysisAdditionalFields(analysis);
 
   if (!result) return null;
 
   const outcomeItems = [
-    { label: "Итог", value: enumLabel(result.business_outcome.status, businessOutcomeLabels) },
-    { label: "Описание", value: result.business_outcome.summary },
+    { label: "Вердикт", value: outcomeVerdict(result.business_outcome.status, result.call_outcome) },
+    { label: "Ключевой вывод", value: result.business_outcome.summary || result.call_outcome },
     {
-      label: "Причина потери",
+      label: "Причина",
       value: result.business_outcome.lost_reason && result.business_outcome.lost_reason !== "not_applicable"
         ? enumLabel(result.business_outcome.lost_reason, lostReasonLabels)
         : undefined
     },
-    { label: "Интерес", value: enumLabel(result.customer_signals.intent, signalLevelLabels) },
-    { label: "Срочность", value: enumLabel(result.customer_signals.urgency, signalLevelLabels) },
-    { label: "Бюджет обсуждался", value: booleanLabel(result.customer_signals.budget_discussed) },
-    { label: "ЛПР присутствовал", value: booleanLabel(result.customer_signals.decision_maker_present) },
-    { label: "Уверенность", value: enumLabel(result.confidence, confidenceLabels) }
+    { label: "Уверенность вывода", value: enumLabel(result.confidence, confidenceLabels) }
+  ].filter((item) => hasText(item.value));
+  const signalItems = [
+    { label: "Интерес", value: meaningfulSignal(result.customer_signals.intent) },
+    { label: "Срочность", value: meaningfulSignal(result.customer_signals.urgency) },
+    { label: "Бюджет обсуждался", value: result.customer_signals.budget_discussed ? "Да" : undefined },
+    { label: "ЛПР присутствовал", value: result.customer_signals.decision_maker_present ? "Да" : undefined }
   ].filter((item) => hasText(item.value));
   const nextStepItems = [
     { label: "Следующий шаг", value: result.next_step || result.next_steps[0] },
@@ -181,17 +214,11 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
       <AnalysisSection title="Резюме">
         <div className="analysis-score-summary">
           <div className="analysis-score-meter" style={{ "--analysis-score": score.percent } as React.CSSProperties}>
-            <strong>{score.score === null ? "—" : formatScore(score.score)}</strong>
-            <span>/ {score.scale}</span>
+            <strong>{score.score === null ? "—" : formatScore(score.percent)}</strong>
+            <span>/ 100</span>
           </div>
           <div>
             <p>{result.summary || "Резюме не указано."}</p>
-            <small>
-              Баллы: {formatScore(result.score_breakdown.points_awarded)} /{" "}
-              {formatScore(result.score_breakdown.points_possible)} · применимо{" "}
-              {result.score_breakdown.applicable_criteria_count} из{" "}
-              {result.score_breakdown.total_criteria_count} критериев
-            </small>
           </div>
         </div>
       </AnalysisSection>
@@ -208,11 +235,13 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
                   </span>
                 </div>
                 <small>
-                  {formatScore(criterion.points_awarded)} / {formatScore(criterion.points_max)} баллов
+                  Оценка: {formatTenPointScore(criterion.score)} / 10
                 </small>
-                {criterion.issue && <p><b>Проблема:</b> {criterion.issue}</p>}
+                <p><b>Тема:</b> {criterion.topic}</p>
+                <p><b>Цитата:</b> {criterion.quote}</p>
+                {criterion.explanation && <p><b>Объяснение:</b> {criterion.explanation}</p>}
+                {!criterion.explanation && criterion.issue && <p><b>Объяснение:</b> {criterion.issue}</p>}
                 {criterion.recommendation && <p><b>Рекомендация:</b> {criterion.recommendation}</p>}
-                <EvidenceQuotes quotes={criterion.evidence_quotes} />
               </div>
             ))}
           </div>
@@ -220,9 +249,19 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
       )}
 
       {outcomeItems.length > 0 && (
-        <AnalysisSection title="Итог и сигналы клиента">
+        <AnalysisSection title="Итоговый вердикт">
           <div className="analysis-kv-grid">
             {outcomeItems.map((item) => (
+              <AnalysisKeyValue key={item.label} label={item.label} value={item.value} />
+            ))}
+          </div>
+        </AnalysisSection>
+      )}
+
+      {signalItems.length > 0 && (
+        <AnalysisSection title="Сигналы в разговоре">
+          <div className="analysis-kv-grid">
+            {signalItems.map((item) => (
               <AnalysisKeyValue key={item.label} label={item.label} value={item.value} />
             ))}
           </div>
@@ -259,6 +298,19 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
         <AnalysisSection title="Проблемные коды">
           <div className="topic-list">
             {result.issue_codes.map((code) => <span key={code}>{code}</span>)}
+          </div>
+        </AnalysisSection>
+      )}
+
+      {additionalFields.length > 0 && (
+        <AnalysisSection title="Дополнительные результаты анализа">
+          <div className="analysis-columns">
+            {additionalFields.map((field) => (
+              <div key={field.label}>
+                <strong>{field.label}</strong>
+                {Array.isArray(field.value) ? <AnalysisStringList items={field.value} emptyLabel="" /> : <p>{field.value}</p>}
+              </div>
+            ))}
           </div>
         </AnalysisSection>
       )}
@@ -334,13 +386,29 @@ export function AnalysisQuestionList({ questions }: { questions: AnalysisQuestio
   );
 }
 
+function hasText(value?: string) {
+  return Boolean(value?.trim());
+}
+
 function booleanLabel(value?: boolean | null) {
   if (typeof value !== "boolean") return undefined;
   return value ? "Да" : "Нет";
 }
 
-function hasText(value?: string) {
-  return Boolean(value?.trim());
+function meaningfulSignal(value?: string) {
+  if (!value || value === "unclear") return undefined;
+  return enumLabel(value, signalLevelLabels);
+}
+
+function outcomeVerdict(status: string, fallback: string) {
+  if (status && status !== "unclear") return enumLabel(status, businessOutcomeLabels);
+  return fallback || undefined;
+}
+
+function formatTenPointScore(score: number, scale = 100) {
+  if (!Number.isFinite(score) || !Number.isFinite(scale) || scale <= 0) return "—";
+  const normalized = Math.max(0, Math.min(10, (score / scale) * 10));
+  return formatScore(Math.round(normalized * 10) / 10);
 }
 
 function criterionStatusTone(status: string) {

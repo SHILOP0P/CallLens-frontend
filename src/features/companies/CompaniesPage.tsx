@@ -28,6 +28,7 @@ import { CallListSkeleton } from "../../shared/ui/loading";
 import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { InvitationCreatePanel } from "../invitations/InvitationsPage";
 import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
+import { AnalysisPersonalizationCard } from "../analysis-context/AnalysisPersonalizationCard";
 
 export function CompaniesPage({
   session,
@@ -380,6 +381,10 @@ export function CompanyWorkspace({
   onOpenDepartment: (companyId: string, departmentId: string) => void;
   onInvitationCreated: (invitation: Invitation) => void;
 }) {
+  const [leaveOpen, setLeaveOpen] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [leaveError, setLeaveError] = useState("");
+
   if (!company) {
     return (
       <section className="companies-layout">
@@ -398,11 +403,9 @@ export function CompanyWorkspace({
   }
 
   const isManager = company.manager_user_uuid === session.user.id;
-  const [leaveOpen, setLeaveOpen] = useState(false);
-  const [leaving, setLeaving] = useState(false);
-  const [leaveError, setLeaveError] = useState("");
 
   async function leaveCompany() {
+    if (!company) return;
     setLeaving(true);
     setLeaveError("");
     try {
@@ -442,6 +445,13 @@ export function CompanyWorkspace({
       </div>
 
       <div className="company-workspace-grid">
+        <AnalysisPersonalizationCard
+          scope="company"
+          ownerUuid={company.id}
+          title="Персонализация компании"
+          description="Используется для звонков компании и дополняется персонализацией отдела для звонков отдела."
+          editable={isManager}
+        />
         <section className="company-card glass">
           <div className="panel-heading">
             <div>
@@ -617,6 +627,15 @@ export function DepartmentWorkspace({
           <ProfileField label="Работников" value={members.length.toString()} />
         </div>
       </div>
+
+      <AnalysisPersonalizationCard
+        scope="department"
+        ownerUuid={department.id}
+        companyUuid={company.id}
+        title="Персонализация отдела"
+        description="Добавляется к контексту компании только при анализе звонков этого отдела."
+        editable={isManager || members.some((member) => member.user_uuid === session.user.id && member.role === "department_leader")}
+      />
 
       <section className="company-card glass">
         <div className="panel-heading">

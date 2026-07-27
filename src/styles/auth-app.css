@@ -4633,9 +4633,11 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
   position: fixed;
   inset: 0;
   z-index: 120;
-  display: grid;
-  place-items: center;
-  padding: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: clamp(16px, 4vh, 36px);
   background: rgba(12, 8, 6, 0.56);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -4645,7 +4647,9 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
   display: grid;
   gap: 14px;
   width: min(440px, 100%);
-  max-height: min(720px, calc(100vh - 48px));
+  max-height: min(680px, calc(100dvh - clamp(32px, 8vh, 72px)));
+  box-sizing: border-box;
+  overscroll-behavior: contain;
   overflow-y: auto;
   padding: 18px;
   color: var(--app-text);

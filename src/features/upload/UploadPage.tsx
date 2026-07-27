@@ -21,7 +21,6 @@ import type {
   CompanyResponse,
   DepartmentMemberResponse,
   DepartmentResponse,
-  PromptTopic,
   SessionState,
   VisibilityScope
 } from "../../types";
@@ -30,7 +29,6 @@ import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/ac
 import { callScopeLabel } from "../../shared/lib/formatters";
 import { FileDropZone, SelectControl } from "../../shared/ui/primitives";
 import { availableInstructionsForContext, InstructionChoiceList, instructionContextHint, InstructionMiniList, StepItem } from "../instructions/instruction-components";
-import { PromptContextSelector } from "./PromptContextSelector";
 
 const maxBatchFiles = 10;
 const mediaAccept = ".mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm,.mkv,audio/*,video/mp4,video/quicktime,video/webm,video/x-matroska";
@@ -79,7 +77,6 @@ export function UploadPage({
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [folderError, setFolderError] = useState("");
   const [selectedInstructionIds, setSelectedInstructionIds] = useState<string[]>([]);
-  const [promptTopics, setPromptTopics] = useState<PromptTopic[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -293,12 +290,11 @@ export function UploadPage({
       const sharedInput = {
         companyUuid: scope === "company" || scope === "department" ? companyId : undefined,
         departmentUuid: scope === "department" ? departmentId : undefined,
-        useCustomInstructions: selectedInstructionIds.length > 0
+        useCustomInstructions: selectedInstructionIds.length > 0,
+        folderUuid: folderId || undefined
       };
       if (uploadMode === "single" && media) {
         const created = await api.createCall({ ...sharedInput, title: title.trim(), media });
-        if (promptTopics.length > 0) await api.putCallPromptContext(created.id, { topic_keys: promptTopics.map((topic) => topic.key) });
-        if (folderId) await api.assignCallToFolder(folderId, created.id);
         onUploaded(created);
       } else {
         const queue = [...batchItems];
@@ -307,8 +303,6 @@ export function UploadPage({
           updateBatchItem(item.id, { status: "uploading", error: undefined });
           try {
             const created = await api.createCall({ ...sharedInput, title: item.title.trim() || undefined, media: item.file });
-            if (promptTopics.length > 0) await api.putCallPromptContext(created.id, { topic_keys: promptTopics.map((topic) => topic.key) });
-            if (folderId) await api.assignCallToFolder(folderId, created.id);
             onUploaded(created);
             updateBatchItem(item.id, { status: "success" });
             return true;
@@ -500,10 +494,20 @@ export function UploadPage({
           </small>
           {folderError && <div className="form-error compact">{folderError}</div>}
         </div>
-        <PromptContextSelector
-          disabled={busy}
-          onChange={setPromptTopics}
-        />
+        {folderId && (
+          <div className="folder-instruction-summary">
+            <strong>Инструкции папки</strong>
+            {(callFolders.find((folder) => folder.id === folderId)?.instructions ?? []).length > 0 ? (
+              <div className="folder-instruction-chips">
+                {callFolders.find((folder) => folder.id === folderId)?.instructions.map((instruction) => (
+                  <span key={instruction.id}>{instruction.title}</span>
+                ))}
+              </div>
+            ) : (
+              <small>К этой папке инструкции не прикреплены.</small>
+            )}
+          </div>
+        )}
         <div className="context-note">
           <CircleAlert size={18} />
           <span>
