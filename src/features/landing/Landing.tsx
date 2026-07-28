@@ -338,7 +338,6 @@ export function AuthDialog({
   const [firstName, setFirstName] = useState("Иван");
   const [lastName, setLastName] = useState("Петров");
   const [username, setUsername] = useState("");
-  const [post, setPost] = useState("Отдел продаж");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -358,8 +357,7 @@ export function AuthDialog({
             password,
             full_name: firstName,
             full_surname: lastName,
-            ...(username.trim() ? { username: username.trim() } : {}),
-            post
+            ...(username.trim() ? { username: username.trim() } : {})
           });
 
       onAuth({
@@ -410,10 +408,6 @@ export function AuthDialog({
                   onChange={(event) => setUsername(event.target.value)}
                   placeholder="@muxa"
                 />
-              </label>
-              <label>
-                Должность
-                <input value={post} onChange={(event) => setPost(event.target.value)} />
               </label>
             </div>
           )}

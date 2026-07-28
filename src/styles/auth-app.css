@@ -483,6 +483,23 @@ html[data-theme="light"] .calendar-popover {
   padding: 38px 40px 48px;
 }
 
+.workspace-frame:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+  height: calc(100dvh - 84px);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace:has(> :is(.calls-layout, .analysis-layout, .contacts-page)) {
+  padding-bottom: 0;
+}
+
+.app-shell:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 .app-sidebar {
   position: fixed;
   top: 104px;
@@ -3528,17 +3545,47 @@ html[data-theme="light"] .progress-ring::before {
   gap: 28px;
 }
 
+.app-shell :is(.calls-layout, .analysis-layout) {
+  align-items: stretch;
+  height: calc(100dvh - 104px);
+  min-height: 480px;
+  margin-top: -18px;
+  overflow: hidden;
+}
+
 .app-shell .calls-layout {
   grid-template-columns: minmax(430px, 0.46fr) minmax(0, 1fr);
   gap: 32px;
+}
+
+.app-shell .calls-layout > :is(.calls-sidebar, .call-overview),
+.app-shell .analysis-layout > :is(.calls-sidebar, .analysis-detail) {
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .app-shell .analysis-layout {
   grid-template-columns: minmax(330px, 0.34fr) minmax(0, 1fr);
 }
 
+.app-shell .contacts-page {
+  align-content: start;
+  height: calc(100dvh - 104px);
+  min-height: 480px;
+  margin-top: -18px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
 .app-shell .call-row {
   position: relative;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   overflow: visible;
   color: var(--app-text);
   background: rgba(255, 250, 245, 0.05);
@@ -3596,9 +3643,19 @@ html[data-theme="light"] .progress-ring::before {
 .call-row-actions {
   position: relative;
   z-index: 3;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 68px;
   cursor: default;
+}
+
+.call-row-actions > .icon-button {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 8px;
 }
 
 .call-row-menu-trigger {
@@ -3905,6 +3962,10 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
 
 .app-shell .report-format-grid {
   grid-template-columns: repeat(auto-fit, minmax(138px, 1fr));
+}
+
+.app-shell .call-overview .report-format-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .app-shell .report-format-button {
@@ -5317,9 +5378,41 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
 }
 
 @media (max-width: 1180px) {
+  .app-shell:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    overscroll-behavior: auto;
+  }
+
+  .workspace-frame:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+    height: auto;
+    min-height: calc(100vh - 72px);
+    overflow: visible;
+  }
+
+  .workspace:has(> :is(.calls-layout, .analysis-layout, .contacts-page)) {
+    padding-bottom: 48px;
+  }
+
   .app-shell .calls-layout,
   .app-shell .analysis-layout {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell :is(.calls-layout, .analysis-layout, .contacts-page) {
+    height: auto;
+    min-height: 0;
+    margin-top: 0;
+    overflow: visible;
+  }
+
+  .app-shell .calls-layout > :is(.calls-sidebar, .call-overview),
+  .app-shell .analysis-layout > :is(.calls-sidebar, .analysis-detail) {
+    height: auto;
+    overflow: visible;
+    overscroll-behavior: auto;
+    scrollbar-gutter: auto;
   }
 
   .reports-kpi-grid {

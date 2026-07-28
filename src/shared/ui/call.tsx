@@ -11,6 +11,7 @@ import type {
   CallStatus,
   TranscriptionResponse
 } from "../../types";
+import type { Ref } from "react";
 
 import {
   activeCallProcess,
@@ -149,7 +150,8 @@ export function InfoCard({
   children,
   onAction,
   actionVariant = "link",
-  expanded = false
+  expanded = false,
+  cardRef
 }: {
   title: string;
   status: string;
@@ -160,9 +162,10 @@ export function InfoCard({
   onAction?: () => void;
   actionVariant?: "link" | "analysis";
   expanded?: boolean;
+  cardRef?: Ref<HTMLDivElement>;
 }) {
   return (
-    <div className="info-card">
+    <div className="info-card" ref={cardRef}>
       <div className="card-title">
         <h3>{title}</h3>
         <span className={`status-chip ${statusTone} ${statusThinking ? "thinking-status" : ""}`}>{status}</span>

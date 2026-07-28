@@ -158,7 +158,6 @@ export function ProfileEditPage({
   const [username, setUsername] = useState(formatUsername(session.user.username));
   const [fullName, setFullName] = useState(session.user.full_name);
   const [fullSurname, setFullSurname] = useState(session.user.full_surname);
-  const [post, setPost] = useState(session.user.post ?? "");
   const [phone, setPhone] = useState(session.user.phone ?? "");
   const [timezone, setTimezone] = useState(session.user.timezone ?? "Europe/Moscow");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -174,7 +173,6 @@ export function ProfileEditPage({
     setUsername(formatUsername(session.user.username));
     setFullName(session.user.full_name);
     setFullSurname(session.user.full_surname);
-    setPost(session.user.post ?? "");
     setPhone(session.user.phone ?? "");
     setTimezone(session.user.timezone ?? "Europe/Moscow");
   }, [session.user.username]);
@@ -195,7 +193,6 @@ export function ProfileEditPage({
       let updatedUser = await api.updateProfile({
         full_name: fullName.trim(),
         full_surname: fullSurname.trim(),
-        post: post.trim() || null,
         phone: phone.trim() || null,
         timezone: timezone.trim() || null
       });
@@ -267,10 +264,6 @@ export function ProfileEditPage({
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </SelectControl>
-            </label>
-            <label>
-              Должность
-              <input value={post} onChange={(event) => setPost(event.target.value)} placeholder="Менеджер" />
             </label>
           </div>
           {error && <div className="form-error">{error}</div>}

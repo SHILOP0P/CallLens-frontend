@@ -78,6 +78,8 @@ export function CallDetailPanel({
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
+  const transcriptCardRef = useRef<HTMLDivElement | null>(null);
+  const analysisCardRef = useRef<HTMLDivElement | null>(null);
   const score = analysisScore100(analysis);
 
   useEffect(() => {
@@ -133,6 +135,17 @@ export function CallDetailPanel({
 
   const transcriptionState = transcriptionCardState(call, transcription);
   const analysisState = analysisCardState(call, analysis);
+
+  function toggleExpandedCard(
+    expanded: boolean,
+    setExpanded: React.Dispatch<React.SetStateAction<boolean>>,
+    cardRef: React.RefObject<HTMLDivElement | null>
+  ) {
+    setExpanded((current) => !current);
+    if (expanded) {
+      requestAnimationFrame(() => cardRef.current?.scrollIntoView({ block: "nearest" }));
+    }
+  }
 
   async function deleteSelectedCall() {
     if (!call || !onDeleteCall || deleting) return;
@@ -247,11 +260,12 @@ export function CallDetailPanel({
       <div className="detail-grid">
         <InfoCard
           title="Расшифровка"
+          cardRef={transcriptCardRef}
           status={transcriptionState.label}
           statusTone={transcriptionState.tone}
           statusThinking={transcriptionState.thinking}
           action={showFullTranscript ? "Свернуть расшифровку" : "Открыть полную расшифровку"}
-          onAction={() => setShowFullTranscript((current) => !current)}
+          onAction={() => toggleExpandedCard(showFullTranscript, setShowFullTranscript, transcriptCardRef)}
           actionVariant="analysis"
           expanded={showFullTranscript}
         >
@@ -259,11 +273,12 @@ export function CallDetailPanel({
         </InfoCard>
         <InfoCard
           title="AI-анализ"
+          cardRef={analysisCardRef}
           status={analysisState.label}
           statusTone={analysisState.tone}
           statusThinking={analysisState.thinking}
           action={showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
-          onAction={() => setShowFullAnalysis((current) => !current)}
+          onAction={() => toggleExpandedCard(showFullAnalysis, setShowFullAnalysis, analysisCardRef)}
           actionVariant="analysis"
           expanded={showFullAnalysis}
         >
