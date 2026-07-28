@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Building2, CheckCircle2, Headphones, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+import { Activity, ArrowLeft, Building2, CheckCircle2, Headphones, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 import { api, ApiError, getAdminCallAudioBlob } from "../../api";
 import { isVideoCall } from "../../shared/lib/media";
 import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
 import { SelectControl } from "../../shared/ui/primitives";
 import type {
+  AppPage,
   AdminCapabilitiesResponse,
   CallResponse,
   CompanyResponse,
@@ -49,7 +50,7 @@ function adminDetailFromPath(pathname: string): AdminDetailRoute {
   return match ? { section: match[1] as AdminSection, id: decodeURIComponent(match[2]) } : null;
 }
 
-export function AdminPage({ capabilities }: { capabilities: AdminCapabilitiesResponse }) {
+export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCapabilitiesResponse; onNavigate: (page: AppPage) => void }) {
   const availableSections = useMemo<AdminSection[]>(() => [
     ...(has(capabilities, "admin.users.read") ? ["users" as const] : []),
     ...(has(capabilities, "admin.companies.read") ? ["companies" as const] : [])
@@ -187,6 +188,7 @@ export function AdminPage({ capabilities }: { capabilities: AdminCapabilitiesRes
       <nav className="admin-nav" aria-label="Административные разделы">
         {has(capabilities, "admin.users.read") && <button className={section === "users" ? "active" : ""} type="button" onClick={() => setSection("users")}><span><Users size={17} />Пользователи</span></button>}
         {has(capabilities, "admin.companies.read") && <button className={section === "companies" ? "active" : ""} type="button" onClick={() => setSection("companies")}><span><Building2 size={17} />Компании</span></button>}
+        {has(capabilities, "admin.monitoring.read") && <button type="button" onClick={() => onNavigate("monitoring")}><span><Activity size={17} />Мониторинг</span></button>}
       </nav>
       <div className="admin-content">
         <>

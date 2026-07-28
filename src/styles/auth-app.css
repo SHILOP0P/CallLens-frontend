@@ -4823,8 +4823,12 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
 .call-scope-tabs.segmented.scope {
   width: 100%;
   max-width: 100%;
-  margin: 6px 0 4px;
+  margin: 0 0 4px;
   grid-auto-columns: minmax(0, 1fr);
+}
+
+.call-favorite-filter {
+  margin: 12px 0 14px;
 }
 
 .call-scope-tabs.segmented.scope button {

@@ -664,6 +664,14 @@ export const api = {
     return request<UserResponse>(`/users/lookup?${query}`);
   },
 
+  listContacts() { return request<UserResponse[]>("/contacts"); },
+  searchContacts(query: string) { return request<UserResponse[]>(`/contacts/search?${new URLSearchParams({ q: query })}`); },
+  addContact(userId: string) { return request<void>(`/contacts/${encodeURIComponent(userId)}`, { method: "PUT" }); },
+  removeContact(userId: string) { return request<void>(`/contacts/${encodeURIComponent(userId)}`, { method: "DELETE" }); },
+  listFavoriteCalls() { return request<CallResponse[]>("/favorite-calls"); },
+  addFavoriteCall(callId: string) { return request<void>(`/favorite-calls/${encodeURIComponent(callId)}`, { method: "PUT" }); },
+  removeFavoriteCall(callId: string) { return request<void>(`/favorite-calls/${encodeURIComponent(callId)}`, { method: "DELETE" }); },
+
   listCalls(filters?: {
     q?: string;
     status?: CallStatus;
@@ -695,6 +703,8 @@ export const api = {
       departmentUuid?: string;
       useCustomInstructions?: boolean;
       folderUuid?: string;
+      speakerHints?: Array<{ userId: string; name: string; username?: string; role: "self" | "other"; note?: string }>;
+      diarizationRoles?: Array<{ name: string; description?: string }>;
     }
   ) {
     const body = new FormData();
@@ -706,6 +716,8 @@ export const api = {
     if (typeof input.useCustomInstructions === "boolean") {
       body.append("use_custom_instructions", String(input.useCustomInstructions));
     }
+    if (input.speakerHints?.length) body.append("speaker_hints", JSON.stringify(input.speakerHints));
+    if (input.diarizationRoles?.length) body.append("diarization_roles", JSON.stringify(input.diarizationRoles));
 
     return request<CallResponse>("/calls", { method: "POST", body });
   },

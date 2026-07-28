@@ -477,7 +477,7 @@ export function AuthenticatedShell({
                   type="button"
                   onClick={() => {
                     setDateOpen(false);
-                    onNavigate("settingsProfileEdit");
+                    onNavigate("profileEdit");
                   }}
                 >
                   Настроить часовой пояс
@@ -544,7 +544,7 @@ export function AuthenticatedShell({
                   type="button"
                   onClick={() => {
                     setProfileOpen(false);
-                    onNavigate("settingsProfile");
+                    onNavigate("profile");
                   }}
                 >
                   <UserRound size={17} />

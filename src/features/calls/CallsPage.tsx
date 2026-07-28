@@ -8,6 +8,7 @@ import {
   Pencil,
   Play,
   Plus,
+  Star,
   Trash2,
   X
 } from "lucide-react";
@@ -112,6 +113,7 @@ export function CallsPage({
   const [callActionError, setCallActionError] = useState("");
   const [callBusyId, setCallBusyId] = useState("");
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
+  const [favoriteCallIds, setFavoriteCallIds] = useState<string[]>([]);
   const effectiveScopeFilter =
     companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
       ? "all"
@@ -126,7 +128,7 @@ export function CallsPage({
   const hasBackendFilters = Object.values(filterInput).some(Boolean);
   const displayedCalls = serverCalls ?? calls;
   const callsRefreshKey = calls.map((call) => `${call.id}:${call.status}`).join("|");
-  const filteredCalls = hasBackendFilters ? displayedCalls : calls.filter((call) => {
+  const filteredCalls = (hasBackendFilters ? displayedCalls : calls).filter((call) => {
     const query = searchQuery.trim().toLowerCase();
     const matchesScope = effectiveScopeFilter === "all" || call.visibility_scope === effectiveScopeFilter;
     const matchesStatus = statusFilter === "all" || call.status === statusFilter;
@@ -136,6 +138,19 @@ export function CallsPage({
 
     return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod;
   });
+
+  const [favoriteOnly, setFavoriteOnly] = useState(false);
+  useEffect(() => { api.listFavoriteCalls().then((items) => setFavoriteCallIds(items.map((call) => call.id))).catch(() => setFavoriteCallIds([])); }, []);
+
+  async function toggleFavoriteCall(callId: string) {
+    const isFavorite = favoriteCallIds.includes(callId);
+    setCallBusyId(callId);
+    try {
+      if (isFavorite) { await api.removeFavoriteCall(callId); setFavoriteCallIds((items) => items.filter((id) => id !== callId)); }
+      else { await api.addFavoriteCall(callId); setFavoriteCallIds((items) => [...items, callId]); }
+    } catch (error) { setCallActionError(friendlyCallActionError(error, "Не удалось изменить избранное.")); }
+    finally { setCallBusyId(""); }
+  }
 
   useEffect(() => {
     if (!folderEditorOpen) return;
@@ -611,6 +626,7 @@ export function CallsPage({
   function renderSidebarCallRow(call: CallResponse, folderId?: string) {
     const selected = selectedCallId === call.id;
     const open = openCallMenuId === call.id;
+    const isFavorite = favoriteCallIds.includes(call.id);
     const selectCallFromRow = () => {
       if (folderId) {
         selectFolderCall(call.id, folderId);
@@ -648,6 +664,7 @@ export function CallsPage({
           onPointerDown={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
+          <button className={`icon-button call-favorite-button ${isFavorite ? "active" : ""}`} type="button" aria-label={isFavorite ? "Убрать из избранного" : "Добавить в избранное"} disabled={callBusyId === call.id} onClick={() => void toggleFavoriteCall(call.id)}><Star size={15} fill={isFavorite ? "currentColor" : "none"} /></button>
           <button
             className="icon-button call-row-menu-trigger"
             type="button"
@@ -753,6 +770,18 @@ export function CallsPage({
             onChange={(event) => setSearchQuery(event.target.value)}
           />
         </div>
+        <label className={`call-favorite-filter ${favoriteOnly ? "checked" : ""}`}>
+          <input
+            className="call-favorite-filter-input"
+            type="checkbox"
+            checked={favoriteOnly}
+            onChange={(event) => setFavoriteOnly(event.target.checked)}
+          />
+          <span className="call-favorite-filter-box" aria-hidden="true">
+            {favoriteOnly && <Check size={12} strokeWidth={3} />}
+          </span>
+          <span>Только избранные</span>
+        </label>
         <div className="call-scope-tabs segmented scope">
           {scopeOptions.map(([value, label]) => (
             <button
@@ -784,7 +813,7 @@ export function CallsPage({
           <div className="call-folder-tree">
             {visibleFolders.map((folder) => {
               const expanded = Boolean(expandedFolderIds[folder.id]);
-              const folderCalls = (folderCallsById[folder.id] ?? []).filter(matchesSidebarFilters);
+              const folderCalls = (folderCallsById[folder.id] ?? []).filter(matchesSidebarFilters).filter((call) => !favoriteOnly || favoriteCallIds.includes(call.id));
               const folderLoading = folderCallsLoading && !folderCallsById[folder.id];
 
               return (
@@ -875,7 +904,7 @@ export function CallsPage({
         <div className="call-list">
           {(loading || filtersLoading || folderCallsLoading) && <CallListSkeleton count={4} />}
           {!loading && !filtersLoading && !folderCallsLoading &&
-            callsWithoutVisibleFolder.map((call) => renderSidebarCallRow(call))}
+            callsWithoutVisibleFolder.filter((call) => !favoriteOnly || favoriteCallIds.includes(call.id)).map((call) => renderSidebarCallRow(call))}
           {!loading && !filtersLoading && !folderCallsLoading && callsWithoutVisibleFolder.length === 0 && (
             <div className="empty-state">{calls.length === 0 ? "Звонков пока нет." : "Звонков без папки по фильтрам нет."}</div>
           )}

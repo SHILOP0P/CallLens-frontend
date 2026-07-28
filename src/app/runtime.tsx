@@ -1,5 +1,4 @@
 import {
-  Activity,
   BarChart3,
   BrainCircuit,
   Building2,
@@ -8,6 +7,7 @@ import {
   CloudUpload,
   PhoneCall,
   Settings,
+  UsersRound,
   ShieldCheck
 } from "lucide-react";
 import { useEffect } from "react";
@@ -42,15 +42,16 @@ export const pageRoutes: Record<AppPage, string> = {
   calls: "/app/calls",
   analysis: "/app/analysis",
   reports: "/app/reports",
+  contacts: "/app/contacts",
   monitoring: "/app/monitoring",
   settings: "/app/settings",
   settingsTariffs: "/app/settings/tariffs",
   settingsCompanies: "/app/settings/companies",
   settingsInstructions: "/app/settings/instructions",
   settingsInvitations: "/app/settings/invitations",
-  settingsProfile: "/app/settings/profile",
-  settingsProfileEdit: "/app/settings/profile/edit",
-  settingsDevices: "/app/settings/devices",
+  profile: "/app/profile",
+  profileEdit: "/app/profile/edit",
+  profileDevices: "/app/profile/devices",
   upload: "/app/upload",
   admin: "/app/admin"
 };
@@ -60,7 +61,7 @@ export const navItems: Array<{ page: AppPage; label: string; }> = [
   { page: "calls", label: "Звонки" },
   { page: "analysis", label: "Аналитика" },
   { page: "reports", label: "AI-отчеты" },
-  { page: "monitoring", label: "Мониторинг" },
+  { page: "contacts", label: "Контакты" },
   { page: "settings", label: "Настройки" }
 ];
 
@@ -69,7 +70,7 @@ export const sidebarItems: Array<{ page: AppPage; label: string; icon: React.Rea
   { page: "calls", label: "Звонки", icon: <PhoneCall size={19} /> },
   { page: "analysis", label: "Аналитика", icon: <BarChart3 size={19} /> },
   { page: "reports", label: "AI-отчеты", icon: <FileBarChart2 size={19} /> },
-  { page: "monitoring", label: "Мониторинг", icon: <Activity size={19} /> },
+  { page: "contacts", label: "Контакты", icon: <UsersRound size={19} /> },
   { page: "settingsCompanies", label: "Компании", icon: <Building2 size={19} /> },
   { page: "settings", label: "Настройки", icon: <Settings size={19} /> }
 ];
@@ -97,16 +98,6 @@ export const settingsRoutes: Array<{ page: AppPage; label: string; description: 
     label: "Инструкции",
     description: "Правила и критерии для AI-анализа звонков."
   },
-  {
-    page: "settingsProfile",
-    label: "Профиль",
-    description: "Личные данные, безопасность и уведомления."
-  },
-  {
-    page: "settingsDevices",
-    label: "Устройства",
-    description: "Активные входы, браузеры и завершение лишних сессий."
-  }
 ];
 
 const pathAliases: Record<string, AppPage> = {
@@ -114,8 +105,10 @@ const pathAliases: Record<string, AppPage> = {
   "/app/companies": "settingsCompanies",
   "/app/instructions": "settingsInstructions",
   "/app/invitations": "settingsInvitations",
-  "/app/profile": "settingsProfile",
-  "/app/devices": "settingsDevices"
+  "/app/settings/profile": "profile",
+  "/app/settings/profile/edit": "profileEdit",
+  "/app/settings/devices": "profileDevices",
+  "/app/devices": "profileDevices"
 };
 
 export function isSettingsPage(page: AppPage) {
@@ -130,7 +123,7 @@ export function pageFromPath(pathname: string): AppPage {
   if (/^\/app\/admin\/(?:users|companies)\/[^/]+$/.test(pathname)) return "admin";
   if (/^\/app\/settings\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";
   if (/^\/app\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";
-  if (pathname === "/app/settings/profile/edit") return "settingsProfileEdit";
+  if (pathname === "/app/profile/edit") return "profileEdit";
 
   const entry = Object.entries(pageRoutes).find(([, route]) => route === pathname);
   if (entry) return entry[0] as AppPage;

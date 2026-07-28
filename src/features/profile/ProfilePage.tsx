@@ -51,12 +51,10 @@ const timeZoneOptions = [
 export function ProfilePage({
   session,
   companies,
-  onBackToSettings,
   onNavigate
 }: {
   session: SessionState;
   companies: CompanyResponse[];
-  onBackToSettings: () => void;
   onUserUpdated: (user: UserResponse) => void;
   onCompanyCreated: (company: CompanyResponse) => void | Promise<void>;
   onNavigate: (page: AppPage) => void;
@@ -69,12 +67,6 @@ export function ProfilePage({
 
   return (
     <section className="profile-layout app-page">
-      <div className="settings-back-row">
-        <button className="ghost-button small" type="button" onClick={onBackToSettings}>
-          <ArrowLeft size={16} />
-          Назад
-        </button>
-      </div>
       <div className="app-page-heading settings-heading">
         <span className="settings-heading-icon" aria-hidden="true">
           <UserRound size={26} />
@@ -95,7 +87,7 @@ export function ProfilePage({
               </h2>
               <p>{roleLabel(session.user.role)} • {session.user.post || "должность не указана"}</p>
             </div>
-            <button className="primary-button" type="button" onClick={() => onNavigate("settingsProfileEdit")}>
+            <button className="primary-button" type="button" onClick={() => onNavigate("profileEdit")}>
               <Pencil size={17} />
               Изменить профиль
             </button>
@@ -121,7 +113,7 @@ export function ProfilePage({
             title="Устройства"
             note="Активные входы и завершение лишних сессий"
             action="Открыть"
-            onAction={() => onNavigate("settingsDevices")}
+            onAction={() => onNavigate("profileDevices")}
           />
           <SecurityRow icon={<Bell size={18} />} title="Уведомления" note="Email и системные события" />
         </aside>
@@ -224,7 +216,7 @@ export function ProfileEditPage({
   return (
     <section className="profile-edit-page app-page">
       <div className="settings-back-row">
-        <button className="ghost-button small" type="button" onClick={() => onNavigate("settingsProfile")}>
+        <button className="ghost-button small" type="button" onClick={() => onNavigate("profile")}>
           <ArrowLeft size={16} />
           Назад
         </button>
@@ -288,7 +280,7 @@ export function ProfileEditPage({
               <Pencil size={18} />
               {busy ? "Сохраняю..." : "Сохранить изменения"}
             </button>
-            <button className="ghost-button" type="button" onClick={() => onNavigate("settingsProfile")}>
+            <button className="ghost-button" type="button" onClick={() => onNavigate("profile")}>
               Отмена
             </button>
           </div>
@@ -375,10 +367,10 @@ export function ProfileEditPage({
 }
 
 export function DevicesPage({
-  onBackToSettings,
+  onBackToProfile,
   onLogoutAll
 }: {
-  onBackToSettings: () => void;
+  onBackToProfile: () => void;
   onLogoutAll: () => Promise<void>;
 }) {
   const [sessions, setSessions] = useState<Array<{ id: string; current: boolean; user_agent: string | null; ip: string | null; created_at: string; last_seen_at: string | null }>>([]);
@@ -422,7 +414,7 @@ export function DevicesPage({
   return (
     <section className="devices-page app-page settings-subpage-layout">
       <div className="settings-back-row">
-        <button className="ghost-button small" type="button" onClick={onBackToSettings}>
+        <button className="ghost-button small" type="button" onClick={onBackToProfile}>
           <ArrowLeft size={16} />
           Назад
         </button>

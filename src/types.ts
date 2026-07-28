@@ -3,15 +3,16 @@ export type AppPage =
   | "calls"
   | "analysis"
   | "reports"
+  | "contacts"
   | "monitoring"
   | "settings"
   | "settingsTariffs"
   | "settingsCompanies"
   | "settingsInstructions"
   | "settingsInvitations"
-  | "settingsProfile"
-  | "settingsProfileEdit"
-  | "settingsDevices"
+  | "profile"
+  | "profileEdit"
+  | "profileDevices"
   | "admin"
   | "upload";
 export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
@@ -213,6 +214,9 @@ export interface CallResponse {
   department_uuid?: string | null;
   visibility_scope: VisibilityScope;
   use_custom_instructions?: boolean;
+  speaker_hints?: Array<{ user_id: string; name: string; username?: string; role: "self" | "manager" | "client" | "other"; note?: string }>;
+  diarization_roles?: Array<{ name: string; description?: string }>;
+  is_favorite?: boolean;
   created_at: string;
 }
 

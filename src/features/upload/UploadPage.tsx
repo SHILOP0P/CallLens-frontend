@@ -7,6 +7,8 @@ import {
   FileVideo,
   FileText,
   Pencil,
+  Plus,
+  UserRound,
   Upload,
   UsersRound,
   X
@@ -22,6 +24,7 @@ import type {
   DepartmentMemberResponse,
   DepartmentResponse,
   SessionState,
+  UserResponse,
   VisibilityScope
 } from "../../types";
 
@@ -42,6 +45,14 @@ type BatchUploadItem = {
   status: "pending" | "uploading" | "success" | "failed";
   error?: string;
 };
+type SpeakerHint = {
+  id: string;
+  name: string;
+  username?: string;
+  role: "self" | "other";
+  note: string;
+};
+type DiarizationRoleDraft = { id: string; name: string; description: string };
 
 export function UploadPage({
   session,
@@ -77,6 +88,12 @@ export function UploadPage({
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [folderError, setFolderError] = useState("");
   const [selectedInstructionIds, setSelectedInstructionIds] = useState<string[]>([]);
+  const [contacts, setContacts] = useState<UserResponse[]>([]);
+  const [selectedContactId, setSelectedContactId] = useState("");
+  const [speakerHints, setSpeakerHints] = useState<SpeakerHint[]>([]);
+  const [diarizationRoles, setDiarizationRoles] = useState<DiarizationRoleDraft[]>([]);
+  const [roleName, setRoleName] = useState("");
+  const [roleDescription, setRoleDescription] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -204,12 +221,64 @@ export function UploadPage({
     };
   }, [companyId, departmentId, scope]);
 
+  useEffect(() => {
+    let cancelled = false;
+    api.listContacts().then((items) => {
+      if (!cancelled) setContacts(items);
+    }).catch(() => {
+      if (!cancelled) setContacts([]);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   function toggleInstruction(instructionId: string) {
     setSelectedInstructionIds((current) =>
       current.includes(instructionId)
         ? current.filter((id) => id !== instructionId)
         : [...current, instructionId]
     );
+  }
+
+  function addSpeakerHint(user?: UserResponse) {
+    const id = user?.id ?? session.user.id;
+    if (speakerHints.some((hint) => hint.id === id)) return;
+    if (speakerHints.length + diarizationRoles.length >= 10) {
+      setError("Для идентификации можно указать не более 10 участников и ролей.");
+      return;
+    }
+    const name = user
+      ? `${user.full_name} ${user.full_surname}`.trim() || user.username
+      : `${session.user.full_name} ${session.user.full_surname}`.trim() || session.user.username;
+    setSpeakerHints((current) => [...current, {
+      id,
+      name,
+      username: user?.username ?? session.user.username,
+      role: user ? "other" : "self",
+      note: ""
+    }]);
+    setSelectedContactId("");
+  }
+
+  function updateSpeakerHint(id: string, update: Pick<SpeakerHint, "note">) {
+    setSpeakerHints((current) => current.map((hint) => hint.id === id ? { ...hint, ...update } : hint));
+  }
+
+  function addDiarizationRole() {
+    const name = roleName.trim();
+    const description = roleDescription.trim();
+    if (!name) return;
+    if (speakerHints.length + diarizationRoles.length >= 10) {
+      setError("Для идентификации можно указать не более 10 участников и ролей.");
+      return;
+    }
+    if (diarizationRoles.some((role) => role.name.toLocaleLowerCase() === name.toLocaleLowerCase()) || speakerHints.some((hint) => hint.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setError("Имена участников и названия ролей не должны повторяться.");
+      return;
+    }
+    setError("");
+    setDiarizationRoles((current) => [...current, { id: `${Date.now()}-${name}`, name, description }]);
+    setRoleName("");
+    setRoleDescription("");
   }
 
   function selectBatchFiles(files: FileList | null) {
@@ -291,7 +360,15 @@ export function UploadPage({
         companyUuid: scope === "company" || scope === "department" ? companyId : undefined,
         departmentUuid: scope === "department" ? departmentId : undefined,
         useCustomInstructions: selectedInstructionIds.length > 0,
-        folderUuid: folderId || undefined
+        folderUuid: folderId || undefined,
+        speakerHints: speakerHints.map(({ id, name, username, role, note }) => ({
+          userId: id,
+          name,
+          username,
+          role,
+          note: note.trim()
+        })),
+        diarizationRoles: diarizationRoles.map(({ name, description }) => ({ name, description }))
       };
       if (uploadMode === "single" && media) {
         const created = await api.createCall({ ...sharedInput, title: title.trim(), media });
@@ -508,6 +585,54 @@ export function UploadPage({
             )}
           </div>
         )}
+        <section className="speaker-hints">
+          <div className="speaker-hints-heading">
+            <div>
+              <strong>Участники звонка</strong>
+              <small>Вы и контакты будут показаны по ФИО. Без участников звонок расшифровывается без меток спикеров.</small>
+            </div>
+            <UserRound size={21} />
+          </div>
+          <div className="speaker-hints-add">
+            <button className="ghost-button small" type="button" disabled={busy || speakerHints.some((hint) => hint.id === session.user.id)} onClick={() => addSpeakerHint()}>
+              <Plus size={15} /> Добавить себя
+            </button>
+            <SelectControl aria-label="Добавить контакт в участники" value={selectedContactId} disabled={busy || contacts.length === 0} onChange={(event) => {
+              const contact = contacts.find((item) => item.id === event.target.value);
+              if (contact) addSpeakerHint(contact);
+            }}>
+              <option value="">Добавить контакт…</option>
+              {contacts.filter((contact) => !speakerHints.some((hint) => hint.id === contact.id)).map((contact) => (
+                <option key={contact.id} value={contact.id}>{`${contact.full_name} ${contact.full_surname}`.trim() || contact.username}</option>
+              ))}
+            </SelectControl>
+          </div>
+          {speakerHints.length === 0 ? (
+            <p className="speaker-hints-empty">Необязательно. Без участников будет обычная расшифровка без идентификации спикеров.</p>
+          ) : (
+            <div className="speaker-hints-list">
+              {speakerHints.map((hint) => (
+                <article className="speaker-hint-row" key={hint.id}>
+                  <span className="avatar">{hint.name[0]?.toUpperCase() ?? "У"}</span>
+                  <div className="speaker-hint-person"><strong title={hint.name}>{hint.name}</strong><small>{hint.role === "self" ? "Вы" : hint.username?.startsWith("@") ? hint.username : `@${hint.username ?? ""}`}</small></div>
+                  <input aria-label={`Уточнение для ${hint.name}`} value={hint.note} maxLength={160} disabled={busy} placeholder="Необязательная подсказка" onChange={(event) => updateSpeakerHint(hint.id, { note: event.target.value })} />
+                  <button className="icon-button" type="button" aria-label={`Убрать ${hint.name}`} disabled={busy} onClick={() => setSpeakerHints((current) => current.filter((item) => item.id !== hint.id))}><X size={16} /></button>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+        <section className="diarization-roles">
+          <div className="speaker-hints-heading">
+            <div><strong>Дополнительные роли</strong><small>Для участников без известного профиля: интервьюер, кандидат, председатель комиссии, эксперт и любые другие.</small></div>
+          </div>
+          <div className="diarization-role-add">
+            <input value={roleName} maxLength={80} disabled={busy} placeholder="Название роли" onChange={(event) => setRoleName(event.target.value)} />
+            <input value={roleDescription} maxLength={300} disabled={busy} placeholder="Как распознать эту роль по разговору" onChange={(event) => setRoleDescription(event.target.value)} />
+            <button className="ghost-button small" type="button" disabled={busy || !roleName.trim()} onClick={addDiarizationRole}><Plus size={15} />Добавить роль</button>
+          </div>
+          {diarizationRoles.length > 0 && <div className="diarization-role-list">{diarizationRoles.map((role) => <article key={role.id}><div><strong>{role.name}</strong><small>{role.description || "Без дополнительного описания"}</small></div><button className="icon-button" type="button" aria-label={`Убрать роль ${role.name}`} disabled={busy} onClick={() => setDiarizationRoles((current) => current.filter((item) => item.id !== role.id))}><X size={16} /></button></article>)}</div>}
+        </section>
         <div className="context-note">
           <CircleAlert size={18} />
           <span>

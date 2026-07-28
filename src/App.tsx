@@ -28,6 +28,7 @@ import { loadOrganizationContext, loadWorkspaceContext } from "./app/workspace-l
 import { AnalysisPage } from "./features/analysis/AnalysisPage";
 import { CallsPage } from "./features/calls/CallsPage";
 import { CompaniesPage } from "./features/companies/CompaniesPage";
+import { ContactsPage } from "./features/contacts/ContactsPage";
 import { InstructionsPage } from "./features/instructions/InstructionsPage";
 import { InvitationsPage } from "./features/invitations/InvitationsPage";
 import { Landing } from "./features/landing/Landing";
@@ -106,6 +107,20 @@ function App() {
       setSelectedDepartmentId("");
     }
   }, [authReady, session]);
+
+  useEffect(() => {
+    const legacyProfileRoutes: Record<string, string> = {
+      "/app/settings/profile": "/app/profile",
+      "/app/settings/profile/edit": "/app/profile/edit",
+      "/app/settings/devices": "/app/profile/devices",
+      "/app/devices": "/app/profile/devices"
+    };
+    const replacement = legacyProfileRoutes[window.location.pathname];
+    if (replacement) {
+      window.history.replaceState({}, "", replacement);
+      setPage(pageFromPath(replacement));
+    }
+  }, []);
 
   useEffect(() => {
     const onPopState = () => {
@@ -625,9 +640,11 @@ function App() {
         />
       )}
 
-      {page === "monitoring" && <MonitoringPage calls={calls} />}
+      {page === "contacts" && <ContactsPage />}
 
-      {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} />}
+      {page === "monitoring" && adminCapabilities && <MonitoringPage calls={calls} />}
+
+      {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} onNavigate={navigate} />}
 
       {page === "settings" && <SettingsPage onNavigate={navigate} />}
 
@@ -702,11 +719,10 @@ function App() {
         />
       )}
 
-      {page === "settingsProfile" && (
+      {page === "profile" && (
         <ProfilePage
           session={session}
           companies={companies}
-          onBackToSettings={() => navigate("settings")}
           onUserUpdated={updateSessionUser}
           onCompanyCreated={async (company) => {
             setCompanies((current) => [company, ...current]);
@@ -716,7 +732,7 @@ function App() {
         />
       )}
 
-      {page === "settingsProfileEdit" && (
+      {page === "profileEdit" && (
         <ProfileEditPage
           session={session}
           onUserUpdated={updateSessionUser}
@@ -724,9 +740,9 @@ function App() {
         />
       )}
 
-      {page === "settingsDevices" && (
+      {page === "profileDevices" && (
         <DevicesPage
-          onBackToSettings={() => navigate("settings")}
+          onBackToProfile={() => navigate("profile")}
           onLogoutAll={logoutAllSessions}
         />
       )}
