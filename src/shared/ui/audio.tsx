@@ -303,9 +303,6 @@ export function CallAudioPlayer({ call }: { call: CallResponse; }) {
       </button>
       <div className="audio-player-main">
         <div className="audio-player-track-row">
-          <span className="audio-time" title={audioError || (loadingWaveform ? "Строю звуковую дорожку" : undefined)}>
-            {currentTimeLabel}
-          </span>
           <div
             ref={waveformRef}
             className={`audio-waveform ${waveformReady ? "ready" : "empty"}`}
@@ -334,54 +331,62 @@ export function CallAudioPlayer({ call }: { call: CallResponse; }) {
               );
             })}
           </div>
-          <span className="audio-time total">{formatDuration(Math.round(effectiveDuration))}</span>
-          <div className="audio-player-actions">
-            <div
-              className={`audio-speed-control ${speedMenuOpen ? "open" : ""} ${audioDisabled ? "disabled" : ""}`}
-              ref={speedControlRef}
-            >
-              <button
-                className="audio-speed-button"
-                type="button"
-                disabled={audioDisabled}
-                aria-haspopup="menu"
-                aria-expanded={speedMenuOpen}
-                aria-label="Скорость воспроизведения"
-                onKeyDown={handleSpeedKeyDown}
-                onPointerCancel={clearSpeedHoldTimer}
-                onPointerDown={handleSpeedPointerDown}
-                onPointerLeave={clearSpeedHoldTimer}
-                onPointerUp={handleSpeedPointerUp}
-              >
-                {playbackRate}x
-              </button>
-              <div className="audio-speed-menu" role="menu">
-                {playbackRates.map((rate) => (
-                  <button
-                    className={rate === playbackRate ? "active" : ""}
-                    type="button"
-                    role="menuitemradio"
-                    aria-checked={rate === playbackRate}
-                    key={rate}
-                    onClick={() => {
-                      changePlaybackRate(rate);
-                      setSpeedMenuOpen(false);
-                    }}
-                  >
-                    {rate}x
-                  </button>
-                ))}
-              </div>
+          <div className="audio-player-meta-row">
+            <div className="audio-time-range">
+              <span className="audio-time" title={audioError || (loadingWaveform ? "Строю звуковую дорожку" : undefined)}>
+                {currentTimeLabel}
+              </span>
+              <span className="audio-time-separator" aria-hidden="true">/</span>
+              <span className="audio-time total">{formatDuration(Math.round(effectiveDuration))}</span>
             </div>
-            <button
-              className="audio-download-button"
-              type="button"
-              disabled={!audioBlob}
-              aria-label="Скачать аудиозапись"
-              onClick={downloadAudio}
-            >
-              <Download size={14} />
-            </button>
+            <div className="audio-player-actions">
+              <div
+                className={`audio-speed-control ${speedMenuOpen ? "open" : ""} ${audioDisabled ? "disabled" : ""}`}
+                ref={speedControlRef}
+              >
+                <button
+                  className="audio-speed-button"
+                  type="button"
+                  disabled={audioDisabled}
+                  aria-haspopup="menu"
+                  aria-expanded={speedMenuOpen}
+                  aria-label="Скорость воспроизведения"
+                  onKeyDown={handleSpeedKeyDown}
+                  onPointerCancel={clearSpeedHoldTimer}
+                  onPointerDown={handleSpeedPointerDown}
+                  onPointerLeave={clearSpeedHoldTimer}
+                  onPointerUp={handleSpeedPointerUp}
+                >
+                  {playbackRate}x
+                </button>
+                <div className="audio-speed-menu" role="menu">
+                  {playbackRates.map((rate) => (
+                    <button
+                      className={rate === playbackRate ? "active" : ""}
+                      type="button"
+                      role="menuitemradio"
+                      aria-checked={rate === playbackRate}
+                      key={rate}
+                      onClick={() => {
+                        changePlaybackRate(rate);
+                        setSpeedMenuOpen(false);
+                      }}
+                    >
+                      {rate}x
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button
+                className="audio-download-button"
+                type="button"
+                disabled={!audioBlob}
+                aria-label="Скачать аудиозапись"
+                onClick={downloadAudio}
+              >
+                <Download size={14} />
+              </button>
+            </div>
           </div>
         </div>
         <audio

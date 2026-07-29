@@ -1,21 +1,25 @@
 import {
+  ChevronDown,
   ChevronRight,
   Plus,
   Sparkles,
   Trash2,
-  WandSparkles
+  WandSparkles,
+  X
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../api";
 import type {
   AnalysisInstruction,
   AnalysisResponse,
   AppPage,
+  CallFolderResponse,
   CallResponse,
   CallStatus,
   CompanyResponse,
   DepartmentResponse,
-  SessionState
+  SessionState,
+  VisibilityScope
 } from "../../types";
 
 import { isAnalysisDone } from "../../shared/lib/analysis";
@@ -25,6 +29,10 @@ import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { AnalysisResultSkeleton, CallListSkeleton } from "../../shared/ui/loading";
 import { availableInstructionsForCall, contextInstructionCaption, InstructionMiniList } from "../instructions/instruction-components";
 import { ReportExportPanel } from "../reports/ReportExportPanel";
+import { CustomScrollbar } from "../../shared/ui/custom-scrollbar";
+import { MobileCallDrawerTrigger } from "../../shared/ui/mobile-call-drawer-trigger";
+import { SelectControl } from "../../shared/ui/primitives";
+import { folderScopeLabel, loadCallFoldersForContext } from "../calls/call-page-utils";
 
 export function AnalysisPage({
   session,
@@ -59,22 +67,86 @@ export function AnalysisPage({
   onDeleteCall: (callId: string) => Promise<void>;
   onNavigate: (page: AppPage) => void;
 }) {
+  const analysisSidebarScrollRef = useRef<HTMLElement | null>(null);
+  const analysisDetailScrollRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<CallStatus | "all">("all");
+  const [scopeFilter, setScopeFilter] = useState<VisibilityScope | "all">("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [callFolders, setCallFolders] = useState<CallFolderResponse[]>([]);
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [folderCallsById, setFolderCallsById] = useState<Record<string, CallResponse[]>>({});
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Record<string, boolean>>({});
   const analysis = selectedCall ? analyses[selectedCall.id] : undefined;
   const resultState = analysisResultState(selectedCall, analysis);
   const availableInstructions = selectedCall
     ? availableInstructionsForCall(instructions, selectedCall)
     : [];
+  const filteredCalls = calls.filter((call) => {
+    const query = searchQuery.trim().toLowerCase();
+    return (
+      (statusFilter === "all" || call.status === statusFilter) &&
+      (scopeFilter === "all" || call.visibility_scope === scopeFilter) &&
+      (!query || `${call.title} ${call.original_filename}`.toLowerCase().includes(query))
+    );
+  });
+  const filteredCallIds = new Set(filteredCalls.map((call) => call.id));
 
   useEffect(() => {
     setShowFullAnalysis(false);
     setDeleteConfirmOpen(false);
   }, [selectedCall?.id]);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileSidebarOpen(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileSidebarOpen]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setFoldersLoading(true);
+    loadCallFoldersForContext(companies, departments)
+      .then((folders) => {
+        if (!cancelled) setCallFolders(folders);
+      })
+      .catch(() => {
+        if (!cancelled) setCallFolders([]);
+      })
+      .finally(() => {
+        if (!cancelled) setFoldersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [companies, departments]);
+
+  async function toggleAnalysisFolder(folderId: string) {
+    const nextExpanded = !expandedFolderIds[folderId];
+    setExpandedFolderIds((current) => ({ ...current, [folderId]: nextExpanded }));
+    if (!nextExpanded || folderCallsById[folderId]) return;
+    const response = await api.listCalls({ folder_uuid: folderId, limit: 100, offset: 0 }).catch(() => []);
+    setFolderCallsById((current) => ({
+      ...current,
+      [folderId]: Array.isArray(response) ? response : response.items
+    }));
+  }
 
   async function runAnalysis() {
     if (!selectedCall) return;
@@ -105,44 +177,151 @@ export function AnalysisPage({
     }
   }
 
+  function renderAnalysisCallRow(call: CallResponse, keyPrefix = "") {
+    return (
+      <button
+        key={`${keyPrefix}${call.id}`}
+        className={`call-row ${selectedCallId === call.id ? "selected" : ""}`}
+        onClick={() => {
+          onSelectCall(call.id);
+          setMobileSidebarOpen(false);
+        }}
+      >
+        <span className="play-dot">
+          <Sparkles size={14} />
+        </span>
+        <span>
+          <strong>{call.title}</strong>
+          <StatusChip status={call.status} analysisStatus={analyses[call.id]?.status} />
+        </span>
+      </button>
+    );
+  }
+
   return (
     <section className="analysis-layout atmospheric-page">
-      <aside className="calls-sidebar glass">
+      <aside
+        id="mobile-call-drawer"
+        className={`calls-sidebar analysis-sidebar-drawer mobile-call-drawer glass custom-scroll-target ${mobileSidebarOpen ? "open" : ""}`}
+        ref={analysisSidebarScrollRef}
+        aria-label="Список звонков для анализа"
+      >
         <div className="panel-heading">
           <h2>AI-аналитика</h2>
-          <button className="primary-button small" onClick={() => onNavigate("upload")}>
-            <Plus size={16} />
-            Звонок
-          </button>
+          <div className="analysis-sidebar-actions mobile-call-drawer-heading-actions">
+            <button className="primary-button small" onClick={() => onNavigate("upload")}>
+              <Plus size={16} />
+              Звонок
+            </button>
+            <button
+              className="icon-button analysis-drawer-close mobile-call-drawer-close"
+              type="button"
+              aria-label="Закрыть список звонков"
+              onClick={() => setMobileSidebarOpen(false)}
+            >
+              <X size={19} />
+            </button>
+          </div>
         </div>
+        <div className="calls-filter-bar analysis-call-filters">
+          <SelectControl
+            aria-label="Статус звонка"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as CallStatus | "all")}
+          >
+            <option value="all">Все статусы</option>
+            <option value="new">Новые</option>
+            <option value="processing">В обработке</option>
+            <option value="transcribed">Расшифрованы</option>
+            <option value="analyzed">Анализ готов</option>
+            <option value="failed">Ошибки</option>
+          </SelectControl>
+          <SelectControl
+            aria-label="Область звонка"
+            value={scopeFilter}
+            onChange={(event) => setScopeFilter(event.target.value as VisibilityScope | "all")}
+          >
+            <option value="all">Все области</option>
+            <option value="personal">Личные</option>
+            {companies.length > 0 && <option value="company">Компании</option>}
+            {departments.length > 0 && <option value="department">Отделы</option>}
+          </SelectControl>
+          <input
+            aria-label="Поиск звонка"
+            placeholder="Поиск по названию"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+          />
+        </div>
+        <section className="call-folder-panel analysis-call-folders">
+          <div className="call-folder-heading">
+            <div>
+              <strong>Папки</strong>
+              <small>{foldersLoading ? "Загружаю..." : `${callFolders.length} доступно`}</small>
+            </div>
+          </div>
+          <div className="call-folder-tree">
+            {callFolders.map((folder) => {
+              const expanded = Boolean(expandedFolderIds[folder.id]);
+              const folderCalls = (folderCallsById[folder.id] ?? []).filter((call) => filteredCallIds.has(call.id));
+              return (
+                <div className={`call-folder-project ${expanded ? "expanded" : ""}`} key={folder.id}>
+                  <button
+                    className="call-folder-project-button"
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() => void toggleAnalysisFolder(folder.id)}
+                  >
+                    {expanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    <span
+                      className="folder-color-dot"
+                      style={{ "--folder-color": folder.color || "#ff7a43" } as React.CSSProperties}
+                    />
+                    <span>
+                      <strong title={folder.name}>{folder.name}</strong>
+                      <small>{folderScopeLabel(folder)} · {folder.calls_count} звонков</small>
+                    </span>
+                  </button>
+                  {expanded && (
+                    <div className="call-folder-child-list">
+                      {!folderCallsById[folder.id] ? (
+                        <div className="call-folder-child-empty">Загружаю звонки...</div>
+                      ) : folderCalls.length === 0 ? (
+                        <div className="call-folder-child-empty">Нет звонков по текущим фильтрам.</div>
+                      ) : (
+                        folderCalls.map((call) => renderAnalysisCallRow(call, `${folder.id}-`))
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+        <p className="muted-title">Все звонки</p>
         <div className="call-list compact-list">
           {loading ? (
             <CallListSkeleton compact count={4} />
           ) : (
-            calls.map((call) => (
-              <button
-                key={call.id}
-                className={`call-row ${selectedCallId === call.id ? "selected" : ""}`}
-                onClick={() => onSelectCall(call.id)}
-              >
-                <span className="play-dot">
-                  <Sparkles size={14} />
-                </span>
-                <span>
-                  <strong>{call.title}</strong>
-                  <StatusChip status={call.status} analysisStatus={analyses[call.id]?.status} />
-                </span>
-              </button>
-            ))
+            filteredCalls.map((call) => renderAnalysisCallRow(call))
           )}
         </div>
       </aside>
-      <section className="analysis-detail glass">
+      <button
+        className={`analysis-drawer-backdrop mobile-call-drawer-backdrop ${mobileSidebarOpen ? "open" : ""}`}
+        type="button"
+        aria-label="Закрыть список звонков"
+        tabIndex={mobileSidebarOpen ? 0 : -1}
+        onClick={() => setMobileSidebarOpen(false)}
+      />
+      <CustomScrollbar targetRef={analysisSidebarScrollRef} className="analysis-drawer-scroll-thumb mobile-call-drawer-scroll-thumb" />
+      <section className="analysis-detail glass custom-scroll-target" ref={analysisDetailScrollRef}>
         <div className="panel-heading large">
           <div>
             <h1>AI-аналитика</h1>
             <p>Качество разговоров, ключевые темы, сигналы по выбранному звонку и рекомендации AI.</p>
           </div>
+          <MobileCallDrawerTrigger open={mobileSidebarOpen} onToggle={() => setMobileSidebarOpen((current) => !current)} />
           <div className="panel-actions">
             <button className="primary-button" onClick={runAnalysis} disabled={!selectedCall || busy}>
               <WandSparkles size={18} />
@@ -210,6 +389,7 @@ export function AnalysisPage({
           </div>
         </div>
       </section>
+      <CustomScrollbar targetRef={analysisDetailScrollRef} />
       {selectedCall && (
         <ConfirmDialog
           open={deleteConfirmOpen}

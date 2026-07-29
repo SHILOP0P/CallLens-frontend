@@ -3,10 +3,8 @@ import {
   BarChart3,
   CheckCircle2,
   Clock3,
-  FileText,
   Phone,
-  Star,
-  TriangleAlert
+  Star
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
@@ -30,8 +28,6 @@ export function OverviewPage({ calls, callsVersion }: { calls: CallResponse[]; c
     ? "Нет данных"
     : formatDuration(Math.round(analyticsOverview.average_duration_seconds));
   const analyticsScore = overviewScore(analyticsOverview);
-  const riskValue = analyticsOverview?.risks_count ?? null;
-  const recommendationValue = analyticsOverview?.recommendations_count ?? null;
   const chartSeries = buildOverviewChartSeries(analyticsOverview);
   const recentUploads = useMemo(() => buildRecentUploadChart(calls), [calls]);
   const qualityDonutPercent = analyticsScore.score === null ? 0 : (analyticsScore.score / analyticsScore.scale) * 100;
@@ -81,10 +77,8 @@ export function OverviewPage({ calls, callsVersion }: { calls: CallResponse[]; c
           note="за последние 24 часа"
         />
         <MetricCard icon={<Activity size={20} />} title="Звонки в обработке" value={metricCount(analyticsOverview?.calls_processing)} note={`${processingMonitoring?.queue.running ?? 0} задач выполняется`} />
-        <MetricCard icon={<FileText size={20} />} title="Расшифровка готова" value={metricCount(analyticsOverview?.calls_with_transcription)} note={`${analyticsOverview?.calls_transcribed ?? 0} ожидают анализа`} />
         <MetricCard icon={<CheckCircle2 size={20} />} title="С анализом" value={metricCount(analyticsOverview?.calls_analyzed)} tone="success" points={chartSeries.analyzedCalls} note="готовый результат анализа" />
         <MetricCard icon={<Clock3 size={20} />} title="Средняя длительность" value={avgDuration} points={chartSeries.duration} />
-        <MetricCard icon={<TriangleAlert size={20} />} title="Риски" value={riskValue === null ? "Нет данных" : riskValue.toString()} tone="warning" points={chartSeries.risks} />
         <MetricCard
           icon={<Star size={20} />}
           title="Средняя оценка"
@@ -94,9 +88,6 @@ export function OverviewPage({ calls, callsVersion }: { calls: CallResponse[]; c
           donutPercent={qualityDonutPercent}
           donutLabel={qualityDonutLabel}
         />
-        <MetricCard icon={<FileText size={20} />} title="Рекомендации" value={recommendationValue === null ? "Нет данных" : recommendationValue.toString()} note="по результатам анализа" />
-        <MetricCard icon={<Activity size={20} />} title="Повторы задач" value={metricCount(processingMonitoring?.queue.retry)} note="ожидают повторной обработки" />
-        <MetricCard icon={<TriangleAlert size={20} />} title="Ошибки" value={metricCount(analyticsOverview?.calls_failed)} tone="warning" note="требуют внимания" />
       </div>
 
       <AnalyticsOverviewInsights overview={analyticsOverview} />
@@ -462,7 +453,6 @@ function buildOverviewChartSeries(overview: AnalyticsOverviewResponse | null) {
     totalCalls: countChartPoints(charts?.calls_by_day, "загрузок"),
     analyzedCalls: analyzedChartPoints(charts?.analyzed_by_day),
     duration: durationChartPoints(charts?.duration_by_day),
-    risks: countChartPoints(charts?.risks_by_day, "рисков"),
     quality: qualityChartPoints(charts?.score_by_day, charts?.quality_by_day)
   };
 }

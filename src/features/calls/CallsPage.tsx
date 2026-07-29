@@ -12,7 +12,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ApiError, api } from "../../api";
 import type {
@@ -38,6 +38,8 @@ import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
 import { CallListSkeleton } from "../../shared/ui/loading";
 import { SelectControl } from "../../shared/ui/primitives";
+import { CustomScrollbar } from "../../shared/ui/custom-scrollbar";
+import { MobileCallDrawerTrigger } from "../../shared/ui/mobile-call-drawer-trigger";
 import { CallDetailPanel } from "./CallDetailPanel";
 import {
   callSearchText,
@@ -85,6 +87,8 @@ export function CallsPage({
   onUpdateCallTitle?: (callId: string, title: string) => Promise<CallResponse>;
   onDeleteCall?: (callId: string) => Promise<void>;
 }) {
+  const callsSidebarScrollRef = useRef<HTMLElement | null>(null);
+  const callOverviewScrollRef = useRef<HTMLElement | null>(null);
   const [statusFilter, setStatusFilter] = useState<CallStatus | "all">("all");
   const [scopeFilter, setScopeFilter] = useState<VisibilityScope | "all">("all");
   const [managerFilter, setManagerFilter] = useState("all");
@@ -114,6 +118,7 @@ export function CallsPage({
   const [callBusyId, setCallBusyId] = useState("");
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const [favoriteCallIds, setFavoriteCallIds] = useState<string[]>([]);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const effectiveScopeFilter =
     companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
       ? "all"
@@ -141,6 +146,20 @@ export function CallsPage({
 
   const [favoriteOnly, setFavoriteOnly] = useState(false);
   useEffect(() => { api.listFavoriteCalls().then((items) => setFavoriteCallIds(items.map((call) => call.id))).catch(() => setFavoriteCallIds([])); }, []);
+
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMobileSidebarOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [mobileSidebarOpen]);
 
   async function toggleFavoriteCall(callId: string) {
     const isFavorite = favoriteCallIds.includes(callId);
@@ -633,6 +652,7 @@ export function CallsPage({
       } else {
         selectUnfiledCall(call.id);
       }
+      setMobileSidebarOpen(false);
     };
 
     return (
@@ -718,16 +738,31 @@ export function CallsPage({
 
   return (
     <section className="calls-layout atmospheric-page">
-      <aside className="calls-sidebar glass">
+      <aside
+        id="mobile-call-drawer"
+        className={`calls-sidebar mobile-call-drawer glass custom-scroll-target ${mobileSidebarOpen ? "open" : ""}`}
+        ref={callsSidebarScrollRef}
+        aria-label="Звонки, фильтры и папки"
+      >
         <div className="panel-heading">
           <div>
             <h2>Звонки</h2>
             <p>Фильтры и детали выбранного звонка.</p>
           </div>
-          <button className="primary-button small" onClick={() => onNavigate("upload")}>
-            <CloudUpload size={16} />
-            Загрузить звонок
-          </button>
+          <div className="mobile-call-drawer-heading-actions">
+            <button className="primary-button small" onClick={() => onNavigate("upload")}>
+              <CloudUpload size={16} />
+              Загрузить звонок
+            </button>
+            <button
+              className="icon-button mobile-call-drawer-close"
+              type="button"
+              aria-label="Закрыть звонки и фильтры"
+              onClick={() => setMobileSidebarOpen(false)}
+            >
+              <X size={19} />
+            </button>
+          </div>
         </div>
         <div className="calls-filter-bar">
           <SelectControl
@@ -914,8 +949,16 @@ export function CallsPage({
           <ChevronRight size={16} />
         </button>
       </aside>
+      <button
+        className={`mobile-call-drawer-backdrop ${mobileSidebarOpen ? "open" : ""}`}
+        type="button"
+        aria-label="Закрыть звонки и фильтры"
+        tabIndex={mobileSidebarOpen ? 0 : -1}
+        onClick={() => setMobileSidebarOpen(false)}
+      />
+      <CustomScrollbar targetRef={callsSidebarScrollRef} className="mobile-call-drawer-scroll-thumb" />
 
-      <section className="call-overview glass">
+      <section className="call-overview glass custom-scroll-target" ref={callOverviewScrollRef}>
         <CallDetailPanel
           call={selectedCall}
           companies={companies}
@@ -932,9 +975,11 @@ export function CallsPage({
           folderActionBusy={Boolean(folderBusyId)}
           onAssignToFolder={assignCallToFolder}
           onRemoveFromFolder={removeCallFromFolder}
+          drawerTrigger={<MobileCallDrawerTrigger open={mobileSidebarOpen} onToggle={() => setMobileSidebarOpen((current) => !current)} />}
           showReports
         />
       </section>
+      <CustomScrollbar targetRef={callOverviewScrollRef} />
       {folderEditorOpen && createPortal(
         <div
           className="call-folder-modal-layer"

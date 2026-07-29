@@ -9,7 +9,7 @@ import {
   WandSparkles
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type {
   AnalysisResponse,
   AppPage,
@@ -52,6 +52,7 @@ export function CallDetailPanel({
   folderActionBusy = false,
   onAssignToFolder,
   onRemoveFromFolder,
+  drawerTrigger,
   showReports = false
 }: {
   call?: CallResponse;
@@ -69,6 +70,7 @@ export function CallDetailPanel({
   folderActionBusy?: boolean;
   onAssignToFolder?: (folderId: string, callId: string) => Promise<void>;
   onRemoveFromFolder?: (folderId: string, callId: string) => Promise<void>;
+  drawerTrigger?: ReactNode;
   showReports?: boolean;
 }) {
   const [showFullTranscript, setShowFullTranscript] = useState(false);
@@ -116,20 +118,28 @@ export function CallDetailPanel({
   }, [folderMenuOpen]);
 
   if (loading && !call) {
-    return <CallDetailSkeleton />;
+    return (
+      <>
+        {drawerTrigger}
+        <CallDetailSkeleton />
+      </>
+    );
   }
 
   if (!call) {
     return (
-      <div className="empty-panel">
-        <Headphones size={34} />
-        <h2>Звонков пока нет</h2>
-        <p>Загрузите первый аудиофайл и выберите, кому он принадлежит.</p>
-        <button className="primary-button" onClick={() => onNavigate("upload")}>
-          <CloudUpload size={18} />
-          Загрузить звонок
-        </button>
-      </div>
+      <>
+        {drawerTrigger}
+        <div className="empty-panel">
+          <Headphones size={34} />
+          <h2>Звонков пока нет</h2>
+          <p>Загрузите первый аудиофайл и выберите, кому он принадлежит.</p>
+          <button className="primary-button" onClick={() => onNavigate("upload")}>
+            <CloudUpload size={18} />
+            Загрузить звонок
+          </button>
+        </div>
+      </>
     );
   }
 
@@ -166,6 +176,7 @@ export function CallDetailPanel({
     <>
       <div className="panel-heading large">
         <h2>Обзор звонка</h2>
+        {drawerTrigger}
         <div className="panel-actions">
           <button className="primary-button small" onClick={() => onNavigate("upload")}>
             <CloudUpload size={16} />

@@ -3,6 +3,7 @@ import {
   Building2,
   CreditCard,
   FileText,
+  MonitorSmartphone,
   Settings
 } from "lucide-react";
 import type { AppPage } from "../../types";
@@ -11,7 +12,8 @@ import { settingsRoutes } from "../../app/runtime";
 const settingsIcons: Partial<Record<AppPage, React.ReactNode>> = {
   settingsTariffs: <CreditCard size={22} />,
   settingsCompanies: <Building2 size={22} />,
-  settingsInstructions: <FileText size={22} />
+  settingsInstructions: <FileText size={22} />,
+  profileDevices: <MonitorSmartphone size={22} />
 };
 
 export function SettingsPage({ onNavigate }: { onNavigate: (page: AppPage) => void; }) {
@@ -23,7 +25,7 @@ export function SettingsPage({ onNavigate }: { onNavigate: (page: AppPage) => vo
         </span>
         <div>
           <h1>Настройки</h1>
-          <p>Выберите раздел настроек. Тарифы, компании, инструкции и профиль открываются как отдельные внутренние страницы.</p>
+          <p>Выберите раздел настроек. Управляйте тарифами, компаниями, инструкциями и активными устройствами.</p>
         </div>
       </div>
       <div className="settings-card-grid glass-panel">

@@ -51,7 +51,7 @@ export const pageRoutes: Record<AppPage, string> = {
   settingsInvitations: "/app/settings/invitations",
   profile: "/app/profile",
   profileEdit: "/app/profile/edit",
-  profileDevices: "/app/profile/devices",
+  profileDevices: "/app/settings/devices",
   upload: "/app/upload",
   admin: "/app/admin"
 };
@@ -98,6 +98,11 @@ export const settingsRoutes: Array<{ page: AppPage; label: string; description: 
     label: "Инструкции",
     description: "Правила и критерии для AI-анализа звонков."
   },
+  {
+    page: "profileDevices",
+    label: "Устройства",
+    description: "Активные входы, завершение отдельных сеансов и выход со всех устройств."
+  }
 ];
 
 const pathAliases: Record<string, AppPage> = {
@@ -107,6 +112,7 @@ const pathAliases: Record<string, AppPage> = {
   "/app/invitations": "settingsInvitations",
   "/app/settings/profile": "profile",
   "/app/settings/profile/edit": "profileEdit",
+  "/app/profile/devices": "profileDevices",
   "/app/settings/devices": "profileDevices",
   "/app/devices": "profileDevices"
 };

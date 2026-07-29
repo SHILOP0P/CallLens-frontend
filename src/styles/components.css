@@ -5943,6 +5943,36 @@ html[data-theme="light"] .app-shell .admin-profile-heading .admin-avatar { borde
 .contact-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); }
 .contact-row > div { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .contact-row small { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-remove-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 13px;
+  color: color-mix(in srgb, var(--danger) 78%, var(--text));
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--danger) 24%, var(--border));
+  border-radius: 10px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 160ms ease, background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+.contact-remove-button:hover,
+.contact-remove-button:focus-visible {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  outline: none;
+  transform: translateY(-1px);
+}
+.contact-remove-button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+  transform: none;
+}
 .speaker-hints { display: grid; gap: 12px; min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 14px; background: color-mix(in srgb, var(--surface) 82%, transparent); }
 .speaker-hints-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
 .speaker-hints-heading > div { display: grid; gap: 4px; min-width: 0; }

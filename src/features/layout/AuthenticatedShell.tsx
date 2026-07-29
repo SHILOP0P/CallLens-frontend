@@ -32,6 +32,7 @@ import { useDismissibleLayer } from "../../shared/ui/dismissible-layer";
 
 const WORKSPACE_COMPANY_STORAGE_KEY = "calllens.activeWorkspaceCompanyId";
 const PERSONAL_WORKSPACE_VALUE = "__personal__";
+const MOBILE_NAV_PAGES: AppPage[] = ["overview", "calls", "analysis", "reports", "settings"];
 
 export function AuthenticatedShell({
   activePage,
@@ -83,6 +84,7 @@ export function AuthenticatedShell({
   const [personalUsage, setPersonalUsage] = useState<SubscriptionUsageResponse | null>(null);
   const [companyUsage, setCompanyUsage] = useState<Record<string, SubscriptionUsageResponse | null>>({});
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [mobileTransitionDirection, setMobileTransitionDirection] = useState<"forward" | "backward" | null>(null);
   const teamPopoverRef = useRef<HTMLDivElement>(null);
   const searchPopoverRef = useRef<HTMLLabelElement>(null);
   const notificationPopoverRef = useRef<HTMLDivElement>(null);
@@ -98,6 +100,19 @@ export function AuthenticatedShell({
   const teamLabel = selectedCompany?.name ?? "Личный кабинет";
   const displayTimeZone = session.user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const selectedCompanySubscription = selectedCompany?.id ? companySubscriptions[selectedCompany.id] : null;
+
+  function navigateFromMobileBar(nextPage: AppPage) {
+    const currentMobilePage = isSettingsPage(activePage) ? "settings" : activePage;
+    const currentIndex = MOBILE_NAV_PAGES.indexOf(currentMobilePage);
+    const nextIndex = MOBILE_NAV_PAGES.indexOf(nextPage);
+
+    setMobileTransitionDirection(
+      currentIndex >= 0 && nextIndex >= 0 && currentIndex !== nextIndex
+        ? nextIndex > currentIndex ? "forward" : "backward"
+        : null
+    );
+    onNavigate(nextPage);
+  }
   const selectedCompanyUsage = selectedCompany?.id ? companyUsage[selectedCompany.id] : undefined;
   const activeUsage = selectedCompany ? selectedCompanyUsage ?? null : personalUsage;
   const usageSubscription =
@@ -585,9 +600,14 @@ export function AuthenticatedShell({
               ))}
           </div>
           <div className="app-sidebar-plan" aria-label="Тариф и лимиты">
-            <div className="sidebar-plan-card">
+            <button
+              className="sidebar-plan-card"
+              type="button"
+              aria-label="Открыть тарифы"
+              onClick={() => onNavigate("settingsTariffs")}
+            >
               <small>{subscription?.plan.name ?? "Подключите тариф"}</small>
-            </div>
+            </button>
             <div className="sidebar-limit-card">
               <span>Лимит расшифровки</span>
               <strong>
@@ -613,7 +633,7 @@ export function AuthenticatedShell({
             </button>
           </div>
         </aside>
-        <main className="workspace">{children}</main>
+        <main className="workspace" data-mobile-transition={mobileTransitionDirection ?? undefined}>{children}</main>
       </div>
       <nav className="mobile-bottom-nav" aria-label="Основная навигация">
         {[...sidebarItems.slice(0, 4), { page: "settings" as AppPage, label: "Ещё", icon: <Menu size={19} /> }].map((item) => (
@@ -621,7 +641,7 @@ export function AuthenticatedShell({
             key={item.page}
             className={activeSidebarPage === item.page || (item.page === "settings" && isSettingsPage(activePage)) ? "active" : ""}
             type="button"
-            onClick={() => onNavigate(item.page)}
+            onClick={() => navigateFromMobileBar(item.page)}
           >
             {item.icon}
             <span>{item.label}</span>

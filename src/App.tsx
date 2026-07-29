@@ -112,8 +112,8 @@ function App() {
     const legacyProfileRoutes: Record<string, string> = {
       "/app/settings/profile": "/app/profile",
       "/app/settings/profile/edit": "/app/profile/edit",
-      "/app/settings/devices": "/app/profile/devices",
-      "/app/devices": "/app/profile/devices"
+      "/app/profile/devices": "/app/settings/devices",
+      "/app/devices": "/app/settings/devices"
     };
     const replacement = legacyProfileRoutes[window.location.pathname];
     if (replacement) {
@@ -742,7 +742,7 @@ function App() {
 
       {page === "profileDevices" && (
         <DevicesPage
-          onBackToProfile={() => navigate("profile")}
+          onBackToProfile={() => navigate("settings")}
           onLogoutAll={logoutAllSessions}
         />
       )}

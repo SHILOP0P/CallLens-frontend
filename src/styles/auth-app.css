@@ -483,17 +483,41 @@ html[data-theme="light"] .calendar-popover {
   padding: 38px 40px 48px;
 }
 
-.workspace-frame:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+.workspace-frame:has(:is(
+  .calls-layout,
+  .analysis-layout,
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+)) {
   height: calc(100dvh - 84px);
   min-height: 0;
   overflow: hidden;
 }
 
-.workspace:has(> :is(.calls-layout, .analysis-layout, .contacts-page)) {
+.workspace:has(> :is(
+  .calls-layout,
+  .analysis-layout,
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+)) {
   padding-bottom: 0;
 }
 
-.app-shell:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+.app-shell:has(:is(
+  .calls-layout,
+  .analysis-layout,
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+)) {
   height: 100dvh;
   min-height: 0;
   overflow: hidden;
@@ -652,6 +676,54 @@ html[data-theme="light"] .app-sidebar {
   color: var(--app-success);
   background: rgba(117, 201, 102, 0.14);
   border-radius: 5px;
+}
+
+button.sidebar-plan-card {
+  display: grid;
+  width: 100%;
+  min-height: 0;
+  padding: 8px;
+  appearance: none;
+  text-align: left;
+  color: inherit;
+  background: rgba(255, 250, 245, 0.045);
+  border: 1px solid var(--app-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transform: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-sidebar button.sidebar-plan-card > small,
+.app-sidebar button.sidebar-plan-card:hover > small {
+  position: static;
+  inset: auto;
+  width: fit-content;
+  padding: 2px 7px;
+  color: var(--app-success);
+  background: rgba(117, 201, 102, 0.14);
+  border-radius: 5px;
+  transform: none;
+}
+
+html[data-theme="light"] .app-sidebar button.sidebar-plan-card > small,
+html[data-theme="light"] .app-sidebar button.sidebar-plan-card:hover > small {
+  color: #3f7f38;
+  background: rgba(93, 164, 81, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(74, 139, 63, 0.12);
+}
+
+button.sidebar-plan-card:hover {
+  color: inherit;
+  background: rgba(255, 250, 245, 0.045);
+  border-color: var(--app-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transform: none;
+}
+
+button.sidebar-plan-card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--app-success) 55%, transparent);
+  outline-offset: 2px;
 }
 
 .sidebar-progress,
@@ -972,7 +1044,7 @@ html[data-theme="light"] .app-sidebar {
   position: relative;
   z-index: 30;
   display: grid;
-  grid-template-columns: repeat(5, minmax(160px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   overflow: visible;
 }
@@ -1813,7 +1885,7 @@ html[data-theme="dark"] .app-shell .select-menu {
   align-items: center;
   min-width: 0;
   overflow: visible;
-  padding: 14px 16px;
+  padding: 12px 14px;
   background:
     linear-gradient(135deg, rgba(255, 90, 47, 0.13), rgba(255, 250, 245, 0.018)),
     rgba(18, 14, 11, 0.82);
@@ -1863,20 +1935,40 @@ html[data-theme="dark"] .app-shell .select-menu {
 
 .audio-player-track-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 44px auto;
+  grid-template-columns: minmax(220px, 1fr) auto;
   align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.audio-player-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 10px;
+  min-width: 0;
+}
+
+.audio-time-range {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
   min-width: 0;
 }
 
 .audio-time {
   color: var(--app-muted);
-  font-size: 19px;
+  font-size: 13px;
   font-weight: 650;
   line-height: 1;
   text-align: center;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.audio-time-separator {
+  color: color-mix(in srgb, var(--app-muted) 58%, transparent);
+  font-size: 12px;
 }
 
 .audio-time.total {
@@ -2123,7 +2215,7 @@ html[data-theme="dark"] .app-shell .select-menu {
   min-width: 0;
   width: 100%;
   max-width: 100%;
-  height: 48px;
+  height: 38px;
   overflow: hidden;
   padding: 0;
   cursor: pointer;
@@ -2226,17 +2318,15 @@ html[data-theme="light"] .app-shell .audio-speed-menu button.active {
   }
 
   .audio-player-track-row {
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    gap: 10px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
   }
 
   .audio-player-actions {
     justify-self: end;
   }
 
-  .audio-time {
-    font-size: 16px;
-  }
+  .audio-time { font-size: 13px; }
 }
 
 .dashboard-ai-column {
@@ -3566,13 +3656,68 @@ html[data-theme="light"] .progress-ring::before {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in srgb, var(--app-muted) 44%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.app-shell .calls-layout > .custom-scroll-target,
+.app-shell .analysis-layout > .custom-scroll-target {
+  scrollbar-gutter: auto;
+  scrollbar-width: none;
+}
+
+.app-shell .custom-scroll-target::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.custom-scroll-thumb {
+  position: fixed;
+  z-index: 75;
+  width: 4px;
+  min-height: 56px;
+  touch-action: none;
+  cursor: grab;
+  background: color-mix(in srgb, var(--app-muted, #b8aaa1) 44%, transparent);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--app-text, #fffaf5) 10%, transparent),
+    0 2px 8px rgba(16, 10, 7, 0.16);
+  transition: width 140ms ease, background-color 140ms ease, opacity 140ms ease;
+}
+
+.custom-scroll-thumb:hover {
+  width: 6px;
+  background: color-mix(in srgb, var(--app-accent, #ff6b3d) 42%, var(--app-muted, #b8aaa1));
+}
+
+.custom-scroll-thumb:active {
+  cursor: grabbing;
+  background: color-mix(in srgb, var(--app-accent, #ff6b3d) 54%, var(--app-muted, #b8aaa1));
+}
+
+.analysis-mobile-drawer-toggle,
+.analysis-drawer-close,
+.analysis-drawer-backdrop,
+.mobile-call-drawer-trigger-anchor,
+.mobile-call-drawer-header-trigger,
+.mobile-call-drawer-close,
+.mobile-call-drawer-backdrop {
+  display: none;
 }
 
 .app-shell .analysis-layout {
   grid-template-columns: minmax(330px, 0.34fr) minmax(0, 1fr);
 }
 
-.app-shell .contacts-page {
+.app-shell :is(
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+) {
   align-content: start;
   height: calc(100dvh - 104px);
   min-height: 480px;
@@ -3581,6 +3726,104 @@ html[data-theme="light"] .progress-ring::before {
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
+  scrollbar-color: color-mix(in srgb, var(--app-muted) 44%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+@media (min-width: 1181px) {
+  .app-shell :is(
+    .calls-layout,
+    .analysis-layout,
+    .contacts-page,
+    .reports-page,
+    .companies-page,
+    .settings-overview
+  ).atmospheric-page {
+    background:
+      linear-gradient(90deg, rgba(22, 15, 12, .54), rgba(22, 15, 12, .24) 54%, rgba(22, 15, 12, .08)),
+      url("/assets/workspace-atmosphere-v2.png") center / cover no-repeat,
+      linear-gradient(145deg, rgba(30, 21, 17, .74), rgba(20, 17, 15, .68));
+    background-attachment: scroll;
+  }
+
+  .app-shell :is(
+    .calls-layout,
+    .analysis-layout,
+    .contacts-page,
+    .reports-page,
+    .companies-page,
+    .settings-overview
+  ).atmospheric-page::before {
+    display: none;
+  }
+
+  html[data-theme="light"] .app-shell :is(
+    .calls-layout,
+    .analysis-layout,
+    .contacts-page,
+    .reports-page,
+    .companies-page,
+    .settings-overview
+  ).atmospheric-page {
+    background:
+      linear-gradient(90deg, rgba(255, 251, 246, .76), rgba(255, 245, 237, .42) 52%, rgba(255, 245, 237, .16)),
+      url("/assets/workspace-atmosphere-v2.png") center / cover no-repeat,
+      linear-gradient(145deg, rgba(255, 251, 246, .94), rgba(244, 232, 220, .88));
+    background-attachment: scroll;
+  }
+}
+
+.app-shell :is(
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+)::-webkit-scrollbar {
+  width: 4px;
+}
+
+.app-shell :is(
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.app-shell :is(
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+)::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--app-muted, #b8aaa1) 44%, transparent);
+  border-radius: 999px;
+}
+
+.app-shell :is(
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+):hover::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--app-accent, #ff6b3d) 42%, var(--app-muted, #b8aaa1));
+}
+
+.app-shell :is(
+  .contacts-page,
+  .reports-page,
+  .companies-page,
+  .settings-overview,
+  .settings-subpage-layout
+)::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .app-shell .call-row {
@@ -5378,20 +5621,44 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
 }
 
 @media (max-width: 1180px) {
-  .app-shell:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+  .app-shell:has(:is(
+    .calls-layout,
+    .analysis-layout,
+    .contacts-page,
+    .reports-page,
+    .companies-page,
+    .settings-overview,
+    .settings-subpage-layout
+  )) {
     height: auto;
     min-height: 100vh;
     overflow: visible;
     overscroll-behavior: auto;
   }
 
-  .workspace-frame:has(:is(.calls-layout, .analysis-layout, .contacts-page)) {
+  .workspace-frame:has(:is(
+    .calls-layout,
+    .analysis-layout,
+    .contacts-page,
+    .reports-page,
+    .companies-page,
+    .settings-overview,
+    .settings-subpage-layout
+  )) {
     height: auto;
     min-height: calc(100vh - 72px);
     overflow: visible;
   }
 
-  .workspace:has(> :is(.calls-layout, .analysis-layout, .contacts-page)) {
+  .workspace:has(> :is(
+    .calls-layout,
+    .analysis-layout,
+    .contacts-page,
+    .reports-page,
+    .companies-page,
+    .settings-overview,
+    .settings-subpage-layout
+  )) {
     padding-bottom: 48px;
   }
 
@@ -5400,7 +5667,15 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .app-shell :is(.calls-layout, .analysis-layout, .contacts-page) {
+  .app-shell :is(
+    .calls-layout,
+    .analysis-layout,
+    .contacts-page,
+    .reports-page,
+    .companies-page,
+    .settings-overview,
+    .settings-subpage-layout
+  ) {
     height: auto;
     min-height: 0;
     margin-top: 0;
