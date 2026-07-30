@@ -65,5 +65,6 @@ export function ContactsPage() {
 
 function ContactRow({ user, action, busy, onAction }: { user: UserResponse; action: "add" | "remove"; busy: boolean; onAction: () => void; }) {
   const name = `${user.full_name} ${user.full_surname}`.trim() || user.username;
-  return <article className="contact-row"><span className="avatar">{name[0]?.toUpperCase() ?? "П"}</span><div><strong>{name}</strong><small>{user.username.startsWith("@") ? user.username : `@${user.username}`}{user.post ? ` · ${user.post}` : ""}</small></div><button className={action === "remove" ? "contact-remove-button" : "primary-button small"} type="button" disabled={busy} onClick={onAction}>{action === "remove" ? <><UserMinus size={16} />Убрать</> : <><UserPlus size={16} />Добавить</>}</button></article>;
+  const headline = user.headline;
+  return <article className="contact-row"><span className="avatar">{name[0]?.toUpperCase() ?? "П"}</span><div><strong>{name}</strong><small>{user.username.startsWith("@") ? user.username : `@${user.username}`}{headline ? ` · ${headline}` : ""}</small></div><button className={action === "remove" ? "contact-remove-button" : "primary-button small"} type="button" disabled={busy} onClick={onAction}>{action === "remove" ? <><UserMinus size={16} />Убрать</> : <><UserPlus size={16} />Добавить</>}</button></article>;
 }

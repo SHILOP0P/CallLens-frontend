@@ -4824,13 +4824,23 @@ label small {
 
 .department-member-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.45fr) minmax(190px, 0.45fr);
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.6fr) minmax(170px, 0.45fr) minmax(170px, 0.45fr);
   align-items: center;
   gap: 12px;
   padding: 14px;
   background: rgba(255, 255, 255, 0.58);
   border: 1px solid rgba(92, 63, 44, 0.1);
   border-radius: var(--radius);
+}
+
+.department-member-job-title {
+  width: 100%;
+  min-width: 0;
+}
+
+.department-member-job-title-text {
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .department-member-row strong,

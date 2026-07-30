@@ -585,6 +585,26 @@ export function DepartmentWorkspace({
     }
   }
 
+  async function updateMemberJobTitle(member: DepartmentMemberResponse, jobTitle: string) {
+    if (!company) return;
+    setBusyMemberId(member.user_uuid);
+    setError("");
+    try {
+      const normalized = jobTitle.trim();
+      const updated = await api.updateCompanyMemberJobTitle(company.id, member.user_uuid, normalized || null);
+      setMembers((current) =>
+        current.map((item) =>
+          item.user_uuid === member.user_uuid ? { ...item, job_title: updated.job_title } : item
+        )
+      );
+    } catch (updateError) {
+      setError(updateError instanceof Error ? updateError.message : "Не удалось обновить должность сотрудника");
+      throw updateError;
+    } finally {
+      setBusyMemberId("");
+    }
+  }
+
   if (!company || !department) {
     return (
       <section className="companies-layout">
@@ -658,6 +678,7 @@ export function DepartmentWorkspace({
                 currentUser={session.user}
                 manager={isManager}
                 busy={busyMemberId === member.user_uuid}
+                onJobTitleChange={(jobTitle) => updateMemberJobTitle(member, jobTitle)}
                 onRoleChange={(role) => updateMemberRole(member, role)}
                 onStatusChange={(status) => updateMemberStatus(member, status)}
               />
@@ -674,6 +695,7 @@ export function DepartmentMemberRow({
   currentUser,
   manager,
   busy,
+  onJobTitleChange,
   onRoleChange,
   onStatusChange
 }: {
@@ -681,6 +703,7 @@ export function DepartmentMemberRow({
   currentUser: UserResponse;
   manager: boolean;
   busy: boolean;
+  onJobTitleChange: (jobTitle: string) => Promise<void>;
   onRoleChange: (role: InvitationDepartmentRole) => void;
   onStatusChange: (status: MembershipStatus) => void;
 }) {
@@ -689,6 +712,21 @@ export function DepartmentMemberRow({
       ? `${currentUser.full_surname} ${currentUser.full_name}`.trim()
       : `${member.full_surname ?? ""} ${member.full_name ?? ""}`.trim() || "Пользователь";
   const username = member.user_uuid === currentUser.id ? currentUser.username : member.username ?? "username не передан";
+  const [jobTitle, setJobTitle] = useState(member.job_title ?? "");
+
+  useEffect(() => {
+    setJobTitle(member.job_title ?? "");
+  }, [member.job_title]);
+
+  async function saveJobTitle() {
+    const normalized = jobTitle.trim();
+    if (normalized === (member.job_title ?? "")) return;
+    try {
+      await onJobTitleChange(normalized);
+    } catch {
+      setJobTitle(member.job_title ?? "");
+    }
+  }
 
   return (
     <article className="department-member-row">
@@ -696,6 +734,27 @@ export function DepartmentMemberRow({
         <strong>{fullName}</strong>
         <small>{username} · добавлен: {formatDate(member.created_at)}</small>
       </div>
+      {manager ? (
+        <input
+          className="department-member-job-title"
+          aria-label={`Должность: ${fullName}`}
+          maxLength={200}
+          placeholder="Должность"
+          value={jobTitle}
+          disabled={busy}
+          onChange={(event) => setJobTitle(event.target.value)}
+          onBlur={() => void saveJobTitle()}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") event.currentTarget.blur();
+            if (event.key === "Escape") {
+              setJobTitle(member.job_title ?? "");
+              event.currentTarget.blur();
+            }
+          }}
+        />
+      ) : (
+        <span className="department-member-job-title-text">{member.job_title || "Должность не указана"}</span>
+      )}
       {manager ? (
         <>
           <SelectControl

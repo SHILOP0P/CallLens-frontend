@@ -85,7 +85,7 @@ export function ProfilePage({
               <h2>
                 {session.user.full_name} {session.user.full_surname}
               </h2>
-              <p>{roleLabel(session.user.role)} • {session.user.post || "должность не указана"}</p>
+              <p>{roleLabel(session.user.role)} • {session.user.headline || "профессиональное описание не указано"}</p>
             </div>
             <button className="primary-button" type="button" onClick={() => onNavigate("profileEdit")}>
               <Pencil size={17} />

@@ -909,6 +909,15 @@ export const api = {
       }
     );
   },
+  updateCompanyMemberJobTitle(companyId: string, userId: string, jobTitle: string | null) {
+    return request<CompanyMemberListItemResponse>(
+      `/companies/${encodeURIComponent(companyId)}/members/${encodeURIComponent(userId)}/job-title`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ job_title: jobTitle })
+      }
+    );
+  },
   leaveCompany(companyId: string) {
     return request<CompanyMemberListItemResponse>(`/companies/${encodeURIComponent(companyId)}/leave`, { method: "POST" });
   },

@@ -74,7 +74,7 @@ export interface UserResponse {
   full_surname: string;
   username: string;
   role: string;
-  post?: string | null;
+  headline?: string | null;
   phone?: string | null;
   timezone?: string | null;
   avatar_url?: string | null;
@@ -91,7 +91,7 @@ export interface RegisterRequest {
   full_name: string;
   full_surname: string;
   username?: string;
-  post?: string;
+  headline?: string;
 }
 
 export interface LoginRequest {
@@ -133,7 +133,7 @@ export interface UpdateAdminUserProfileRequest {
   full_name?: string;
   full_surname?: string;
   username?: string;
-  post?: string;
+  headline?: string;
   reason: string;
 }
 
@@ -167,7 +167,7 @@ export interface AdminSubscriptionResponse {
 export interface UpdateProfileRequest {
   full_name?: string;
   full_surname?: string;
-  post?: string | null;
+  headline?: string | null;
   phone?: string | null;
   timezone?: string | null;
 }
@@ -447,6 +447,7 @@ export interface DepartmentMemberResponse {
   full_name?: string;
   full_surname?: string;
   username?: string;
+  job_title: string | null;
   role: DepartmentRole;
   status: MembershipStatus;
   created_at: string;
@@ -873,6 +874,7 @@ export interface CompanyMemberListItemResponse {
   username: string;
   full_name: string;
   full_surname: string;
+  job_title: string | null;
   company_role: string;
   status: string;
   departments: CompanyMemberDepartmentResponse[];

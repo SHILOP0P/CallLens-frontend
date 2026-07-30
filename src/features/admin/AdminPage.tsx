@@ -236,16 +236,16 @@ function UserDetail({ user, capabilities, onBack, onUpdated }: { user: UserRespo
 }
 
 function UserFacts({ user }: { user: UserResponse }) {
-  return <dl><dt>Роль</dt><dd>{roleLabel(user.role)}</dd><dt>Имя пользователя</dt><dd>{user.username}</dd><dt>Должность</dt><dd>{user.post || "Не указана"}</dd><dt>Создан</dt><dd>{date(user.created_at)}</dd></dl>;
+  return <dl><dt>Роль</dt><dd>{roleLabel(user.role)}</dd><dt>Имя пользователя</dt><dd>{user.username}</dd><dt>Профессиональное описание</dt><dd>{user.headline || "Не указано"}</dd><dt>Создан</dt><dd>{date(user.created_at)}</dd></dl>;
 }
 
 function ProfileEditor({ user, onSaved, onNotice }: { user: UserResponse; onSaved: (user: UserResponse) => void; onNotice: (notice: string) => void }) {
-  const [values, setValues] = useState({ full_name: user.full_name, full_surname: user.full_surname, username: user.username, post: user.post ?? "", reason: "" });
+  const [values, setValues] = useState({ full_name: user.full_name, full_surname: user.full_surname, username: user.username, headline: user.headline ?? "", reason: "" });
   const [busy, setBusy] = useState(false);
   function setField(field: keyof typeof values, value: string) { setValues((current) => ({ ...current, [field]: value })); }
   async function save() {
     const changed: Partial<UpdateAdminUserProfileRequest> = {};
-    (["full_name", "full_surname", "username", "post"] as const).forEach((field) => {
+    (["full_name", "full_surname", "username", "headline"] as const).forEach((field) => {
       const value = values[field].trim();
       if (value && value !== (user[field] ?? "")) changed[field] = value;
     });
@@ -263,7 +263,7 @@ function ProfileEditor({ user, onSaved, onNotice }: { user: UserResponse; onSave
   }
   return <div className="admin-action-block"><h3>Редактировать профиль</h3><div className="admin-form-grid">
     <label>Имя<input value={values.full_name} onChange={(event) => setField("full_name", event.target.value)} /></label><label>Фамилия<input value={values.full_surname} onChange={(event) => setField("full_surname", event.target.value)} /></label>
-    <label>Username<input value={values.username} onChange={(event) => setField("username", event.target.value)} /></label><label>Должность<input value={values.post} onChange={(event) => setField("post", event.target.value)} /></label>
+    <label>Username<input value={values.username} onChange={(event) => setField("username", event.target.value)} /></label><label>Профессиональное описание<input value={values.headline} onChange={(event) => setField("headline", event.target.value)} /></label>
   </div><label>Причина<textarea value={values.reason} onChange={(event) => setField("reason", event.target.value)} placeholder="Обязательна для аудита" /></label><button className="primary-button small" type="button" disabled={busy} onClick={() => void save()}>{busy ? "Сохраняю…" : "Сохранить профиль"}</button></div>;
 }
 

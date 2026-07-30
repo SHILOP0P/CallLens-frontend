@@ -18,7 +18,7 @@ export const demoUser: UserResponse = {
   full_surname: "Петров",
   username: "@ivan",
   role: "user",
-  post: "Отдел продаж",
+  headline: "Отдел продаж",
   created_at: "2026-06-12T12:00:00Z"
 };
 
