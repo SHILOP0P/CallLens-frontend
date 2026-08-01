@@ -1,25 +1,39 @@
 import { Download, Pause, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getCallAudioBlob, getCallAudioUrl, getCallMediaBlob, getCallMediaUrl } from "../../api";
-import type { CallResponse } from "../../types";
+import type { CallResponse, MediaSeekTarget, TranscriptionWordResponse } from "../../types";
+import { activeTranscriptWordIndex } from "../lib/transcript";
 import { formatDuration } from "../lib/formatters";
 import { isVideoCall, mediaDownloadName } from "../lib/media";
 
 const playbackRates = [0.75, 1, 1.25, 1.5, 2];
+const emptyTranscriptWords: TranscriptionWordResponse[] = [];
 const waveformBars = 72;
 const fallbackWaveform = Array.from({ length: waveformBars }, (_, index) => {
   const wave = Math.sin(index * 0.68) * 0.22 + Math.sin(index * 1.73) * 0.14;
   return Math.max(0.2, Math.min(0.9, 0.54 + wave));
 });
 
-export function CallMediaPlayer({ call }: { call: CallResponse }) {
-  return isVideoCall(call) ? <CallVideoPlayer call={call} /> : <CallAudioPlayer call={call} />;
+type MediaPlayerProps = {
+  call: CallResponse;
+  seekTarget?: MediaSeekTarget | null;
+  words?: TranscriptionWordResponse[];
+  onActiveWordChange?: (index: number) => void;
+};
+
+export function CallMediaPlayer(props: MediaPlayerProps) {
+  return isVideoCall(props.call) ? <CallVideoPlayer {...props} /> : <CallAudioPlayer {...props} />;
 }
 
-function CallVideoPlayer({ call }: { call: CallResponse }) {
+function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onActiveWordChange }: MediaPlayerProps) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
   const source = useMemo(() => getCallMediaUrl(call), [call.id, call.media_url, call.audio_url]);
+
+  useEffect(() => {
+    if (videoRef.current && seekTarget) videoRef.current.currentTime = seekTarget.startSeconds;
+  }, [seekTarget]);
 
   async function downloadVideo() {
     setDownloading(true);
@@ -43,12 +57,14 @@ function CallVideoPlayer({ call }: { call: CallResponse }) {
   return (
     <div className={`call-video-player ${error ? "video-error-state" : ""}`}>
       <video
+        ref={videoRef}
         controls
         crossOrigin="use-credentials"
         preload="metadata"
         src={source}
         aria-label={`Видеозапись звонка ${call.title}`}
         onError={() => setError("Видео недоступно")}
+        onTimeUpdate={(event) => onActiveWordChange?.(activeTranscriptWordIndex(words, event.currentTarget.currentTime))}
       />
       {error && <div className="call-video-placeholder" role="status">{error}</div>}
       <div className="call-video-meta">
@@ -62,12 +78,14 @@ function CallVideoPlayer({ call }: { call: CallResponse }) {
   );
 }
 
-export function CallAudioPlayer({ call }: { call: CallResponse; }) {
+export function CallAudioPlayer({ call, seekTarget, words = emptyTranscriptWords, onActiveWordChange }: MediaPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement | null>(null);
   const speedControlRef = useRef<HTMLDivElement | null>(null);
   const speedHoldTimerRef = useRef<number | null>(null);
   const speedLongPressRef = useRef(false);
+  const animationFrameRef = useRef<number | null>(null);
+  const activeWordRef = useRef(-1);
   const [audioUrl, setAudioUrl] = useState("");
   const [audioError, setAudioError] = useState("");
   const [loadingAudio, setLoadingAudio] = useState(false);
@@ -160,6 +178,42 @@ export function CallAudioPlayer({ call }: { call: CallResponse; }) {
 
   useEffect(() => () => clearSpeedHoldTimer(), []);
 
+  useEffect(() => {
+    if (!seekTarget) return;
+    seek(String(seekTarget.startSeconds));
+  }, [seekTarget]);
+
+  useEffect(() => {
+    if (!playing) {
+      stopPositionUpdates();
+      return;
+    }
+    const update = () => {
+      if (document.visibilityState !== "visible") {
+        animationFrameRef.current = null;
+        return;
+      }
+      if (audioRef.current) updateCurrentTime(audioRef.current.currentTime);
+      animationFrameRef.current = requestAnimationFrame(update);
+    };
+    const resumeWhenVisible = () => {
+      if (document.visibilityState === "visible" && animationFrameRef.current === null) {
+        animationFrameRef.current = requestAnimationFrame(update);
+      }
+    };
+    resumeWhenVisible();
+    document.addEventListener("visibilitychange", resumeWhenVisible);
+    return () => {
+      document.removeEventListener("visibilitychange", resumeWhenVisible);
+      stopPositionUpdates();
+    };
+  }, [playing, words, onActiveWordChange]);
+
+  useEffect(() => {
+    activeWordRef.current = -1;
+    onActiveWordChange?.(-1);
+  }, [call.id, words, onActiveWordChange]);
+
   function togglePlayback() {
     const audio = audioRef.current;
     if (!audio || !audioUrl || audioError) return;
@@ -174,10 +228,25 @@ export function CallAudioPlayer({ call }: { call: CallResponse; }) {
   function seek(value: string) {
     const audio = audioRef.current;
     const nextTime = Number(value);
-    setCurrentTime(nextTime);
+    updateCurrentTime(nextTime);
     if (audio && Number.isFinite(nextTime)) {
       audio.currentTime = nextTime;
     }
+  }
+
+  function updateCurrentTime(nextTime: number) {
+    setCurrentTime((current) => current === nextTime ? current : nextTime);
+    const nextActiveWord = activeTranscriptWordIndex(words, nextTime);
+    if (nextActiveWord !== activeWordRef.current) {
+      activeWordRef.current = nextActiveWord;
+      onActiveWordChange?.(nextActiveWord);
+    }
+  }
+
+  function stopPositionUpdates() {
+    if (animationFrameRef.current === null) return;
+    cancelAnimationFrame(animationFrameRef.current);
+    animationFrameRef.current = null;
   }
 
   function seekByRatio(ratio: number) {
@@ -398,10 +467,10 @@ export function CallAudioPlayer({ call }: { call: CallResponse; }) {
             const nextDuration = event.currentTarget.duration;
             if (Number.isFinite(nextDuration)) setDuration(nextDuration);
           }}
-          onEnded={() => setPlaying(false)}
-          onPause={() => setPlaying(false)}
+          onEnded={() => { setPlaying(false); stopPositionUpdates(); }}
+          onPause={() => { setPlaying(false); stopPositionUpdates(); }}
           onPlay={() => setPlaying(true)}
-          onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
+          onTimeUpdate={(event) => updateCurrentTime(event.currentTarget.currentTime)}
         />
       </div>
     </div>

@@ -1,15 +1,39 @@
 import type {
+  AnalysisEvidence,
   AnalysisResponse,
   AnalysisV2CriteriaResult,
   AnalysisV2Question,
   AnalysisV2Result
 } from "../../types";
 
+export function evidenceList(value: unknown): AnalysisEvidence[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isPlainRecord(item)) return [];
+    const quote = stringValue(item.quote);
+    const matchStatus = stringValue(item.match_status);
+    if (!quote || !matchStatus) return [];
+    const evidence: AnalysisEvidence = { quote, match_status: matchStatus };
+    const start = finiteNumber(item.start_seconds);
+    const end = finiteNumber(item.end_seconds);
+    const wordStart = integerValue(item.word_start_index);
+    const wordEnd = integerValue(item.word_end_index);
+    if (start !== null) evidence.start_seconds = start;
+    if (end !== null) evidence.end_seconds = end;
+    if (wordStart !== null) evidence.word_start_index = wordStart;
+    if (wordEnd !== null) evidence.word_end_index = wordEnd;
+    const speaker = stringValue(item.speaker);
+    if (speaker) evidence.speaker = speaker;
+    return [evidence];
+  });
+}
+
 export type AnalysisQuestion = {
   question?: string;
   managerAnswer?: string;
   answerStatus?: string;
   evidenceQuotes: string[];
+  evidence: AnalysisEvidence[];
 };
 
 export type AnalysisDetails = {
@@ -21,6 +45,7 @@ export type AnalysisDetails = {
     manager?: string;
     client?: string;
     evidenceQuotes: string[];
+    evidence: AnalysisEvidence[];
   };
   clientQuestions: AnalysisQuestion[];
   questionCoverage: {
@@ -169,7 +194,8 @@ export function analysisV2Result(analysis?: AnalysisResponse): AnalysisV2Result 
       overall: stringValue(dialogueTone?.overall) ?? "",
       manager: stringValue(dialogueTone?.manager) ?? "",
       client: stringValue(dialogueTone?.client) ?? "",
-      evidence_quotes: stringList(dialogueTone?.evidence_quotes)
+      evidence_quotes: stringList(dialogueTone?.evidence_quotes),
+      evidence: evidenceList(dialogueTone?.evidence)
     },
     client_questions: v2QuestionList(record.client_questions),
     question_coverage: {
@@ -215,6 +241,7 @@ export function analysisV2Result(analysis?: AnalysisResponse): AnalysisV2Result 
     },
     issue_codes: stringList(record.issue_codes),
     evidence_quotes: stringList(record.evidence_quotes),
+    evidence: evidenceList(record.evidence),
     confidence: stringValue(record.confidence) ?? ""
   };
 }
@@ -298,7 +325,8 @@ export function analysisDetails(analysis?: AnalysisResponse): AnalysisDetails {
       overall: stringValue(dialogueTone?.overall),
       manager: stringValue(dialogueTone?.manager),
       client: stringValue(dialogueTone?.client),
-      evidenceQuotes: stringList(dialogueTone?.evidence_quotes)
+      evidenceQuotes: stringList(dialogueTone?.evidence_quotes),
+      evidence: evidenceList(dialogueTone?.evidence)
     },
     clientQuestions: questionList(record.client_questions),
     questionCoverage: {
@@ -361,14 +389,16 @@ export function questionList(value: unknown): AnalysisQuestion[] {
       question: stringValue(item.question),
       managerAnswer: stringValue(item.manager_answer),
       answerStatus: stringValue(item.answer_status),
-      evidenceQuotes: stringList(item.evidence_quotes)
+      evidenceQuotes: stringList(item.evidence_quotes),
+      evidence: evidenceList(item.evidence)
     };
 
     if (
       !question.question &&
       !question.managerAnswer &&
       !question.answerStatus &&
-      question.evidenceQuotes.length === 0
+      question.evidenceQuotes.length === 0 &&
+      question.evidence.length === 0
     ) {
       return [];
     }
@@ -497,7 +527,8 @@ function v2QuestionList(value: unknown): AnalysisV2Question[] {
       question: stringValue(item.question) ?? "",
       manager_answer: stringValue(item.manager_answer) ?? "",
       answer_status: stringValue(item.answer_status) ?? "",
-      evidence_quotes: stringList(item.evidence_quotes)
+      evidence_quotes: stringList(item.evidence_quotes),
+      evidence: evidenceList(item.evidence)
     };
 
     if (
@@ -532,6 +563,7 @@ function criteriaResultList(value: unknown): AnalysisV2CriteriaResult[] {
       score: numberValue(item.score) ?? 0,
       quote: stringValue(item.quote) ?? stringList(item.evidence_quotes)[0] ?? "Не указано",
       evidence_quotes: stringList(item.evidence_quotes),
+      evidence: evidenceList(item.evidence),
       issue: stringValue(item.issue) ?? "",
       explanation: stringValue(item.explanation) ?? stringValue(item.issue) ?? "",
       recommendation: stringValue(item.recommendation) ?? ""
@@ -557,6 +589,10 @@ function numberValue(value: unknown) {
 
 function finiteNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function integerValue(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 function booleanValue(value: unknown) {

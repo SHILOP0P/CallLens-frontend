@@ -1,5 +1,7 @@
 import type {
-  AnalysisResponse
+  AnalysisEvidence,
+  AnalysisResponse,
+  MediaSeekTarget
 } from "../../types";
 
 import {
@@ -26,12 +28,14 @@ export function AnalysisPreview({
   analysis,
   expanded,
   loading,
-  pendingMessage
+  pendingMessage,
+  onEvidenceActivate
 }: {
   analysis?: AnalysisResponse;
   expanded: boolean;
   loading?: boolean;
   pendingMessage?: string;
+  onEvidenceActivate?: (target: MediaSeekTarget) => void;
 }) {
   if (loading) {
     return <TextBlockSkeleton rows={4} />;
@@ -43,12 +47,12 @@ export function AnalysisPreview({
 
   return (
     <div className={`analysis-preview analysis-full-text expandable-content ${expanded ? "expanded" : "collapsed"}`}>
-      <AnalysisStructuredView analysis={analysis} />
+      <AnalysisStructuredView analysis={analysis} onEvidenceActivate={onEvidenceActivate} />
     </div>
   );
 }
 
-export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisResponse; }) {
+export function AnalysisStructuredView({ analysis, onEvidenceActivate }: { analysis?: AnalysisResponse; onEvidenceActivate?: (target: MediaSeekTarget) => void; }) {
   if (!analysis) {
     return <p className="muted">Запустите анализ после готовой расшифровки.</p>;
   }
@@ -70,7 +74,7 @@ export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisRespon
 
   const v2 = analysisV2Result(analysis);
   if (v2) {
-    return <AnalysisV2View analysis={analysis} />;
+    return <AnalysisV2View analysis={analysis} onEvidenceActivate={onEvidenceActivate} />;
   }
 
   const additionalFields = analysisAdditionalFields(analysis);
@@ -97,11 +101,11 @@ export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisRespon
           <AnalysisKeyValue label="Менеджер" value={details.dialogueTone.manager} />
           <AnalysisKeyValue label="Клиент" value={details.dialogueTone.client} />
         </div>
-        <EvidenceQuotes quotes={details.dialogueTone.evidenceQuotes} />
+        <EvidenceQuotes quotes={details.dialogueTone.evidenceQuotes} evidence={details.dialogueTone.evidence} onActivate={onEvidenceActivate} />
       </AnalysisSection>
 
       <AnalysisSection title="Вопросы клиента и ответы менеджера">
-        <AnalysisQuestionList questions={details.clientQuestions} />
+        <AnalysisQuestionList questions={details.clientQuestions} onEvidenceActivate={onEvidenceActivate} />
       </AnalysisSection>
 
       <AnalysisSection title="Полнота ответов менеджера">
@@ -172,7 +176,7 @@ export function AnalysisStructuredView({ analysis }: { analysis?: AnalysisRespon
   );
 }
 
-function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
+function AnalysisV2View({ analysis, onEvidenceActivate }: { analysis: AnalysisResponse; onEvidenceActivate?: (target: MediaSeekTarget) => void; }) {
   const result = analysisV2Result(analysis);
   const score = analysisScore100(analysis);
   const additionalFields = analysisAdditionalFields(analysis);
@@ -238,7 +242,7 @@ function AnalysisV2View({ analysis }: { analysis: AnalysisResponse; }) {
                   Оценка: {formatTenPointScore(criterion.score)} / 10
                 </small>
                 <p><b>Тема:</b> {criterion.topic}</p>
-                <p><b>Цитата:</b> {criterion.quote}</p>
+                <CriterionEvidence evidence={criterion.evidence} quote={criterion.quote} onActivate={onEvidenceActivate} />
                 {criterion.explanation && <p><b>Объяснение:</b> {criterion.explanation}</p>}
                 {!criterion.explanation && criterion.issue && <p><b>Объяснение:</b> {criterion.issue}</p>}
                 {criterion.recommendation && <p><b>Рекомендация:</b> {criterion.recommendation}</p>}
@@ -350,20 +354,18 @@ export function AnalysisStringList({ items, emptyLabel }: { items: string[]; emp
   );
 }
 
-export function EvidenceQuotes({ quotes }: { quotes: string[]; }) {
-  if (quotes.length === 0) return null;
+export function EvidenceQuotes({ quotes, evidence = [], onActivate }: { quotes: string[]; evidence?: AnalysisEvidence[]; onActivate?: (target: MediaSeekTarget) => void; }) {
+  if (quotes.length === 0 && evidence.length === 0) return null;
 
   return (
     <div className="evidence-quotes">
       <span>Цитаты</span>
-      {quotes.map((quote, index) => (
-        <blockquote key={`${quote}-${index}`}>{quote}</blockquote>
-      ))}
+      <EvidenceItems evidence={evidence} fallbackQuotes={quotes} onActivate={onActivate} />
     </div>
   );
 }
 
-export function AnalysisQuestionList({ questions }: { questions: AnalysisQuestion[]; }) {
+export function AnalysisQuestionList({ questions, onEvidenceActivate }: { questions: AnalysisQuestion[]; onEvidenceActivate?: (target: MediaSeekTarget) => void; }) {
   if (questions.length === 0) {
     return <p className="analysis-empty">Вопросы клиента не указаны.</p>;
   }
@@ -379,11 +381,86 @@ export function AnalysisQuestionList({ questions }: { questions: AnalysisQuestio
           <p>
             <b>Ответ менеджера:</b> {question.managerAnswer || "Не указан"}
           </p>
-          <EvidenceQuotes quotes={question.evidenceQuotes} />
+          <EvidenceQuotes quotes={question.evidenceQuotes} evidence={question.evidence} onActivate={onEvidenceActivate} />
         </div>
       ))}
     </div>
   );
+}
+
+function EvidenceItems({ evidence, fallbackQuotes, onActivate }: { evidence: AnalysisEvidence[]; fallbackQuotes: string[]; onActivate?: (target: MediaSeekTarget) => void; }) {
+  const rawItems: AnalysisEvidence[] = evidence.length > 0
+    ? evidence
+    : fallbackQuotes.filter(Boolean).map((quote) => ({ quote, match_status: "legacy" } satisfies AnalysisEvidence));
+  const items = compactEvidenceItems(rawItems);
+  return <>{items.map((item, index) => {
+    const matched = item.match_status === "matched" && typeof item.start_seconds === "number";
+    const time = matched ? formatEvidenceTime(item.start_seconds!) : "";
+    if (!matched) return <blockquote key={`${item.quote}-${index}`}>{item.speaker && <small className="evidence-speaker">{item.speaker}</small>}{item.quote}<small>Точное место не определено</small></blockquote>;
+    return (
+      <button
+        className="evidence-link"
+        type="button"
+        aria-label={`Перейти к цитате на ${time}`}
+        key={`${item.quote}-${index}`}
+        onClick={() => onActivate?.({
+          startSeconds: item.start_seconds!,
+          endSeconds: item.end_seconds,
+          wordStartIndex: item.word_start_index,
+          wordEndIndex: item.word_end_index
+        })}
+      >
+        <span>{item.speaker && <small className="evidence-speaker">{item.speaker}</small>}{item.quote}</span><time>{time}</time>
+      </button>
+    );
+  })}</>;
+}
+
+function CriterionEvidence({ evidence, quote, onActivate }: { evidence: AnalysisEvidence[]; quote: string; onActivate?: (target: MediaSeekTarget) => void; }) {
+  const count = compactEvidenceItems(evidence.length > 0 ? evidence : [{ quote, match_status: "legacy" }]).length;
+  return (
+    <div className="criterion-evidence">
+      <b>{count > 1 ? "Цитаты:" : "Цитата:"}</b>
+      <EvidenceItems evidence={evidence} fallbackQuotes={[quote]} onActivate={onActivate} />
+    </div>
+  );
+}
+
+function compactEvidenceItems(items: AnalysisEvidence[]) {
+  const unique = items.filter((item, index) => {
+    const key = evidenceKey(item);
+    return items.findIndex((candidate) => evidenceKey(candidate) === key) === index;
+  });
+
+  return unique.filter((item, index) => {
+    const normalized = normalizeEvidenceQuote(item.quote);
+    if (!normalized) return false;
+    return !unique.some((candidate, candidateIndex) => {
+      if (candidateIndex === index || candidate.match_status !== "matched") return false;
+      const nested = normalizeEvidenceQuote(candidate.quote);
+      return nested.length >= 12 && normalized.length > nested.length * 1.35 && normalized.includes(nested);
+    });
+  });
+}
+
+function evidenceKey(item: AnalysisEvidence) {
+  return [
+    normalizeEvidenceQuote(item.quote),
+    item.match_status,
+    item.start_seconds ?? "",
+    item.end_seconds ?? "",
+    item.word_start_index ?? "",
+    item.word_end_index ?? ""
+  ].join("|");
+}
+
+function normalizeEvidenceQuote(quote: string) {
+  return quote.toLocaleLowerCase("ru-RU").replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+}
+
+function formatEvidenceTime(seconds: number) {
+  const total = Math.max(0, Math.floor(seconds));
+  return `${Math.floor(total / 60).toString().padStart(2, "0")}:${(total % 60).toString().padStart(2, "0")}`;
 }
 
 function hasText(value?: string) {

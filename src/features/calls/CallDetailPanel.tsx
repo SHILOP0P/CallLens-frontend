@@ -18,6 +18,7 @@ import type {
   CallStatus,
   CompanyResponse,
   DepartmentResponse,
+  MediaSeekTarget,
   TranscriptionResponse
 } from "../../types";
 
@@ -79,6 +80,8 @@ export function CallDetailPanel({
   const [deleting, setDeleting] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
+  const [activeWordIndex, setActiveWordIndex] = useState(-1);
+  const [seekTarget, setSeekTarget] = useState<MediaSeekTarget | null>(null);
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const transcriptCardRef = useRef<HTMLDivElement | null>(null);
   const analysisCardRef = useRef<HTMLDivElement | null>(null);
@@ -90,6 +93,8 @@ export function CallDetailPanel({
     setDeleteError("");
     setDeleteConfirmOpen(false);
     setFolderMenuOpen(false);
+    setActiveWordIndex(-1);
+    setSeekTarget(null);
   }, [call?.id]);
 
   useEffect(() => {
@@ -145,6 +150,11 @@ export function CallDetailPanel({
 
   const transcriptionState = transcriptionCardState(call, transcription);
   const analysisState = analysisCardState(call, analysis);
+
+  function openEvidence(target: MediaSeekTarget) {
+    setShowFullTranscript(true);
+    setSeekTarget({ ...target });
+  }
 
   function toggleExpandedCard(
     expanded: boolean,
@@ -265,7 +275,12 @@ export function CallDetailPanel({
           )}
         </div>
       </div>
-      <CallMediaPlayer call={call} />
+      <CallMediaPlayer
+        call={call}
+        words={transcription?.words}
+        seekTarget={seekTarget}
+        onActiveWordChange={setActiveWordIndex}
+      />
       <StatusTimeline current={call.status} statuses={timelineStatuses} analysisStatus={analysis?.status} />
       {showReports && <ReportExportPanel call={call} analysis={analysis} />}
       <div className="detail-grid">
@@ -280,7 +295,13 @@ export function CallDetailPanel({
           actionVariant="analysis"
           expanded={showFullTranscript}
         >
-          <TranscriptPreview transcription={transcription} expanded={showFullTranscript} loading={loadingDetails} />
+          <TranscriptPreview
+            transcription={transcription}
+            expanded={showFullTranscript}
+            loading={loadingDetails}
+            activeWordIndex={activeWordIndex}
+            selectedEvidence={seekTarget}
+          />
         </InfoCard>
         <InfoCard
           title="AI-анализ"
@@ -298,6 +319,7 @@ export function CallDetailPanel({
             expanded={showFullAnalysis}
             loading={loadingDetails}
             pendingMessage={analysisState.thinking ? "Производится анализ транскрипции. Результат появится после завершения обработки." : undefined}
+            onEvidenceActivate={openEvidence}
           />
         </InfoCard>
       </div>

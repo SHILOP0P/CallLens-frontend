@@ -190,6 +190,7 @@ export const demoTranscriptions: Record<string, TranscriptionResponse> = {
         text: "По поставке мы предлагаем срок 3-5 рабочих дней. Интеграция возможна через наш API."
       }
     ],
+    words: [],
     language: "ru",
     provider: "mock",
     error_message: null,
@@ -203,6 +204,7 @@ export const demoTranscriptions: Record<string, TranscriptionResponse> = {
     text:
       "Менеджер провел презентацию продукта, клиент уточнил сроки запуска и попросил прислать расчет по двум тарифам.",
     segments: [],
+    words: [],
     language: "ru",
     provider: "mock",
     error_message: null,

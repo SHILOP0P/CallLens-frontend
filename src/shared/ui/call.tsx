@@ -9,9 +9,13 @@ import {
 import type {
   AnalysisResponse,
   CallStatus,
-  TranscriptionResponse
+  MediaSeekTarget,
+  TranscriptionResponse,
+  TranscriptionWordResponse
 } from "../../types";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import type { Ref } from "react";
+import { wordNeedsLeadingSpace } from "../lib/transcript";
 
 import {
   activeCallProcess,
@@ -196,14 +200,110 @@ export function InfoCard({
 export function TranscriptPreview({
   transcription,
   expanded,
-  loading
+  loading,
+  activeWordIndex = -1,
+  selectedEvidence
 }: {
   transcription?: TranscriptionResponse;
   expanded: boolean;
   loading?: boolean;
+  activeWordIndex?: number;
+  selectedEvidence?: MediaSeekTarget | null;
 }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const wordRefs = useRef(new Map<number, HTMLSpanElement>());
+  const programmaticScrollRef = useRef(false);
+  const pendingEvidenceScrollRef = useRef(false);
+  const [followPlayback, setFollowPlayback] = useState(true);
+  const words = useMemo(() => validTranscriptWords(transcription?.words), [transcription?.words]);
+  const wordGroups = useMemo(() => groupTranscriptWords(words), [words]);
+
+  function scrollToWord(index: number, force = false) {
+    if ((!followPlayback && !force) || index < 0) return;
+    const word = wordRefs.current.get(index);
+    if (!word) return;
+    const scrollContainer = nearestScrollContainer(word);
+    if (!scrollContainer) return;
+    programmaticScrollRef.current = true;
+    const containerRect = scrollContainer.getBoundingClientRect();
+    const wordRect = word.getBoundingClientRect();
+    const relativeWordTop = scrollContainer === document.scrollingElement
+      ? wordRect.top
+      : wordRect.top - containerRect.top;
+    const targetScrollTop = scrollContainer.scrollTop
+      + relativeWordTop
+      - (scrollContainer.clientHeight - wordRect.height) / 2;
+    scrollContainer.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: reducedMotion() ? "auto" : "smooth"
+    });
+    window.setTimeout(() => { programmaticScrollRef.current = false; }, 250);
+  }
+
+  useEffect(() => {
+    if (selectedEvidence?.wordStartIndex === undefined) return;
+    pendingEvidenceScrollRef.current = true;
+    setFollowPlayback(true);
+    scrollToWord(selectedEvidence.wordStartIndex, true);
+  }, [selectedEvidence]);
+
+  useEffect(() => {
+    if (pendingEvidenceScrollRef.current) {
+      const targetStart = selectedEvidence?.wordStartIndex;
+      const targetEnd = selectedEvidence?.wordEndIndex ?? targetStart;
+      if (targetStart !== undefined && targetEnd !== undefined && activeWordIndex >= targetStart && activeWordIndex <= targetEnd) {
+        pendingEvidenceScrollRef.current = false;
+      } else {
+        return;
+      }
+    }
+    if (activeWordIndex >= 0) scrollToWord(activeWordIndex);
+  }, [activeWordIndex, followPlayback, selectedEvidence]);
+
   if (loading) {
     return <TextBlockSkeleton rows={4} />;
+  }
+
+  if (words.length > 0) {
+    return (
+      <div className="transcript-word-shell">
+        {!followPlayback && activeWordIndex >= 0 && (
+          <button className="transcript-follow-button" type="button" onClick={() => { setFollowPlayback(true); scrollToWord(activeWordIndex, true); }}>
+            Вернуться к текущему моменту
+          </button>
+        )}
+        <div
+          ref={containerRef}
+          className={`transcript-preview word-synced expandable-content ${expanded ? "expanded" : "collapsed"}`}
+          onWheel={() => { if (!programmaticScrollRef.current) setFollowPlayback(false); }}
+          onTouchMove={() => { if (!programmaticScrollRef.current) setFollowPlayback(false); }}
+        >
+          {wordGroups.some((group) => group.speaker) ? wordGroups.map((group) => (
+            <div className="transcript-segment word-segment" key={`${group.startIndex}-${group.speaker}`}>
+              <div className="segment-meta">
+                <strong>{speakerLabel(group.speaker)}</strong>
+                <span>{formatSegmentTimeRange(group.words[0]?.start_seconds, group.words.at(-1)?.end_seconds)}</span>
+              </div>
+              <p>{group.words.map((word, offset) => renderWord(word, group.startIndex + offset, offset === 0))}</p>
+            </div>
+          )) : <p>{words.map((word, index) => renderWord(word, index, index === 0))}</p>}
+        </div>
+      </div>
+    );
+  }
+
+  function renderWord(word: TranscriptionWordResponse, index: number, firstInBlock: boolean) {
+    return <TranscriptWord
+      key={`${index}-${word.start_seconds}`}
+      word={word}
+      index={index}
+      firstInBlock={firstInBlock}
+      active={index === activeWordIndex}
+      selected={isSelectedEvidenceWord(index, selectedEvidence)}
+      selectedStart={index === selectedEvidence?.wordStartIndex}
+      selectedEnd={index === selectedEvidence?.wordEndIndex}
+      setRef={(element) => { if (element) wordRefs.current.set(index, element); else wordRefs.current.delete(index); }}
+    />;
   }
 
   const segments = transcriptionSegments(transcription);
@@ -238,6 +338,58 @@ export function TranscriptPreview({
         ))}
     </div>
   );
+}
+
+const TranscriptWord = memo(function TranscriptWord({ word, index, firstInBlock, active, selected, selectedStart, selectedEnd, setRef }: {
+  word: TranscriptionWordResponse;
+  index: number;
+  firstInBlock: boolean;
+  active: boolean;
+  selected: boolean;
+  selectedStart: boolean;
+  selectedEnd: boolean;
+  setRef: (element: HTMLSpanElement | null) => void;
+}) {
+  return <span
+    ref={setRef}
+    className={`transcript-word ${active ? "active" : ""} ${selected ? "evidence-selected" : ""} ${selectedStart ? "evidence-start" : ""} ${selectedEnd ? "evidence-end" : ""}`}
+    data-word-index={index}
+  >{!firstInBlock && wordNeedsLeadingSpace(word.text, index) ? " " : ""}{word.text}</span>;
+});
+
+function groupTranscriptWords(words: TranscriptionWordResponse[]) {
+  return words.reduce<Array<{ speaker: string; startIndex: number; words: TranscriptionWordResponse[] }>>((groups, word, index) => {
+    const speaker = word.speaker?.trim() ?? "";
+    const current = groups.at(-1);
+    if (!current || current.speaker !== speaker) groups.push({ speaker, startIndex: index, words: [word] });
+    else current.words.push(word);
+    return groups;
+  }, []);
+}
+
+function validTranscriptWords(words?: TranscriptionWordResponse[]) {
+  if (!Array.isArray(words)) return [];
+  return words.filter((word) => word && word.text?.length > 0 && Number.isFinite(word.start_seconds) && Number.isFinite(word.end_seconds));
+}
+
+function isSelectedEvidenceWord(index: number, target?: MediaSeekTarget | null) {
+  return target?.wordStartIndex !== undefined && target.wordEndIndex !== undefined && index >= target.wordStartIndex && index <= target.wordEndIndex;
+}
+
+function reducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function nearestScrollContainer(element: HTMLElement) {
+  let parent = element.parentElement;
+  while (parent) {
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if ((overflowY === "auto" || overflowY === "scroll") && parent.scrollHeight > parent.clientHeight) {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+  return document.scrollingElement instanceof HTMLElement ? document.scrollingElement : null;
 }
 
 export function transcriptionSegments(transcription?: TranscriptionResponse) {

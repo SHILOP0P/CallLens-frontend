@@ -251,11 +251,39 @@ export interface TranscriptionResponse {
   status: "processing" | "transcribed" | "failed" | string;
   text?: string | null;
   segments?: TranscriptionSegmentResponse[];
+  words: TranscriptionWordResponse[];
   language?: string | null;
   provider: string;
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TranscriptionWordResponse {
+  text: string;
+  start_seconds: number;
+  end_seconds: number;
+  confidence?: number | null;
+  speaker?: string;
+}
+
+export type AnalysisEvidenceMatchStatus = "matched" | "ambiguous" | "not_found" | "legacy";
+
+export interface AnalysisEvidence {
+  quote: string;
+  start_seconds?: number;
+  end_seconds?: number;
+  word_start_index?: number;
+  word_end_index?: number;
+  speaker?: string;
+  match_status: AnalysisEvidenceMatchStatus | string;
+}
+
+export interface MediaSeekTarget {
+  startSeconds: number;
+  endSeconds?: number;
+  wordStartIndex?: number;
+  wordEndIndex?: number;
 }
 
 export interface TranscriptionSegmentResponse {
@@ -283,6 +311,7 @@ export interface AnalysisV2Question {
   manager_answer: string;
   answer_status: "answered" | "partially_answered" | "not_answered" | "unclear" | string;
   evidence_quotes: string[];
+  evidence: AnalysisEvidence[];
 }
 
 export interface AnalysisV2CriteriaResult {
@@ -307,6 +336,7 @@ export interface AnalysisV2CriteriaResult {
   score: number;
   quote: string;
   evidence_quotes: string[];
+  evidence: AnalysisEvidence[];
   issue: string;
   explanation: string;
   recommendation: string;
@@ -321,6 +351,7 @@ export interface AnalysisV2Result {
     manager: string;
     client: string;
     evidence_quotes: string[];
+    evidence: AnalysisEvidence[];
   };
   client_questions: AnalysisV2Question[];
   question_coverage: {
@@ -366,6 +397,7 @@ export interface AnalysisV2Result {
   };
   issue_codes: string[];
   evidence_quotes: string[];
+  evidence: AnalysisEvidence[];
   confidence: AnalysisConfidence | string;
 }
 
