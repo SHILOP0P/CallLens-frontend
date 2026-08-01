@@ -21,7 +21,7 @@
   z-index: -2;
   background-image:
     linear-gradient(90deg, rgba(18, 12, 9, 0.1), rgba(18, 12, 9, 0.46) 52%, rgba(18, 12, 9, 0.14)),
-    url("/assets/calllens-hero-background.png");
+    url("/assets/verbatrace-hero-background.png");
   background-size: cover;
   background-position: left center;
   background-attachment: fixed;
@@ -2760,7 +2760,7 @@ select:focus {
   pointer-events: none;
   background:
     linear-gradient(90deg, rgba(8, 14, 13, 0.58), rgba(19, 16, 13, 0.78) 46%, rgba(11, 15, 15, 0.5)),
-    url("/assets/calllens-hero-background.png");
+    url("/assets/verbatrace-hero-background.png");
   background-size: cover;
   background-position: left center;
   opacity: 0.34;
@@ -5418,7 +5418,7 @@ html[data-theme="dark"] .app-shell .admin-page::before {
   opacity: 0.34;
   background:
     linear-gradient(90deg, rgba(34, 19, 12, 0.22), transparent 48%),
-    url("/assets/calllens-hero-background.png") left center / cover;
+    url("/assets/verbatrace-hero-background.png") left center / cover;
   mix-blend-mode: screen;
   border-radius: inherit;
 }
@@ -5619,7 +5619,7 @@ html[data-theme="light"] .app-shell .admin-page::before {
   opacity: 0.22;
   background:
     linear-gradient(90deg, rgba(255, 250, 245, 0.44), transparent 48%),
-    url("/assets/calllens-hero-background.png") left center / cover;
+    url("/assets/verbatrace-hero-background.png") left center / cover;
   mix-blend-mode: multiply;
   border-radius: inherit;
 }

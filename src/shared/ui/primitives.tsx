@@ -24,20 +24,20 @@ export function Logo({ onClick }: { onClick?: () => void }) {
         <i />
         <i />
       </span>
-      <span>CallLens</span>
+      <span>VerbaTrace</span>
     </>
   );
 
   if (onClick) {
     return (
-      <button className="logo logo-button" type="button" onClick={onClick} aria-label="CallLens">
+      <button className="logo logo-button" type="button" onClick={onClick} aria-label="VerbaTrace">
         {content}
       </button>
     );
   }
 
   return (
-    <div className="logo" aria-label="CallLens">
+    <div className="logo" aria-label="VerbaTrace">
       {content}
     </div>
   );

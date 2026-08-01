@@ -174,7 +174,7 @@
     box-shadow: 0 12px 30px rgba(25, 14, 8, .2);
     visibility: visible;
     opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
+    transform: none;
     transition:
       opacity 180ms ease,
       transform 240ms cubic-bezier(.22, .8, .28, 1),
@@ -204,6 +204,16 @@
     max-width: none;
     max-height: min(60dvh, 460px);
     overflow: auto;
+  }
+
+  .app-shell .notifications-popover {
+    right: auto;
+    left: 50%;
+    width: calc(100vw - 24px);
+    min-width: 0;
+    max-width: calc(100vw - 24px);
+    overflow-x: hidden;
+    transform: translateX(-50%);
   }
 
   .app-shell .header-popover.profile-popover {

@@ -69,10 +69,12 @@ import { coordinateRefresh } from "./features/auth/refresh-coordinator";
 const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 const apiRoot = `${configuredBase}/api/v1`;
 const authRefreshPath = "/auth/refresh";
-const sessionExpiredEvent = "calllens:session-expired";
+const sessionExpiredEvent = "verbatrace:session-expired";
+const legacySessionExpiredEvent = "calllens:session-expired";
 
 function notifySessionExpired() {
   window.dispatchEvent(new Event(sessionExpiredEvent));
+  window.dispatchEvent(new Event(legacySessionExpiredEvent));
 }
 
 export class ApiError extends Error {

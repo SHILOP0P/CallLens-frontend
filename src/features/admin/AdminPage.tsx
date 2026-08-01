@@ -21,7 +21,7 @@ type SubscriptionOwner = "users" | "companies";
 type AdminDetailRoute = { section: AdminSection; id: string } | null;
 type AdminAlert = { id: number; message: string; tone: "success" | "error" };
 
-const adminAlertEvent = "calllens:admin-alert";
+const adminAlertEvent = "verbatrace:admin-alert";
 
 const has = (capabilities: AdminCapabilitiesResponse, permission: string) => capabilities.permissions.includes(permission);
 
@@ -320,7 +320,7 @@ function CompanyDetail({ company, capabilities, onBack, onUpdated }: { company: 
     setBusy(true);
     try { onUpdated(await api.updateAdminCompanyTag(company.id, tag)); setNotice("Тег компании обновлён"); showAdminAlert("Тег компании обновлён"); } catch (error) { setNotice(message(error)); showAdminAlert(message(error), "error"); } finally { setBusy(false); }
   }
-  return <section className="admin-page admin-user-page"><button className="text-button" type="button" onClick={onBack}>← К компаниям</button><header className="admin-page-head"><div><p className="eyebrow">КАРТОЧКА КОМПАНИИ</p><h1>{company.name}</h1><p>{company.tag || "Тег не задан"}</p></div></header>{notice && <p className="admin-notice" role="status">{notice}</p>}<div className="admin-profile-grid"><section className="admin-detail"><h2>Компания</h2><dl><dt>Тег</dt><dd>{company.tag || "Тег не задан"}</dd><dt>Создана</dt><dd>{date(company.created_at)}</dd></dl>{canEditTag && <div className="admin-action-block"><h3>Изменить тег</h3><label>Тег<input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="@calllens_team" /></label><button className="primary-button small" type="button" disabled={busy} onClick={() => void saveTag()}>{busy ? "Сохраняю…" : "Сохранить тег"}</button></div>}{has(capabilities, "admin.subscriptions.manage") && <UsageResetPanel kind="companies" id={company.id} />}</section><section className="admin-detail">{has(capabilities, "admin.subscriptions.read") && <SubscriptionPanel kind="companies" id={company.id} canManage={has(capabilities, "admin.subscriptions.manage")} />}</section></div></section>;
+  return <section className="admin-page admin-user-page"><button className="text-button" type="button" onClick={onBack}>← К компаниям</button><header className="admin-page-head"><div><p className="eyebrow">КАРТОЧКА КОМПАНИИ</p><h1>{company.name}</h1><p>{company.tag || "Тег не задан"}</p></div></header>{notice && <p className="admin-notice" role="status">{notice}</p>}<div className="admin-profile-grid"><section className="admin-detail"><h2>Компания</h2><dl><dt>Тег</dt><dd>{company.tag || "Тег не задан"}</dd><dt>Создана</dt><dd>{date(company.created_at)}</dd></dl>{canEditTag && <div className="admin-action-block"><h3>Изменить тег</h3><label>Тег<input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="@verbatrace_team" /></label><button className="primary-button small" type="button" disabled={busy} onClick={() => void saveTag()}>{busy ? "Сохраняю…" : "Сохранить тег"}</button></div>}{has(capabilities, "admin.subscriptions.manage") && <UsageResetPanel kind="companies" id={company.id} />}</section><section className="admin-detail">{has(capabilities, "admin.subscriptions.read") && <SubscriptionPanel kind="companies" id={company.id} canManage={has(capabilities, "admin.subscriptions.manage")} />}</section></div></section>;
 }
 
 function SubscriptionPanel({ kind, id, canManage }: { kind: SubscriptionOwner; id: string; canManage: boolean }) {

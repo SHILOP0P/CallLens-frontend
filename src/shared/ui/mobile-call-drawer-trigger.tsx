@@ -15,14 +15,32 @@ export function MobileCallDrawerTrigger({
   useEffect(() => {
     const anchor = anchorRef.current;
     const mobileQuery = window.matchMedia("(max-width: 760px)");
-    if (!anchor || !mobileQuery.matches) return;
+    if (!anchor) return;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => setShowHeaderTrigger(!entry.isIntersecting),
-      { rootMargin: "-84px 0px 0px" }
-    );
-    observer.observe(anchor);
-    return () => observer.disconnect();
+    let frameId = 0;
+    const updateHeaderTrigger = () => {
+      window.cancelAnimationFrame(frameId);
+      frameId = window.requestAnimationFrame(() => {
+        if (!mobileQuery.matches) {
+          setShowHeaderTrigger(false);
+          return;
+        }
+
+        setShowHeaderTrigger(anchor.getBoundingClientRect().bottom <= 84);
+      });
+    };
+
+    updateHeaderTrigger();
+    document.addEventListener("scroll", updateHeaderTrigger, true);
+    window.addEventListener("resize", updateHeaderTrigger);
+    mobileQuery.addEventListener("change", updateHeaderTrigger);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      document.removeEventListener("scroll", updateHeaderTrigger, true);
+      window.removeEventListener("resize", updateHeaderTrigger);
+      mobileQuery.removeEventListener("change", updateHeaderTrigger);
+    };
   }, []);
 
   return (

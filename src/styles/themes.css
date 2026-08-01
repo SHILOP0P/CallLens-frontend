@@ -8,7 +8,7 @@ html[data-theme="light"] .landing {
 html[data-theme="light"] .landing-bg {
   background-image:
     linear-gradient(90deg, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0.08)),
-    url("/assets/calllens-hero-background.png");
+    url("/assets/verbatrace-hero-background.png");
   background-position: center;
   opacity: 0.24;
   filter: blur(2px);
@@ -415,7 +415,7 @@ html[data-theme="dark"] .landing {
 html[data-theme="dark"] .landing-bg {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 9, 0.12), rgba(18, 12, 9, 0.58) 52%, rgba(18, 12, 9, 0.2)),
-    url("/assets/calllens-hero-background.png");
+    url("/assets/verbatrace-hero-background.png");
   background-position: left center;
   opacity: 0.18;
   filter: blur(1px);
@@ -439,7 +439,7 @@ html[data-theme="dark"] .app-shell {
 html[data-theme="dark"] .app-shell::before {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 9, 0.12), rgba(18, 12, 9, 0.58) 52%, rgba(18, 12, 9, 0.2)),
-    url("/assets/calllens-hero-background.png");
+    url("/assets/verbatrace-hero-background.png");
   background-position: left center;
   opacity: 0.18;
   filter: blur(1px);

@@ -694,20 +694,25 @@ button.sidebar-plan-card {
   cursor: pointer;
 }
 
-.app-sidebar button.sidebar-plan-card > small,
-.app-sidebar button.sidebar-plan-card:hover > small {
+.app-sidebar button.sidebar-plan-card > .sidebar-plan-badge,
+.app-sidebar button.sidebar-plan-card:hover > .sidebar-plan-badge {
   position: static;
   inset: auto;
   width: fit-content;
-  padding: 2px 7px;
-  color: var(--app-success);
-  background: rgba(117, 201, 102, 0.14);
+  min-width: 0;
+  height: auto;
+  align-items: center;
+  padding: 3px 7px 4px;
+  color: #8fdd82;
+  background: rgba(84, 167, 70, 0.22);
   border-radius: 5px;
+  box-shadow: inset 0 0 0 1px rgba(117, 201, 102, 0.16);
+  line-height: 1.15;
   transform: none;
 }
 
-html[data-theme="light"] .app-sidebar button.sidebar-plan-card > small,
-html[data-theme="light"] .app-sidebar button.sidebar-plan-card:hover > small {
+html[data-theme="light"] .app-sidebar button.sidebar-plan-card > .sidebar-plan-badge,
+html[data-theme="light"] .app-sidebar button.sidebar-plan-card:hover > .sidebar-plan-badge {
   color: #3f7f38;
   background: rgba(93, 164, 81, 0.24);
   box-shadow: inset 0 0 0 1px rgba(74, 139, 63, 0.12);
@@ -1273,7 +1278,7 @@ html[data-theme="light"] .app-shell .chart-tooltip::after {
 }
 
 html[data-theme="light"] .app-shell .quality-donut {
-  background: conic-gradient(from -90deg, #4fbe54 0 var(--quality-donut-percent), rgba(79, 190, 84, 0.16) var(--quality-donut-percent) 100%);
+  background: conic-gradient(from 0deg, #4fbe54 0 var(--quality-donut-percent), rgba(79, 190, 84, 0.16) var(--quality-donut-percent) 100%);
   border-color: rgba(97, 72, 58, 0.12);
   box-shadow:
     0 12px 26px rgba(97, 72, 58, 0.12);
@@ -1307,7 +1312,7 @@ html[data-theme="light"] .app-shell .quality-donut-core {
   place-items: center;
   width: 124px;
   height: 124px;
-  background: conic-gradient(from -90deg, var(--app-success) 0 var(--quality-donut-percent), rgba(125, 211, 116, 0.14) var(--quality-donut-percent) 100%);
+  background: conic-gradient(from 0deg, var(--app-success) 0 var(--quality-donut-percent), rgba(125, 211, 116, 0.14) var(--quality-donut-percent) 100%);
   border: 1px solid rgba(255, 250, 245, 0.1);
   border-radius: 999px;
   box-shadow:
@@ -2358,7 +2363,7 @@ html[data-theme="light"] .app-shell .audio-speed-menu button.active {
   height: var(--ring-size);
   flex: 0 0 auto;
   color: var(--app-score);
-  background: conic-gradient(var(--app-accent) calc(var(--score) * 1%), var(--ring-track) 0);
+  background: conic-gradient(from 0deg, var(--app-accent) calc(var(--score) * 1%), var(--ring-track) 0);
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px rgba(255, 90, 47, 0.08);
 }
@@ -4506,7 +4511,7 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
   color: var(--app-text);
   background:
     radial-gradient(circle at center, var(--app-glass-strong) 54%, transparent 55%),
-    conic-gradient(var(--app-success) calc(var(--analysis-score) * 1%), color-mix(in srgb, var(--app-border) 88%, transparent) 0);
+    conic-gradient(from 0deg, var(--app-success) calc(var(--analysis-score) * 1%), color-mix(in srgb, var(--app-border) 88%, transparent) 0);
   border-radius: 50%;
   box-shadow: inset 0 0 0 1px var(--app-border);
 }

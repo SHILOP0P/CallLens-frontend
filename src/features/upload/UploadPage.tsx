@@ -35,7 +35,8 @@ import { availableInstructionsForContext, InstructionChoiceList, instructionCont
 
 const maxBatchFiles = 10;
 const mediaAccept = ".mp3,.wav,.m4a,.ogg,.mp4,.mov,.webm,.mkv,audio/*,video/mp4,video/quicktime,video/webm,video/x-matroska";
-const uploadModeStorageKey = "calllens-upload-mode";
+const uploadModeStorageKey = "verbatrace-upload-mode";
+const legacyUploadModeStorageKey = "calllens-upload-mode";
 
 type UploadMode = "single" | "multiple";
 type BatchUploadItem = {
@@ -711,7 +712,15 @@ function batchFileKey(file: File) {
 
 function readStoredUploadMode(): UploadMode {
   try {
-    return window.localStorage.getItem(uploadModeStorageKey) === "multiple" ? "multiple" : "single";
+    const currentMode = window.localStorage.getItem(uploadModeStorageKey);
+    if (currentMode === "multiple" || currentMode === "single") return currentMode;
+
+    const legacyMode = window.localStorage.getItem(legacyUploadModeStorageKey);
+    if (legacyMode !== "multiple" && legacyMode !== "single") return "single";
+
+    window.localStorage.setItem(uploadModeStorageKey, legacyMode);
+    window.localStorage.removeItem(legacyUploadModeStorageKey);
+    return legacyMode;
   } catch {
     return "single";
   }

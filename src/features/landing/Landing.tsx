@@ -215,7 +215,7 @@ export function Landing({
       <section className="benefits" id="features" ref={benefitsRef} data-reveal>
         <div className="section-heading" data-reveal-item>
           <span>Возможности</span>
-          <h2>Что можно делать в CallLens</h2>
+          <h2>Что можно делать в VerbaTrace</h2>
           <p>
             Рабочее пространство закрывает путь звонка от загрузки аудио до управленческого вывода:
             статусы, расшифровка, AI-анализ, инструкции и командный доступ собраны в одном интерфейсе.
@@ -387,7 +387,7 @@ export function AuthDialog({
           <X size={18} />
         </button>
         <Logo />
-        <h2>{mode === "login" ? "Войти в CallLens" : "Создать аккаунт"}</h2>
+        <h2>{mode === "login" ? "Войти в VerbaTrace" : "Создать аккаунт"}</h2>
         <p>Войдите или зарегистрируйтесь, чтобы перейти к рабочему пространству.</p>
 
         <form onSubmit={submit} className="auth-form">

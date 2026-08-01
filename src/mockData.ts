@@ -13,7 +13,7 @@ import type {
 
 export const demoUser: UserResponse = {
   id: "00000000-0000-7000-8000-000000000001",
-  email: "demo@calllens.local",
+  email: "demo@verbatrace.local",
   full_name: "Иван",
   full_surname: "Петров",
   username: "@ivan",
