@@ -10,7 +10,7 @@ import type {
   TranscriptionSpeakerAssignment,
   TranscriptionWordResponse
 } from "../../types";
-import { formatDate, speakerLabel, transcriptionSpeakerLabel } from "../../shared/lib/formatters";
+import { formatDate, transcriptionSpeakerLabel } from "../../shared/lib/formatters";
 
 const VERSION_COLORS = ["#ff8058", "#66a8ff", "#b58cff", "#57c7a1", "#e6b85c"];
 const MAX_COMPARED_VERSIONS = VERSION_COLORS.length;
@@ -21,6 +21,7 @@ type ViewTransitionDocument = Document & {
 };
 type CompareLane = number;
 type WordChange = {
+  kind: "speaker" | "replace" | "add" | "remove" | "speaker-and-replace";
   startIndex: number;
   endIndex: number;
   startSeconds?: number;
@@ -337,10 +338,10 @@ export function TranscriptionComparePage({
         {changes.length === 0 ? <div className="empty-state compact">Добавьте ещё одну версию для сравнения.</div> : changes.map((change) => <article className="compare-change-step" style={{ "--version-color": versionColor(change.to.content.revision) } as CSSProperties} key={change.to.content.revision}>
           <header><span className="version-dot" /><div><strong>Версия {change.from.content.revision} → {change.to.content.revision}</strong><time>{formatDate(change.to.summary.created_at)}</time></div><b>{change.ranges.length} {change.ranges.length === 1 ? "изменение" : "изменений"}</b></header>
           {change.ranges.length === 0 ? <p className="compare-no-changes">Текст и говорящие совпадают.</p> : <div className="compare-change-ranges">
-            {change.ranges.map((range) => <div className="compare-change-range" key={`${range.startIndex}-${range.endIndex}`}>
-              <div className="change-location"><strong>Слова {range.startIndex + 1}{range.endIndex > range.startIndex ? `–${range.endIndex + 1}` : ""}</strong><span>{formatRange(range.startSeconds, range.endSeconds)}</span></div>
-              {(range.speakerBefore || range.speakerAfter) && range.speakerBefore !== range.speakerAfter && <div className="change-speaker">Говорящий: <del>{speakerLabel(range.speakerBefore)}</del><span>→</span><ins>{speakerLabel(range.speakerAfter)}</ins></div>}
-              <div className="change-text"><del>{range.before || "—"}</del><ins>{range.after || "—"}</ins></div>
+            {change.ranges.map((range) => <div className={`compare-change-range is-${range.kind}`} key={`${range.startIndex}-${range.endIndex}`}>
+              <div className="change-location"><strong>{changeKindLabel(range)}</strong><span>{formatRange(range.startSeconds, range.endSeconds)}</span></div>
+              {(range.speakerBefore || range.speakerAfter) && range.speakerBefore !== range.speakerAfter && <div className="change-speaker">Говорящий: <del>{transcriptionSpeakerLabel(range.speakerBefore, speakerAssignments)}</del><span>→</span><ins>{transcriptionSpeakerLabel(range.speakerAfter, speakerAssignments)}</ins></div>}
+              {range.kind !== "speaker" && <div className="change-text"><del>{range.before || "—"}</del><ins>{range.after || "—"}</ins></div>}
             </div>)}
           </div>}
         </article>)}
@@ -381,8 +382,9 @@ function compareWords(before: TranscriptionWordResponse[], after: TranscriptionW
   }
   const ranges: WordChange[] = [];
   for (const index of changed) {
+    const kind = wordChangeKind(before[index], after[index]);
     const last = ranges.at(-1);
-    if (last && index === last.endIndex + 1) {
+    if (last && last.kind === kind && index === last.endIndex + 1) {
       last.endIndex = index;
       last.endSeconds = after[index]?.end_seconds ?? before[index]?.end_seconds;
       last.before = before.slice(last.startIndex, index + 1).map((word) => word.text).join(" ");
@@ -391,9 +393,29 @@ function compareWords(before: TranscriptionWordResponse[], after: TranscriptionW
       if (last.speakerAfter !== (after[index]?.speaker ?? "")) last.speakerAfter = "";
       continue;
     }
-    ranges.push({ startIndex: index, endIndex: index, startSeconds: after[index]?.start_seconds ?? before[index]?.start_seconds, endSeconds: after[index]?.end_seconds ?? before[index]?.end_seconds, before: before[index]?.text ?? "", after: after[index]?.text ?? "", speakerBefore: before[index]?.speaker ?? "", speakerAfter: after[index]?.speaker ?? "" });
+    ranges.push({ kind, startIndex: index, endIndex: index, startSeconds: after[index]?.start_seconds ?? before[index]?.start_seconds, endSeconds: after[index]?.end_seconds ?? before[index]?.end_seconds, before: before[index]?.text ?? "", after: after[index]?.text ?? "", speakerBefore: before[index]?.speaker ?? "", speakerAfter: after[index]?.speaker ?? "" });
   }
   return ranges;
+}
+
+function wordChangeKind(before?: TranscriptionWordResponse, after?: TranscriptionWordResponse): WordChange["kind"] {
+  if (!before) return "add";
+  if (!after) return "remove";
+  const textChanged = before.text !== after.text;
+  const speakerChanged = (before.speaker ?? "") !== (after.speaker ?? "");
+  if (speakerChanged && textChanged) return "speaker-and-replace";
+  if (speakerChanged) return "speaker";
+  return "replace";
+}
+
+function changeKindLabel(change: WordChange) {
+  switch (change.kind) {
+    case "speaker": return "Смена говорящего";
+    case "add": return "Добавление слов";
+    case "remove": return "Удаление слов";
+    case "speaker-and-replace": return "Замена слов и смена говорящего";
+    default: return "Замена слов";
+  }
 }
 
 function formatRange(start?: number, end?: number) {
