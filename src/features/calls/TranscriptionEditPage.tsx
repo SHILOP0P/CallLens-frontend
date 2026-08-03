@@ -1,0 +1,234 @@
+import { ArrowLeft, Check, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
+import { api } from "../../api";
+import type { CallResponse, TranscriptionResponse, TranscriptionSpeakerAssignment, TranscriptionSpeakerRole, TranscriptionWordResponse, UserResponse } from "../../types";
+import { formatSegmentTimeRange, speakerLabel } from "../../shared/lib/formatters";
+import { SelectControl } from "../../shared/ui/primitives";
+
+type DraftWord = { text: string; speaker: string };
+
+export function TranscriptionEditPage({
+  call,
+  transcription,
+  loading,
+  onBack,
+  onSaved
+}: {
+  call?: CallResponse;
+  transcription?: TranscriptionResponse;
+  loading?: boolean;
+  onBack: () => void;
+  onSaved: (transcription: TranscriptionResponse) => void;
+}) {
+  const words = transcription?.words ?? [];
+  const [draft, setDraft] = useState<DraftWord[]>(() => createDraft(words));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [contacts, setContacts] = useState<UserResponse[]>([]);
+  const [assignments, setAssignments] = useState<TranscriptionSpeakerAssignment[]>([]);
+  const [savedAssignments, setSavedAssignments] = useState("");
+  const [removingSpeaker, setRemovingSpeaker] = useState<string>();
+
+  useEffect(() => {
+    setDraft(createDraft(words));
+    setError("");
+  }, [transcription?.revision, transcription?.updated_at]);
+
+  useEffect(() => {
+    if (!call || words.length === 0) return;
+    let cancelled = false;
+    Promise.all([api.listContacts(), api.listTranscriptionSpeakerAssignments(call.id)]).then(([contactItems, stored]) => {
+      if (cancelled) return;
+      const detected = Array.from(new Set(words.map((word) => word.speaker?.trim() || "unknown")));
+      const speakerKeys = Array.from(new Set([...detected, ...stored.map((item) => item.speaker_key)]));
+      const merged = speakerKeys.map((speakerKey) => stored.find((item) => item.speaker_key === speakerKey) ?? { speaker_key: speakerKey, display_name: speakerLabel(speakerKey === "unknown" ? "" : speakerKey), role: "unknown" as const });
+      setContacts(contactItems); setAssignments(merged); setSavedAssignments(JSON.stringify(merged));
+    }).catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Не удалось загрузить участников"); });
+    return () => { cancelled = true; };
+  }, [call?.id, transcription?.revision]);
+
+  const groups = useMemo(() => groupDraftWords(words, draft), [words, draft]);
+  const changedIndexes = useMemo(() => draft.flatMap((word, index) => {
+    const original = words[index];
+    return original && (word.text !== original.text || word.speaker !== (original.speaker ?? "")) ? [index] : [];
+  }), [draft, words]);
+  const changed = new Set(changedIndexes);
+  const participantsChanged = JSON.stringify(assignments) !== savedAssignments;
+
+  function updateWord(index: number, patch: Partial<DraftWord>) {
+    setDraft((current) => current.map((word, wordIndex) => wordIndex === index ? { ...word, ...patch } : word));
+  }
+
+  function updateGroupSpeaker(startIndex: number, length: number, speaker: string) {
+    setDraft((current) => current.map((word, index) => index >= startIndex && index < startIndex + length ? { ...word, speaker } : word));
+  }
+
+  function addSpeaker() {
+    if (assignments.length >= 32) {
+      setError("Нельзя добавить больше 32 участников разговора.");
+      return;
+    }
+    const speakerKey = nextSpeakerKey(assignments.map((item) => item.speaker_key));
+    setAssignments((current) => [...current, { speaker_key: speakerKey, display_name: speakerLabel(speakerKey), role: "unknown" }]);
+    setError("");
+  }
+
+  function requestRemoveSpeaker(speakerKey: string) {
+    const hasWords = draft.some((word) => word.speaker === speakerKey);
+    if (!hasWords) {
+      setAssignments((current) => current.filter((item) => item.speaker_key !== speakerKey));
+      return;
+    }
+    if (assignments.length === 1) {
+      setError("Нельзя удалить единственного спикера с репликами. Сначала добавьте другого участника.");
+      return;
+    }
+    setRemovingSpeaker(speakerKey);
+    setError("");
+  }
+
+  function removeSpeaker(speakerKey: string, replacementKey: string) {
+    if (!replacementKey || replacementKey === speakerKey) return;
+    setDraft((current) => current.map((word) => word.speaker === speakerKey ? { ...word, speaker: replacementKey } : word));
+    setAssignments((current) => current.filter((item) => item.speaker_key !== speakerKey));
+    setRemovingSpeaker(undefined);
+  }
+
+  function resetDraft() {
+    setDraft(createDraft(words));
+    if (savedAssignments) setAssignments(JSON.parse(savedAssignments) as TranscriptionSpeakerAssignment[]);
+    setRemovingSpeaker(undefined);
+    setError("");
+  }
+
+  async function save() {
+    if (!call || !transcription || (changedIndexes.length === 0 && !participantsChanged) || saving) return;
+    const edits = changedIndexes.map((wordIndex) => ({
+      word_index: wordIndex,
+      text: draft[wordIndex].text,
+      speaker: draft[wordIndex].speaker
+    }));
+    setSaving(true); setError("");
+    try {
+      let savedTranscription = transcription;
+      if (edits.length > 0) {
+        const result = await api.updateTranscription(call.id, { expected_revision: transcription.revision ?? 1, reason: "Исправление транскрипции", edits });
+        savedTranscription = result.transcription;
+      }
+      if (participantsChanged) {
+        const saved = await api.replaceTranscriptionSpeakerAssignments(call.id, assignments);
+        setAssignments(saved);
+        setSavedAssignments(JSON.stringify(saved));
+      }
+      onSaved(savedTranscription);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Не удалось сохранить исправления");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading && !transcription) return <div className="transcription-edit-page"><div className="transcription-edit-loading">Загружаю транскрипцию…</div></div>;
+  if (!call || !transcription) return <div className="transcription-edit-page"><div className="empty-state">Транскрипция не найдена.</div></div>;
+  if (!transcription.editable) return <div className="transcription-edit-page"><button className="ghost-button small" type="button" onClick={onBack}><ArrowLeft size={17} />К звонку</button><div className="empty-state">Эту транскрипцию нельзя редактировать{transcription.editability_reason ? `: ${transcription.editability_reason}` : "."}</div></div>;
+
+  return <div className="transcription-edit-page">
+    <header className="transcription-edit-header">
+      <button className="ghost-button small" type="button" onClick={onBack}><ArrowLeft size={17} />К звонку</button>
+      <div><span className="eyebrow">Редактор расшифровки</span><h1>Исправление транскрипции</h1><p>{call.title}</p></div>
+      <div className="transcription-edit-revision"><span>Версия</span><strong>{transcription.revision ?? 1}</strong></div>
+    </header>
+
+    <section className="transcription-edit-guide">
+      <div><strong>Редактируйте диалог, а не таблицу</strong><span>Исправьте слово прямо в реплике. Поле говорящего над репликой меняет его сразу для всех слов блока.</span></div>
+      <div className="transcription-edit-counter"><Check size={17} /><strong>{changedIndexes.length}</strong><span>изменено</span></div>
+    </section>
+
+    {error && <div className="form-error">{error}</div>}
+    {words.length > 0 && <section className="transcription-participants">
+      <div className="compare-section-heading"><div><span className="eyebrow">Участники разговора</span><h2>Роли и контакты</h2></div><button className="ghost-button small" type="button" onClick={addSpeaker}><Plus size={17} />Добавить спикера</button></div>
+      <div className="transcription-participant-grid">
+        {assignments.map((assignment) => {
+          const color = speakerColor(assignment.speaker_key, assignments);
+          return <article className="transcription-participant-card" style={{ "--speaker-color": color } as CSSProperties} key={assignment.speaker_key}>
+            <div className="transcription-participant-title"><span /><div><small>Спикер</small><strong>{assignment.display_name || assignment.speaker_key}</strong></div><button className="transcription-participant-remove" type="button" aria-label={`Удалить спикера ${assignment.display_name || assignment.speaker_key}`} title="Удалить спикера" onClick={() => requestRemoveSpeaker(assignment.speaker_key)}><Trash2 size={17} /></button></div>
+            <label><span>Отображаемое имя</span><input value={assignment.display_name} onChange={(event) => setAssignments((current) => current.map((item) => item.speaker_key === assignment.speaker_key ? { ...item, display_name: event.target.value } : item))} /></label>
+            <label><span>Роль</span><SelectControl aria-label={`Роль спикера ${assignment.speaker_key}`} value={assignment.role} onChange={(event) => setAssignments((current) => current.map((item) => item.speaker_key === assignment.speaker_key ? { ...item, role: event.target.value as TranscriptionSpeakerRole, custom_role: event.target.value === "other" ? item.custom_role : undefined } : item))}><option value="unknown">Не определена</option><option value="client">Клиент</option><option value="manager">Менеджер</option><option value="operator">Оператор</option><option value="partner">Партнёр</option><option value="other">Другая</option></SelectControl></label>
+            {assignment.role === "other" && <label><span>Название роли</span><input value={assignment.custom_role ?? ""} placeholder="Например, юрист" onChange={(event) => setAssignments((current) => current.map((item) => item.speaker_key === assignment.speaker_key ? { ...item, custom_role: event.target.value } : item))} /></label>}
+            <label><span>Контакт</span><SelectControl aria-label={`Контакт спикера ${assignment.speaker_key}`} value={assignment.contact_user_uuid ?? ""} onChange={(event) => { const contact = contacts.find((item) => item.id === event.target.value); setAssignments((current) => current.map((item) => item.speaker_key === assignment.speaker_key ? { ...item, contact_user_uuid: contact?.id || undefined, display_name: contact ? `${contact.full_name} ${contact.full_surname}`.trim() : item.display_name } : item)); }}><option value="">Не привязан</option>{contacts.map((contact) => <option value={contact.id} key={contact.id}>{contact.full_name} {contact.full_surname} · {contact.username}</option>)}</SelectControl></label>
+            {removingSpeaker === assignment.speaker_key && <div className="transcription-participant-transfer"><strong>Кому передать реплики?</strong><div>{assignments.filter((item) => item.speaker_key !== assignment.speaker_key).map((item) => <button type="button" key={item.speaker_key} onClick={() => removeSpeaker(assignment.speaker_key, item.speaker_key)}>{item.display_name || item.speaker_key}</button>)}</div><button className="ghost-button small" type="button" onClick={() => setRemovingSpeaker(undefined)}>Отмена</button></div>}
+          </article>;
+        })}
+      </div>
+    </section>}
+    <main className="transcription-edit-dialogue">
+      {groups.map((group) => <section className={`transcription-edit-utterance${group.words.some((_, offset) => changed.has(group.startIndex + offset)) ? " is-changed" : ""}`} key={group.startIndex} style={{ "--speaker-color": speakerColor(group.speaker || "unknown", assignments) } as CSSProperties}>
+        <header>
+          <label><span>Говорящий</span><SelectControl aria-label={`Говорящий в реплике ${group.startIndex + 1}`} value={group.speaker || "unknown"} onChange={(event) => updateGroupSpeaker(group.startIndex, group.words.length, event.target.value)}>{assignments.map((item) => <option value={item.speaker_key} key={item.speaker_key}>{item.display_name || speakerLabel(item.speaker_key)}</option>)}</SelectControl></label>
+          <time>{formatSegmentTimeRange(group.words[0]?.start_seconds, group.words.at(-1)?.end_seconds)}</time>
+        </header>
+        <div className="transcription-edit-words">
+          {group.words.map((word, offset) => {
+            const index = group.startIndex + offset;
+            const value = draft[index]?.text ?? word.text;
+            return <input
+              className={changed.has(index) ? "is-changed" : ""}
+              aria-label={`Слово ${index + 1}`}
+              value={value}
+              size={Math.max(1, value.length)}
+              key={`${index}-${word.start_seconds}`}
+              onChange={(event) => updateWord(index, { text: event.target.value })}
+            />;
+          })}
+        </div>
+      </section>)}
+    </main>
+
+    <footer className="transcription-edit-dock">
+      <div><strong>{changedIndexes.length === 0 && !participantsChanged ? "Изменений пока нет" : `Изменено слов: ${changedIndexes.length}${participantsChanged ? " · участники изменены" : ""}`}</strong><span>Текстовые исправления создадут новую версию в истории.</span></div>
+      <div className="transcription-edit-dock-actions">
+        <button className="ghost-button small" type="button" disabled={saving || (changedIndexes.length === 0 && !participantsChanged)} onClick={resetDraft}><RotateCcw size={16} />Сбросить</button>
+        <button className="primary-button small" type="button" disabled={saving || (changedIndexes.length === 0 && !participantsChanged)} onClick={() => void save()}><Save size={16} />{saving ? "Сохраняю…" : "Сохранить исправления"}</button>
+      </div>
+    </footer>
+  </div>;
+}
+
+function createDraft(words: TranscriptionWordResponse[]): DraftWord[] {
+  return words.map((word) => ({ text: word.text, speaker: word.speaker ?? "" }));
+}
+
+function nextSpeakerKey(existingKeys: string[]) {
+  const used = new Set(existingKeys.map((key) => key.trim().toLocaleLowerCase("ru")));
+  for (let code = 65; code <= 90; code += 1) {
+    const candidate = String.fromCharCode(code);
+    if (!used.has(candidate.toLocaleLowerCase("ru"))) return candidate;
+  }
+  let index = existingKeys.length + 1;
+  while (used.has(`speaker_${index}`)) index += 1;
+  return `speaker_${index}`;
+}
+
+function groupDraftWords(words: TranscriptionWordResponse[], draft: DraftWord[]) {
+  const groups: Array<{ speaker: string; startIndex: number; words: TranscriptionWordResponse[] }> = [];
+  words.forEach((word, index) => {
+    const originalSpeaker = word.speaker ?? "";
+    const current = groups.at(-1);
+    const previousOriginalSpeaker = index > 0 ? words[index - 1].speaker ?? "" : undefined;
+    if (current && previousOriginalSpeaker === originalSpeaker) current.words.push(word);
+    else groups.push({ speaker: draft[index]?.speaker ?? originalSpeaker, startIndex: index, words: [word] });
+  });
+  return groups;
+}
+
+const SPEAKER_COLORS = ["#ff7657", "#63a7ff", "#ad7cff", "#42bd96", "#e1b54f", "#ef6cae", "#57b8c8", "#9caf52"];
+
+function speakerColor(speaker: string, assignments: TranscriptionSpeakerAssignment[]) {
+  const normalizedSpeaker = speaker.trim().toLocaleLowerCase("ru") || "unknown";
+  const orderedKeys = Array.from(new Set(assignments.map((item) => item.speaker_key.trim().toLocaleLowerCase("ru") || "unknown"))).sort((left, right) => left.localeCompare(right, "ru"));
+  const index = Math.max(0, orderedKeys.indexOf(normalizedSpeaker));
+  if (index < SPEAKER_COLORS.length) return SPEAKER_COLORS[index];
+  const hue = Math.round((index * 137.508) % 360);
+  return `hsl(${hue} 68% 56%)`;
+}

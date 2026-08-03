@@ -11,6 +11,7 @@ import type {
   CallStatus,
   MediaSeekTarget,
   TranscriptionResponse,
+  TranscriptionSpeakerAssignment,
   TranscriptionWordResponse
 } from "../../types";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +26,7 @@ import {
   statusMeta,
   timelineFromStatus
 } from "../lib/call-status";
-import { formatSegmentTimeRange, speakerLabel } from "../lib/formatters";
+import { formatSegmentTimeRange, transcriptionSpeakerLabel } from "../lib/formatters";
 import { TextBlockSkeleton } from "./loading";
 
 type StatusTone = "ok" | "warn" | "bad";
@@ -202,13 +203,15 @@ export function TranscriptPreview({
   expanded,
   loading,
   activeWordIndex = -1,
-  selectedEvidence
+  selectedEvidence,
+  speakerAssignments = []
 }: {
   transcription?: TranscriptionResponse;
   expanded: boolean;
   loading?: boolean;
   activeWordIndex?: number;
   selectedEvidence?: MediaSeekTarget | null;
+  speakerAssignments?: TranscriptionSpeakerAssignment[];
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wordRefs = useRef(new Map<number, HTMLSpanElement>());
@@ -281,7 +284,7 @@ export function TranscriptPreview({
           {wordGroups.some((group) => group.speaker) ? wordGroups.map((group) => (
             <div className="transcript-segment word-segment" key={`${group.startIndex}-${group.speaker}`}>
               <div className="segment-meta">
-                <strong>{speakerLabel(group.speaker)}</strong>
+                <strong>{transcriptionSpeakerLabel(group.speaker, speakerAssignments)}</strong>
                 <span>{formatSegmentTimeRange(group.words[0]?.start_seconds, group.words.at(-1)?.end_seconds)}</span>
               </div>
               <p>{group.words.map((word, offset) => renderWord(word, group.startIndex + offset, offset === 0))}</p>
@@ -314,7 +317,7 @@ export function TranscriptPreview({
         {segments.map((segment, index) => (
           <div className="transcript-segment" key={`${segment.start_seconds ?? index}-${segment.text}`}>
             <div className="segment-meta">
-              <strong>{speakerLabel(segment.speaker)}</strong>
+              <strong>{transcriptionSpeakerLabel(segment.speaker, speakerAssignments)}</strong>
               <span>{formatSegmentTimeRange(segment.start_seconds, segment.end_seconds)}</span>
             </div>
             <p>{segment.text}</p>

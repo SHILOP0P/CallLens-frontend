@@ -7,7 +7,7 @@ export function callIdFromLocation() {
 
 export function pageUrl(page: AppPage, callId: string) {
   const base = pageRoutes[page];
-  return (page === "calls" || page === "analysis") && callId
+  return (page === "calls" || page === "analysis" || page === "transcriptionEdit" || page === "transcriptionCompare") && callId
     ? `${base}?call=${encodeURIComponent(callId)}`
     : base;
 }

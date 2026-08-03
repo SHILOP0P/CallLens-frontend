@@ -68,7 +68,9 @@ export function CallsPage({
   onSelectCall,
   onNavigate,
   onUpdateCallTitle,
-  onDeleteCall
+  onDeleteCall,
+  onOpenTranscriptionEditor,
+  onOpenRevisionComparison
 }: {
   calls: CallResponse[];
   companies: CompanyResponse[];
@@ -86,6 +88,8 @@ export function CallsPage({
   onNavigate: (page: AppPage) => void;
   onUpdateCallTitle?: (callId: string, title: string) => Promise<CallResponse>;
   onDeleteCall?: (callId: string) => Promise<void>;
+  onOpenTranscriptionEditor?: (callId: string) => void;
+  onOpenRevisionComparison?: (callId: string, revision?: number) => void;
 }) {
   const callsSidebarScrollRef = useRef<HTMLElement | null>(null);
   const callOverviewScrollRef = useRef<HTMLElement | null>(null);
@@ -970,6 +974,8 @@ export function CallsPage({
           loadingDetails={loadingDetails}
           onNavigate={onNavigate}
           onDeleteCall={onDeleteCall}
+          onOpenTranscriptionEditor={onOpenTranscriptionEditor}
+          onOpenRevisionComparison={onOpenRevisionComparison}
           folders={callFolders}
           activeFolder={selectedCallActionFolder}
           folderActionBusy={Boolean(folderBusyId)}

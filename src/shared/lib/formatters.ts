@@ -8,6 +8,7 @@ InvitationDepartmentRole,
 MembershipStatus,
 ReportFormat,
 ReportResponse,
+TranscriptionSpeakerAssignment,
 VisibilityScope
 } from "../../types";
 
@@ -107,6 +108,12 @@ export function speakerLabel(speaker: string) {
   if (!match) return trimmed;
 
   return `Спикер ${Number(match[1]) + 1}`;
+}
+
+export function transcriptionSpeakerLabel(speaker: string, assignments: TranscriptionSpeakerAssignment[] = []) {
+  const key = speaker.trim() || "unknown";
+  const displayName = assignments.find((item) => item.speaker_key === key)?.display_name.trim();
+  return displayName || speakerLabel(key === "unknown" ? "" : key);
 }
 
 export function formatSegmentTimeRange(start?: number | null, end?: number | null) {

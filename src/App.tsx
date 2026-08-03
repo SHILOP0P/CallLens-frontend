@@ -27,6 +27,8 @@ import { useTheme } from "./app/use-theme";
 import { loadOrganizationContext, loadWorkspaceContext } from "./app/workspace-loader";
 import { AnalysisPage } from "./features/analysis/AnalysisPage";
 import { CallsPage } from "./features/calls/CallsPage";
+import { TranscriptionEditPage } from "./features/calls/TranscriptionEditPage";
+import { TranscriptionComparePage } from "./features/calls/TranscriptionComparePage";
 import { CompaniesPage } from "./features/companies/CompaniesPage";
 import { ContactsPage } from "./features/contacts/ContactsPage";
 import { InstructionsPage } from "./features/instructions/InstructionsPage";
@@ -368,6 +370,22 @@ function App() {
     window.history.pushState({}, "", pageUrl(nextPage, callId));
   }
 
+  function openTranscriptionComparison(callId: string, revision?: number) {
+    setShowPublicLanding(false);
+    setSelectedCallId(callId);
+    setPage("transcriptionCompare");
+    const query = new URLSearchParams({ call: callId });
+    if (revision) query.set("version", String(revision));
+    window.history.pushState({}, "", `/app/calls/transcription-compare?${query}`);
+  }
+
+  function openTranscriptionEditor(callId: string) {
+    setShowPublicLanding(false);
+    setSelectedCallId(callId);
+    setPage("transcriptionEdit");
+    window.history.pushState({}, "", `/app/calls/transcription-edit?call=${encodeURIComponent(callId)}`);
+  }
+
   function openCompany(companyId: string) {
     setShowPublicLanding(false);
     setPage("settingsCompanies");
@@ -581,8 +599,31 @@ function App() {
           onNavigate={navigate}
           onUpdateCallTitle={updateCallTitle}
           onDeleteCall={deleteCall}
+          onOpenTranscriptionEditor={openTranscriptionEditor}
+          onOpenRevisionComparison={openTranscriptionComparison}
           loading={loadingWorkspace}
           loadingDetails={selectedCallDetailsLoading}
+        />
+      )}
+
+      {page === "transcriptionCompare" && (
+        <TranscriptionComparePage
+          call={selectedCall}
+          initialRevision={Number(new URLSearchParams(window.location.search).get("version")) || undefined}
+          onBack={() => selectedCall ? openCallPage(selectedCall.id) : navigate("calls")}
+        />
+      )}
+
+      {page === "transcriptionEdit" && (
+        <TranscriptionEditPage
+          call={selectedCall}
+          transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
+          loading={selectedCallDetailsLoading}
+          onBack={() => selectedCall ? openCallPage(selectedCall.id) : navigate("calls")}
+          onSaved={(transcription) => {
+            setTranscriptions((current) => ({ ...current, [transcription.call_uuid]: transcription }));
+            openCallPage(transcription.call_uuid);
+          }}
         />
       )}
 

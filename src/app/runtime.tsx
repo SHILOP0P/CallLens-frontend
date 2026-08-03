@@ -53,6 +53,8 @@ function migrateLocalStorageValue(currentKey: string, legacyKey: string) {
 export const pageRoutes: Record<AppPage, string> = {
   overview: "/app/overview",
   calls: "/app/calls",
+  transcriptionEdit: "/app/calls/transcription-edit",
+  transcriptionCompare: "/app/calls/transcription-compare",
   analysis: "/app/analysis",
   reports: "/app/reports",
   contacts: "/app/contacts",
@@ -139,6 +141,8 @@ export function readStoredSession(): SessionState | null {
 }
 
 export function pageFromPath(pathname: string): AppPage {
+  if (pathname === "/app/calls/transcription-edit") return "transcriptionEdit";
+  if (pathname === "/app/calls/transcription-compare") return "transcriptionCompare";
   if (/^\/app\/admin\/(?:users|companies)\/[^/]+$/.test(pathname)) return "admin";
   if (/^\/app\/settings\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";
   if (/^\/app\/companies\/[^/]+(?:\/departments\/[^/]+)?$/.test(pathname)) return "settingsCompanies";

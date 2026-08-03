@@ -1,6 +1,8 @@
 export type AppPage =
   | "overview"
   | "calls"
+  | "transcriptionEdit"
+  | "transcriptionCompare"
   | "analysis"
   | "reports"
   | "contacts"
@@ -257,6 +259,62 @@ export interface TranscriptionResponse {
   error_message?: string | null;
   created_at: string;
   updated_at: string;
+  revision?: number;
+  edited?: boolean;
+  editable?: boolean;
+  editability_reason?: string;
+}
+
+export interface TranscriptionWordEdit {
+  word_index: number;
+  text?: string;
+  speaker?: string;
+}
+
+export type TranscriptionSpeakerRole = "unknown" | "client" | "manager" | "operator" | "partner" | "other";
+
+export interface TranscriptionSpeakerAssignment {
+  speaker_key: string;
+  display_name: string;
+  role: TranscriptionSpeakerRole;
+  custom_role?: string;
+  contact_user_uuid?: string;
+}
+
+export interface UpdateTranscriptionRequest {
+  expected_revision: number;
+  reason: string;
+  edits: TranscriptionWordEdit[];
+}
+
+export interface TranscriptionUpdateResponse {
+  transcription: TranscriptionResponse;
+  revision: number;
+  reason: string;
+  changed_word_indexes: number[];
+}
+
+export interface TranscriptionRevisionSummary {
+  id: string;
+  call_uuid: string;
+  revision: number;
+  reason: string;
+  changed_word_indexes: number[];
+  created_at: string;
+  is_current: boolean;
+}
+
+export interface TranscriptionRevisionListResponse {
+  items: TranscriptionRevisionSummary[];
+  total: number;
+}
+
+export interface TranscriptionRevisionContent {
+  revision: number;
+  is_current: boolean;
+  text: string;
+  segments: TranscriptionSegmentResponse[];
+  words: TranscriptionWordResponse[];
 }
 
 export interface TranscriptionWordResponse {

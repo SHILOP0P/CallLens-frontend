@@ -1,4 +1,5 @@
 import {
+  CheckCircle2,
   ChevronRight,
   CloudUpload,
   FolderMinus,
@@ -19,8 +20,11 @@ import type {
   CompanyResponse,
   DepartmentResponse,
   MediaSeekTarget,
-  TranscriptionResponse
+  TranscriptionResponse,
+  TranscriptionSpeakerAssignment
+  , TranscriptionRevisionSummary
 } from "../../types";
+import { api } from "../../api";
 
 import { analysisNextStep, analysisScore100, formatScore, isAnalysisDone } from "../../shared/lib/analysis";
 import { contextLabel, formatDate, formatDuration } from "../../shared/lib/formatters";
@@ -48,6 +52,8 @@ export function CallDetailPanel({
   loadingDetails,
   onNavigate,
   onDeleteCall,
+  onOpenTranscriptionEditor,
+  onOpenRevisionComparison,
   folders = [],
   activeFolder,
   folderActionBusy = false,
@@ -66,6 +72,8 @@ export function CallDetailPanel({
   loadingDetails?: boolean;
   onNavigate: (page: AppPage) => void;
   onDeleteCall?: (callId: string) => Promise<void>;
+  onOpenTranscriptionEditor?: (callId: string) => void;
+  onOpenRevisionComparison?: (callId: string, revision?: number) => void;
   folders?: CallFolderResponse[];
   activeFolder?: CallFolderResponse;
   folderActionBusy?: boolean;
@@ -82,6 +90,13 @@ export function CallDetailPanel({
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [activeWordIndex, setActiveWordIndex] = useState(-1);
   const [seekTarget, setSeekTarget] = useState<MediaSeekTarget | null>(null);
+  const [localTranscription, setLocalTranscription] = useState(transcription);
+  const [revisions, setRevisions] = useState<TranscriptionRevisionSummary[]>([]);
+  const [speakerAssignments, setSpeakerAssignments] = useState<TranscriptionSpeakerAssignment[]>([]);
+  const [showRevisionHistory, setShowRevisionHistory] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+  const [selectingRevision, setSelectingRevision] = useState<number | null>(null);
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const transcriptCardRef = useRef<HTMLDivElement | null>(null);
   const analysisCardRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +111,17 @@ export function CallDetailPanel({
     setActiveWordIndex(-1);
     setSeekTarget(null);
   }, [call?.id]);
+
+  useEffect(() => { setLocalTranscription(transcription); }, [transcription]);
+  useEffect(() => { setRevisions([]); setShowRevisionHistory(false); }, [call?.id]);
+  useEffect(() => {
+    if (!call) { setSpeakerAssignments([]); return; }
+    let cancelled = false;
+    void api.listTranscriptionSpeakerAssignments(call.id)
+      .then((items) => { if (!cancelled) setSpeakerAssignments(items); })
+      .catch(() => { if (!cancelled) setSpeakerAssignments([]); });
+    return () => { cancelled = true; };
+  }, [call?.id, transcription?.updated_at]);
 
   useEffect(() => {
     if (!folderMenuOpen) return;
@@ -180,6 +206,36 @@ export function CallDetailPanel({
     } finally {
       setDeleting(false);
     }
+  }
+
+  async function loadRevisionHistory() {
+    if (!call) return;
+    setHistoryLoading(true); setHistoryError("");
+    try { const result = await api.listTranscriptionRevisions(call.id); setRevisions(result.items); setShowRevisionHistory(true); }
+    catch (error) { setHistoryError(error instanceof Error ? error.message : "Не удалось загрузить историю"); }
+    finally { setHistoryLoading(false); }
+  }
+
+  async function toggleRevisionHistory() {
+    if (showRevisionHistory) {
+      setShowRevisionHistory(false);
+      setHistoryError("");
+      return;
+    }
+    await loadRevisionHistory();
+  }
+
+  async function restoreRevision(revision: TranscriptionRevisionSummary) {
+    if (!call) return;
+    setSelectingRevision(revision.revision); setHistoryError("");
+    try {
+      const result = await api.restoreTranscriptionRevision(call.id, revision.revision, localTranscription?.revision ?? 1);
+      setLocalTranscription(result.transcription);
+      const history = await api.listTranscriptionRevisions(call.id);
+      setRevisions(history.items);
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "Не удалось выбрать версию транскрипции");
+    } finally { setSelectingRevision(null); }
   }
 
   return (
@@ -277,7 +333,7 @@ export function CallDetailPanel({
       </div>
       <CallMediaPlayer
         call={call}
-        words={transcription?.words}
+        words={localTranscription?.words}
         seekTarget={seekTarget}
         onActiveWordChange={setActiveWordIndex}
       />
@@ -295,12 +351,35 @@ export function CallDetailPanel({
           actionVariant="analysis"
           expanded={showFullTranscript}
         >
+          {localTranscription?.editable && (
+            <div className="transcript-history-actions">
+              <div className="transcript-history-toolbar">
+                {onOpenTranscriptionEditor && <button type="button" className="primary-button small" onClick={() => onOpenTranscriptionEditor(call.id)}>Исправить транскрипцию</button>}
+                <button type="button" className="ghost-button small" disabled={historyLoading} aria-expanded={showRevisionHistory} onClick={() => void toggleRevisionHistory()}>
+                  {historyLoading ? "Загружаю историю…" : showRevisionHistory ? "Свернуть историю" : "История исправлений"}
+                </button>
+                {(localTranscription.revision ?? 1) > 1 && onOpenRevisionComparison && <button type="button" className="ghost-button small" onClick={() => onOpenRevisionComparison(call.id)}>Сравнить версии</button>}
+              </div>
+              {historyError && <div className="form-error">{historyError}</div>}
+              {showRevisionHistory && <div className="transcript-history-list">
+                {revisions.length === 0 ? <small>Версий пока нет.</small> : revisions.map((revision) => <div className={`transcript-history-row${revision.is_current ? " is-current" : ""}`} key={revision.id}>
+                  <button type="button" className="transcript-history-preview-button" onClick={() => onOpenRevisionComparison?.(call.id, revision.revision)} aria-label={`Сравнить версию ${revision.revision}`}>
+                    <span><strong>Версия {revision.revision}</strong><small>{revision.is_current ? "Используется сейчас" : "Нажмите для сравнения"}</small></span>
+                  </button>
+                  {revision.is_current
+                    ? <span className="transcript-current-revision"><CheckCircle2 size={18} /> Выбрана</span>
+                    : <button type="button" className="ghost-button small" disabled={selectingRevision !== null} onClick={() => void restoreRevision(revision)}>{selectingRevision === revision.revision ? "Выбираю…" : "Выбрать"}</button>}
+                </div>)}
+              </div>}
+            </div>
+          )}
           <TranscriptPreview
-            transcription={transcription}
+            transcription={localTranscription}
             expanded={showFullTranscript}
             loading={loadingDetails}
             activeWordIndex={activeWordIndex}
             selectedEvidence={seekTarget}
+            speakerAssignments={speakerAssignments}
           />
         </InfoCard>
         <InfoCard

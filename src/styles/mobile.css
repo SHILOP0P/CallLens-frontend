@@ -1,5 +1,23 @@
 /* Mobile layout layer. Imported last to consolidate desktop-first rules. */
 @media (max-width: 760px) {
+  .transcription-edit-header { grid-template-columns: 1fr auto; padding: 16px; }
+  .transcription-edit-header > button { grid-column: 1 / -1; justify-self: start; }
+  .transcription-edit-guide { align-items: flex-start; }
+  .transcription-edit-guide > div:first-child span { display: none; }
+  .transcription-edit-utterance { padding: 14px; }
+  .transcription-edit-dock { left: 10px; right: 10px; bottom: 10px; align-items: stretch; flex-direction: column; }
+  .transcription-edit-dock-actions { display: grid; grid-template-columns: 1fr 1.35fr; }
+  .transcription-edit-dock-actions button { justify-content: center; }
+  .app-shell .transcript-editor-dock {
+    align-items: stretch;
+    flex-direction: column;
+    bottom: 6px;
+    margin: 8px;
+  }
+
+  .app-shell .transcript-editor-dock > div {
+    justify-content: flex-end;
+  }
   html, body, #root { width: 100%; min-width: 0; max-width: 100%; overflow-x: clip; }
   *, *::before, *::after { min-width: 0; box-sizing: border-box; }
 
@@ -855,4 +873,23 @@
 
 @media (min-width: 1025px) {
   .mobile-bottom-nav, .landing-menu-toggle { display: none; }
+}
+@media (max-width: 720px) {
+  .revision-comparison-grid { grid-template-columns: 1fr; }
+  .revision-comparison-heading { display: grid; }
+  .transcript-history-row { align-items: stretch; flex-wrap: wrap; }
+  .transcript-history-preview-button { flex-basis: 100%; }
+  .transcription-compare-header { grid-template-columns: 1fr auto; padding: 16px; }
+  .transcription-compare-header > button { grid-column: 1 / -1; justify-self: start; }
+  .compare-selection-panel { align-items: stretch; flex-direction: column; }
+  .compare-add-version > button { width: 100%; }
+  .compare-version-menu { right: auto; left: 0; width: 100%; }
+  .compare-version-board { grid-template-columns: repeat(2, minmax(86vw, 1fr)); height: 70vh; min-height: 520px; overflow-x: auto; scroll-snap-type: x proximity; }
+  .compare-version-lane { scroll-snap-align: start; }
+  .compare-version-card { min-height: 190px; }
+  .compare-version-card > header { align-items: flex-start; }
+  .compare-change-log { padding: 14px; }
+  .compare-section-heading { align-items: start; flex-direction: column; }
+  .compare-section-heading > small { text-align: left; }
+  .compare-change-range { grid-template-columns: 1fr; gap: 8px; }
 }

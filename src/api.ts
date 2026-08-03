@@ -53,6 +53,11 @@ import type {
   Subscription,
   SubscriptionUsageResponse,
   TranscriptionResponse,
+  TranscriptionRevisionContent,
+  TranscriptionRevisionListResponse,
+  TranscriptionSpeakerAssignment,
+  TranscriptionUpdateResponse,
+  UpdateTranscriptionRequest,
   UpdateCallFolderRequest,
   UpdatePasswordRequest,
   UpdatePasswordResponse,
@@ -1015,6 +1020,43 @@ export const api = {
 
   getTranscription(callId: string) {
     return request<TranscriptionResponse>(`/calls/${callId}/transcription`);
+  },
+
+  updateTranscription(callId: string, input: UpdateTranscriptionRequest) {
+    return request<TranscriptionUpdateResponse>(`/calls/${encodeURIComponent(callId)}/transcription`, {
+      method: "PATCH",
+      body: JSON.stringify(input)
+    });
+  },
+
+  listTranscriptionSpeakerAssignments(callId: string) {
+    return request<TranscriptionSpeakerAssignment[]>(`/calls/${encodeURIComponent(callId)}/transcription/speakers`);
+  },
+
+  replaceTranscriptionSpeakerAssignments(callId: string, assignments: TranscriptionSpeakerAssignment[]) {
+    return request<TranscriptionSpeakerAssignment[]>(`/calls/${encodeURIComponent(callId)}/transcription/speakers`, {
+      method: "PUT",
+      body: JSON.stringify(assignments)
+    });
+  },
+
+  listTranscriptionRevisions(callId: string, limit = 20, offset = 0) {
+    return request<TranscriptionRevisionListResponse>(
+      `/calls/${encodeURIComponent(callId)}/transcription/revisions?limit=${limit}&offset=${offset}`
+    );
+  },
+
+  getTranscriptionRevision(callId: string, revision: number) {
+    return request<TranscriptionRevisionContent>(
+      `/calls/${encodeURIComponent(callId)}/transcription/revisions/${revision}`
+    );
+  },
+
+  restoreTranscriptionRevision(callId: string, revision: number, expectedRevision: number) {
+    return request<TranscriptionUpdateResponse>(
+      `/calls/${encodeURIComponent(callId)}/transcription/revisions/${revision}/restore`,
+      { method: "POST", body: JSON.stringify({ expected_revision: expectedRevision }) }
+    );
   },
 
   getAnalysis(callId: string) {
