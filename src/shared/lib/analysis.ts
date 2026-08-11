@@ -566,7 +566,8 @@ function criteriaResultList(value: unknown): AnalysisV2CriteriaResult[] {
       evidence: evidenceList(item.evidence),
       issue: stringValue(item.issue) ?? "",
       explanation: stringValue(item.explanation) ?? stringValue(item.issue) ?? "",
-      recommendation: stringValue(item.recommendation) ?? ""
+      recommendation: stringValue(item.recommendation) ?? "",
+      effective_source: stringValue(item.effective_source) ?? undefined
     };
 
     if (!result.code && !result.title && !result.status) return [];

@@ -1,5 +1,4 @@
 import {
-  BarChart3,
   BrainCircuit,
   Building2,
   FileBarChart2,
@@ -8,7 +7,8 @@ import {
   PhoneCall,
   Settings,
   UsersRound,
-  ShieldCheck
+  ShieldCheck,
+  ClipboardCheck
 } from "lucide-react";
 import { useEffect } from "react";
 import type {
@@ -55,6 +55,8 @@ export const pageRoutes: Record<AppPage, string> = {
   calls: "/app/calls",
   transcriptionEdit: "/app/calls/transcription-edit",
   transcriptionCompare: "/app/calls/transcription-compare",
+  qualityReviews: "/app/quality-reviews",
+  qualityReview: "/app/quality-reviews/review",
   analysis: "/app/analysis",
   reports: "/app/reports",
   contacts: "/app/contacts",
@@ -83,7 +85,7 @@ export const navItems: Array<{ page: AppPage; label: string; }> = [
 export const sidebarItems: Array<{ page: AppPage; label: string; icon: React.ReactNode; }> = [
   { page: "overview", label: "Обзор", icon: <LayoutDashboard size={19} /> },
   { page: "calls", label: "Звонки", icon: <PhoneCall size={19} /> },
-  { page: "analysis", label: "Аналитика", icon: <BarChart3 size={19} /> },
+  { page: "qualityReviews", label: "QA-проверка", icon: <ClipboardCheck size={19} /> },
   { page: "reports", label: "AI-отчеты", icon: <FileBarChart2 size={19} /> },
   { page: "contacts", label: "Контакты", icon: <UsersRound size={19} /> },
   { page: "settingsCompanies", label: "Компании", icon: <Building2 size={19} /> },
@@ -141,6 +143,7 @@ export function readStoredSession(): SessionState | null {
 }
 
 export function pageFromPath(pathname: string): AppPage {
+  if (/^\/app\/quality-reviews\/[^/]+$/.test(pathname)) return "qualityReview";
   if (pathname === "/app/calls/transcription-edit") return "transcriptionEdit";
   if (pathname === "/app/calls/transcription-compare") return "transcriptionCompare";
   if (/^\/app\/admin\/(?:users|companies)\/[^/]+$/.test(pathname)) return "admin";

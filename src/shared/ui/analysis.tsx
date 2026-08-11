@@ -239,7 +239,7 @@ function AnalysisV2View({ analysis, onEvidenceActivate }: { analysis: AnalysisRe
                   </span>
                 </div>
                 <small>
-                  Оценка: {formatTenPointScore(criterion.score)} / 10
+                  Оценка: {formatTenPointScore(criterion.score)} / 10{criterion.effective_source && criterion.effective_source !== "ai" ? ` · ${criterion.effective_source === "human_review_2" ? "переоценка 2" : "переоценка 1"}` : ""}
                 </small>
                 <p><b>Тема:</b> {criterion.topic}</p>
                 <CriterionEvidence evidence={criterion.evidence} quote={criterion.quote} onActivate={onEvidenceActivate} />

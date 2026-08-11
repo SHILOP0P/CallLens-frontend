@@ -15,7 +15,7 @@ import type {
   TranscriptionWordResponse
 } from "../../types";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import type { Ref } from "react";
+import type { CSSProperties, Ref } from "react";
 import { wordNeedsLeadingSpace } from "../lib/transcript";
 
 import {
@@ -156,7 +156,9 @@ export function InfoCard({
   onAction,
   actionVariant = "link",
   expanded = false,
-  cardRef
+  cardRef,
+  className = "",
+  style
 }: {
   title: string;
   status: string;
@@ -168,9 +170,11 @@ export function InfoCard({
   actionVariant?: "link" | "analysis";
   expanded?: boolean;
   cardRef?: Ref<HTMLDivElement>;
+  className?: string;
+  style?: CSSProperties;
 }) {
   return (
-    <div className="info-card" ref={cardRef}>
+    <div className={`info-card ${className}`.trim()} ref={cardRef} style={style}>
       <div className="card-title">
         <h3>{title}</h3>
         <span className={`status-chip ${statusTone} ${statusThinking ? "thinking-status" : ""}`}>{status}</span>

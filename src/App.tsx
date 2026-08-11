@@ -43,6 +43,8 @@ import { SettingsPage } from "./features/settings/SettingsPage";
 import { TariffsPage } from "./features/tariffs/TariffsPage";
 import { UploadPage } from "./features/upload/UploadPage";
 import { AdminPage } from "./features/admin/AdminPage";
+import { QualityReviewsPage } from "./features/quality-reviews/QualityReviewsPage";
+import { QualityReviewPage } from "./features/quality-reviews/QualityReviewPage";
 import {
   nextTimelineStatuses,
   parseCallStatusEvent,
@@ -354,6 +356,12 @@ function App() {
     window.history.pushState({}, "", pageUrl(nextPage, selectedCallId));
   }
 
+  function openQualityReview(reviewId: string) {
+    setShowPublicLanding(false);
+    setPage("qualityReview");
+    window.history.pushState({}, "", `/app/quality-reviews/${encodeURIComponent(reviewId)}`);
+  }
+
   function selectCall(callId: string) {
     setSelectedCallId(callId);
     if (page === "calls" || page === "analysis") {
@@ -597,6 +605,9 @@ function App() {
           session={session}
           onSelectCall={selectCall}
           onNavigate={navigate}
+          onAnalysisReady={(callId, analysis) =>
+            setAnalyses((current) => ({ ...current, [callId]: analysis }))
+          }
           onUpdateCallTitle={updateCallTitle}
           onDeleteCall={deleteCall}
           onOpenTranscriptionEditor={openTranscriptionEditor}
@@ -682,6 +693,10 @@ function App() {
       )}
 
       {page === "contacts" && <ContactsPage />}
+
+      {page === "qualityReviews" && <QualityReviewsPage onOpen={openQualityReview} />}
+
+      {page === "qualityReview" && <QualityReviewPage reviewId={decodeURIComponent(window.location.pathname.split("/").at(-1) ?? "")} onBack={() => navigate("qualityReviews")} />}
 
       {page === "monitoring" && adminCapabilities && <MonitoringPage calls={calls} />}
 

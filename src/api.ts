@@ -9,6 +9,7 @@ import type {
   AnalysisPersonalization,
   AnalysisPersonalizationScope,
   AnalysisResponse,
+  AnalysisReviewContext,
   AuthResponse,
   AnalyticsOverviewResponse,
   AvatarResponse,
@@ -44,6 +45,10 @@ import type {
   PlanType,
   PlansResponse,
   ProcessingMonitoringResponse,
+  QualityReviewAppeal,
+  QualityReviewEvent,
+  QualityReviewResponse,
+  QualityReviewsResponse,
   RegisterRequest,
   ReportFormat,
   ReportResponse,
@@ -186,7 +191,18 @@ const apiErrorMessages: Record<string, string> = {
   failed_to_create_aggregate_report: "Не удалось создать отчет глубокого анализа",
   failed_to_list_aggregate_reports: "Не удалось загрузить отчеты глубокого анализа",
   failed_to_download_aggregate_report: "Не удалось скачать отчет глубокого анализа",
-  failed_to_delete_aggregate_report: "Не удалось удалить отчет глубокого анализа"
+  failed_to_delete_aggregate_report: "Не удалось удалить отчет глубокого анализа",
+  quality_review_invalid_input: "Проверьте заполненные поля анализа",
+  quality_review_forbidden: "Оспорить можно только анализ собственного корпоративного звонка",
+  quality_review_not_found: "Анализ или заявка на проверку не найдены",
+  quality_review_publication_blocked: "Для публикации завершите выбранные изменения",
+  quality_review_version_conflict: "Черновик изменился в другом окне. Страница будет обновлена",
+  quality_review_source_outdated: "Исходный анализ изменился — начните проверку заново",
+  quality_review_conflict_of_interest: "Нельзя переоценивать собственный корпоративный звонок или собственную опубликованную версию",
+  quality_review_limit_reached: "Две независимые человеческие оценки уже опубликованы. Дальнейшая переоценка недоступна",
+  quality_review_reviewer_must_differ: "Повторную оценку должен выполнить другой проверяющий",
+  quality_review_active_appeal_exists: "Этот анализ уже находится на пересмотре",
+  quality_review_failed: "Не удалось сохранить изменения анализа"
 };
 
 type ApiPayload = Record<string, unknown>;
@@ -491,6 +507,54 @@ export function openAuthorizedEventStream(url: string) {
 }
 
 export const api = {
+
+  listQualityReviews(input: { company_uuid?: string; department_uuid?: string; status?: string; limit?: number; offset?: number } = {}) {
+    return request<QualityReviewsResponse>(`/quality-reviews${queryString(input)}`);
+  },
+
+  getQualityReview(reviewId: string) {
+    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}`);
+  },
+
+  listQualityReviewEvents(reviewId: string) {
+    return request<{ events: QualityReviewEvent[] }>(`/quality-reviews/${encodeURIComponent(reviewId)}/events`);
+  },
+
+  createQualityReview(callId: string, input: { analysis_uuid: string; reviewed_subject_user_uuid?: string; assignee_user_uuid?: string; due_at?: string }) {
+    return request<QualityReviewResponse>(`/calls/${encodeURIComponent(callId)}/quality-reviews`, { method: "POST", body: JSON.stringify(input) });
+  },
+
+  getAnalysisReviewContext(callId: string, analysisId: string) {
+    return request<AnalysisReviewContext>(`/calls/${encodeURIComponent(callId)}/quality-review-context${queryString({ analysis_uuid: analysisId })}`);
+  },
+
+  challengeCallAnalysis(callId: string, analysisId: string, reason: string) {
+    return request<QualityReviewResponse>(`/calls/${encodeURIComponent(callId)}/quality-review-challenge`, { method: "POST", body: JSON.stringify({ analysis_uuid: analysisId, reason }) });
+  },
+
+  claimQualityReview(reviewId: string, expectedVersion: number) {
+    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/claim`, { method: "POST", body: JSON.stringify({ expected_version: expectedVersion }) });
+  },
+
+  saveQualityReviewDraft(reviewId: string, lockVersion: number, input: { overall_comment: string; payload: Record<string, unknown>; criteria: Array<{ criterion_key: string; title?: string; custom?: boolean; human_score?: number; not_applicable?: boolean; comment: string }> }) {
+    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/draft`, { method: "PUT", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify(input) });
+  },
+
+  discardQualityReviewDraft(reviewId: string, lockVersion: number) {
+    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/draft`, { method: "DELETE", headers: { "If-Match": String(lockVersion) } });
+  },
+
+  publishQualityReview(reviewId: string, lockVersion: number, draftRevisionId: string) {
+    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/publish`, { method: "POST", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify({ draft_revision_uuid: draftRevisionId }) });
+  },
+
+  createQualityReviewAppeal(reviewId: string, reason: string) {
+    return request<QualityReviewAppeal>(`/quality-reviews/${encodeURIComponent(reviewId)}/appeals`, { method: "POST", body: JSON.stringify({ reason }) });
+  },
+
+  resolveQualityReviewAppeal(appealId: string, input: { status: "accepted" | "partially_accepted" | "rejected"; comment: string; replacement_revision_uuid?: string }) {
+    return request<QualityReviewAppeal>(`/quality-review-appeals/${encodeURIComponent(appealId)}/resolve`, { method: "POST", body: JSON.stringify(input) });
+  },
   getAdminCapabilities() {
     return request<AdminCapabilitiesResponse>("/admin/capabilities");
   },

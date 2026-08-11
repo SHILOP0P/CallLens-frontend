@@ -5,6 +5,8 @@ import {
   CloudUpload,
   MoreHorizontal,
   MoreVertical,
+  PanelLeftClose,
+  PanelLeftOpen,
   Pencil,
   Play,
   Plus,
@@ -67,6 +69,7 @@ export function CallsPage({
   loadingDetails,
   onSelectCall,
   onNavigate,
+  onAnalysisReady,
   onUpdateCallTitle,
   onDeleteCall,
   onOpenTranscriptionEditor,
@@ -86,6 +89,7 @@ export function CallsPage({
   loadingDetails: boolean;
   onSelectCall: (callId: string) => void;
   onNavigate: (page: AppPage) => void;
+  onAnalysisReady: (callId: string, analysis: AnalysisResponse) => void;
   onUpdateCallTitle?: (callId: string, title: string) => Promise<CallResponse>;
   onDeleteCall?: (callId: string) => Promise<void>;
   onOpenTranscriptionEditor?: (callId: string) => void;
@@ -123,6 +127,7 @@ export function CallsPage({
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
   const [favoriteCallIds, setFavoriteCallIds] = useState<string[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [callListCollapsed, setCallListCollapsed] = useState(() => window.localStorage.getItem("verbatrace:calls-list-collapsed") === "1");
   const effectiveScopeFilter =
     companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
       ? "all"
@@ -164,6 +169,14 @@ export function CallsPage({
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [mobileSidebarOpen]);
+
+  function toggleCallList() {
+    setCallListCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("verbatrace:calls-list-collapsed", next ? "1" : "0");
+      return next;
+    });
+  }
 
   async function toggleFavoriteCall(callId: string) {
     const isFavorite = favoriteCallIds.includes(callId);
@@ -741,13 +754,24 @@ export function CallsPage({
     : false;
 
   return (
-    <section className="calls-layout atmospheric-page">
+    <section className={`calls-layout atmospheric-page ${callListCollapsed ? "call-list-collapsed" : ""}`}>
       <aside
         id="mobile-call-drawer"
         className={`calls-sidebar mobile-call-drawer glass custom-scroll-target ${mobileSidebarOpen ? "open" : ""}`}
         ref={callsSidebarScrollRef}
         aria-label="Звонки, фильтры и папки"
+        aria-hidden={callListCollapsed ? true : undefined}
+        inert={callListCollapsed}
       >
+        <button
+          className="icon-button calls-list-collapse"
+          type="button"
+          aria-label="Свернуть список звонков"
+          aria-expanded={!callListCollapsed}
+          onClick={toggleCallList}
+        >
+          <PanelLeftClose size={19} />
+        </button>
         <div className="panel-heading">
           <div>
             <h2>Звонки</h2>
@@ -954,13 +978,24 @@ export function CallsPage({
         </button>
       </aside>
       <button
+        className="calls-list-emblem"
+        type="button"
+        aria-label="Открыть список звонков"
+        aria-controls="mobile-call-drawer"
+        aria-expanded={!callListCollapsed}
+        title="Открыть список звонков"
+        onClick={toggleCallList}
+      >
+        <span aria-hidden="true"><PanelLeftOpen size={22} /></span>
+      </button>
+      <button
         className={`mobile-call-drawer-backdrop ${mobileSidebarOpen ? "open" : ""}`}
         type="button"
         aria-label="Закрыть звонки и фильтры"
         tabIndex={mobileSidebarOpen ? 0 : -1}
         onClick={() => setMobileSidebarOpen(false)}
       />
-      <CustomScrollbar targetRef={callsSidebarScrollRef} className="mobile-call-drawer-scroll-thumb" />
+      {!callListCollapsed && <CustomScrollbar targetRef={callsSidebarScrollRef} className="mobile-call-drawer-scroll-thumb" />}
 
       <section className="call-overview glass custom-scroll-target" ref={callOverviewScrollRef}>
         <CallDetailPanel
@@ -973,6 +1008,7 @@ export function CallsPage({
           loading={loading}
           loadingDetails={loadingDetails}
           onNavigate={onNavigate}
+          onAnalysisReady={onAnalysisReady}
           onDeleteCall={onDeleteCall}
           onOpenTranscriptionEditor={onOpenTranscriptionEditor}
           onOpenRevisionComparison={onOpenRevisionComparison}

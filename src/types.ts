@@ -3,6 +3,8 @@ export type AppPage =
   | "calls"
   | "transcriptionEdit"
   | "transcriptionCompare"
+  | "qualityReviews"
+  | "qualityReview"
   | "analysis"
   | "reports"
   | "contacts"
@@ -398,6 +400,7 @@ export interface AnalysisV2CriteriaResult {
   issue: string;
   explanation: string;
   recommendation: string;
+  effective_source?: "ai" | "human_review_1" | "human_review_2" | string;
 }
 
 export interface AnalysisV2Result {
@@ -1037,4 +1040,151 @@ export interface Subscription {
 
 export interface SessionState {
   user: UserResponse;
+}
+
+export type QualityReviewStatus = "unassigned" | "assigned" | "in_review" | "published" | "appealed" | "resolved" | "canceled";
+export type QualityReviewDecision = "confirmed" | "overridden" | "not_applicable" | "unscored";
+
+export interface QualityReviewCriterion {
+  criterion_uuid: string;
+  criterion_key: string;
+  title: string;
+  ai_score?: number;
+  human_score?: number;
+  score_min?: number;
+  score_max?: number;
+  weight: number;
+  decision: QualityReviewDecision;
+  comment: string;
+  position: number;
+}
+
+export interface QualityReviewRevision {
+  revision_uuid: string;
+  revision_number: number;
+  author_user_uuid: string;
+  status: "draft" | "published" | "superseded" | "voided";
+  overall_comment: string;
+  human_score?: number;
+  score_max?: number;
+  payload: Record<string, unknown>;
+  source_hash: string;
+  criteria: QualityReviewCriterion[];
+  created_at: string;
+  updated_at: string;
+  published_at?: string;
+}
+
+export interface QualityReviewCapabilities {
+  can_claim: boolean;
+  can_edit: boolean;
+  can_publish: boolean;
+  can_appeal: boolean;
+  can_resolve_appeal: boolean;
+  can_view_events: boolean;
+  can_edit_analysis: boolean;
+  can_dispute_analysis: boolean;
+  can_resolve_dispute: boolean;
+}
+
+export interface EffectiveAnalysisCriterion {
+  criterion_key: string;
+  title: string;
+  ai_score?: number;
+  human_review_1_score?: number;
+  human_review_2_score?: number;
+  effective_score?: number;
+  effective_source: "ai" | "human_review_1" | "human_review_2" | string;
+  score_min?: number;
+  score_max?: number;
+  weight: number;
+  not_applicable: boolean;
+}
+
+export interface EffectiveAnalysis {
+  total_score?: number;
+  source: "ai" | "human_review_1" | "human_review_2" | string;
+  criteria: EffectiveAnalysisCriterion[];
+}
+
+export interface AnalysisReviewContext {
+  review_uuid?: string;
+  status?: QualityReviewStatus;
+  capabilities: QualityReviewCapabilities;
+  human_review_count: number;
+  human_review_limit: number;
+  next_review_requires_different_author: boolean;
+  active_score_source: "ai" | "human_review_1" | "human_review_2" | string;
+  source_outdated: boolean;
+  challenge?: QualityReviewResponse["challenge"];
+  effective_analysis?: EffectiveAnalysis;
+}
+
+export interface QualityReviewResponse {
+  review_uuid: string;
+  call_uuid: string;
+  analysis_uuid: string;
+  analysis_attempt_uuid?: string;
+  transcription_revision: number;
+  company_uuid: string;
+  department_uuid?: string;
+  reviewed_subject_user_uuid?: string;
+  assignee_user_uuid?: string;
+  status: QualityReviewStatus;
+  active_revision_uuid?: string;
+  lock_version: number;
+  due_at?: string;
+  created_by_user_uuid: string;
+  created_at: string;
+  updated_at: string;
+  published_at?: string;
+  source_outdated: boolean;
+  capabilities: QualityReviewCapabilities;
+  analysis: Record<string, unknown>;
+  draft?: QualityReviewRevision;
+  published_revision?: QualityReviewRevision;
+  revisions: QualityReviewRevision[];
+  effective_analysis?: EffectiveAnalysis;
+  appeals: QualityReviewAppeal[];
+  challenge?: {
+    challenge_uuid: string;
+    review_uuid: string;
+    analysis_uuid: string;
+    call_uuid: string;
+    author_user_uuid: string;
+    reason: string;
+    created_at: string;
+    updated_at: string;
+  };
+}
+
+export interface QualityReviewEvent {
+  event_uuid: string;
+  review_uuid: string;
+  revision_uuid?: string;
+  appeal_uuid?: string;
+  actor_user_uuid: string;
+  event_type: string;
+  created_at: string;
+}
+
+export interface QualityReviewsResponse {
+  items: QualityReviewResponse[];
+  limit: number;
+  offset: number;
+}
+
+export interface QualityReviewAppeal {
+  appeal_uuid: string;
+  review_uuid: string;
+  revision_uuid: string;
+  author_user_uuid: string;
+  status: "open" | "in_review" | "accepted" | "partially_accepted" | "rejected" | "withdrawn";
+  reason: string;
+  resolution_comment?: string;
+  resolved_by_user_uuid?: string;
+  created_at: string;
+  updated_at: string;
+  resolved_at?: string;
+  lock_version: number;
 }

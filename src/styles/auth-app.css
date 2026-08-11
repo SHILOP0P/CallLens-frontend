@@ -3665,8 +3665,51 @@ html[data-theme="light"] .progress-ring::before {
 }
 
 .app-shell .calls-layout {
-  grid-template-columns: minmax(430px, 0.46fr) minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   gap: 32px;
+  transition: gap 440ms cubic-bezier(.2, .78, .24, 1), padding-left 440ms cubic-bezier(.2, .78, .24, 1);
+}
+
+.app-shell .calls-layout.call-list-collapsed {
+  gap: 0;
+  padding-left: 0;
+}
+
+@media (min-width: 1181px) {
+  .app-shell .calls-layout > .calls-sidebar {
+    width: 430px;
+    contain: paint;
+  }
+
+  .app-shell .calls-layout.call-list-collapsed > .calls-sidebar {
+    width: 68px;
+  }
+}
+
+.app-shell .calls-layout > .calls-list-emblem {
+  position: absolute;
+  top: 16px;
+  left: 8px;
+  width: 52px;
+  height: 52px;
+}
+
+.app-shell .calls-list-collapse {
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  margin: 0 4px -42px auto;
+  color: #fff8f4;
+  border: 1px solid color-mix(in srgb, var(--app-accent, #ff5a2f) 58%, var(--app-border, transparent));
+  background: linear-gradient(145deg, color-mix(in srgb, var(--app-accent, #ff5a2f) 84%, #ff9a70 16%), color-mix(in srgb, var(--app-accent, #ff5a2f) 72%, #9d2f19 28%));
+  box-shadow: 0 8px 20px rgba(168, 52, 24, .22), inset 0 1px 0 rgba(255,255,255,.24);
+}
+
+.app-shell .calls-list-collapse:hover {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--app-accent, #ff5a2f) 78%, #fff 22%);
+  background: linear-gradient(145deg, #ff7049, #e94725);
+  transform: translateY(-1px);
 }
 
 .app-shell .calls-layout > :is(.calls-sidebar, .call-overview),
@@ -3695,9 +3738,13 @@ html[data-theme="light"] .progress-ring::before {
 
 .custom-scroll-thumb {
   position: fixed;
+  top: 0;
+  left: 0;
   z-index: 75;
   width: 4px;
   min-height: 56px;
+  opacity: 0;
+  pointer-events: none;
   touch-action: none;
   cursor: grab;
   background: color-mix(in srgb, var(--app-muted, #b8aaa1) 44%, transparent);
@@ -3705,6 +3752,7 @@ html[data-theme="light"] .progress-ring::before {
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--app-text, #fffaf5) 10%, transparent),
     0 2px 8px rgba(16, 10, 7, 0.16);
+  will-change: transform, height;
   transition: width 140ms ease, background-color 140ms ease, opacity 140ms ease;
 }
 
@@ -5702,6 +5750,10 @@ html[data-theme="dark"] .app-shell .analysis-columns > div {
 
   .app-shell .calls-layout,
   .app-shell .analysis-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell .calls-layout.call-list-collapsed {
     grid-template-columns: minmax(0, 1fr);
   }
 

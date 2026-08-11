@@ -1,24 +1,30 @@
 import {
   CheckCircle2,
+  ClipboardCheck,
   ChevronRight,
+  ChevronUp,
   CloudUpload,
   FolderMinus,
   FolderPlus,
   Headphones,
+  MessageSquareWarning,
   PhoneCall,
   Trash2,
   WandSparkles
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 import type {
   AnalysisResponse,
+  AnalysisReviewContext,
   AppPage,
   CallFolderResponse,
   CallResponse,
   CallStatus,
   CompanyResponse,
   DepartmentResponse,
+  EffectiveAnalysis,
   MediaSeekTarget,
   TranscriptionResponse,
   TranscriptionSpeakerAssignment
@@ -51,6 +57,7 @@ export function CallDetailPanel({
   loading,
   loadingDetails,
   onNavigate,
+  onAnalysisReady,
   onDeleteCall,
   onOpenTranscriptionEditor,
   onOpenRevisionComparison,
@@ -71,6 +78,7 @@ export function CallDetailPanel({
   loading?: boolean;
   loadingDetails?: boolean;
   onNavigate: (page: AppPage) => void;
+  onAnalysisReady?: (callId: string, analysis: AnalysisResponse) => void;
   onDeleteCall?: (callId: string) => Promise<void>;
   onOpenTranscriptionEditor?: (callId: string) => void;
   onOpenRevisionComparison?: (callId: string, revision?: number) => void;
@@ -86,6 +94,8 @@ export function CallDetailPanel({
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const [analysisRunError, setAnalysisRunError] = useState("");
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [folderMenuOpen, setFolderMenuOpen] = useState(false);
   const [activeWordIndex, setActiveWordIndex] = useState(-1);
@@ -97,20 +107,181 @@ export function CallDetailPanel({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [selectingRevision, setSelectingRevision] = useState<number | null>(null);
+  const [qualityReviewBusy, setQualityReviewBusy] = useState(false);
+  const [qualityReviewError, setQualityReviewError] = useState("");
+  const [challengeOpen, setChallengeOpen] = useState(false);
+  const [challengeReason, setChallengeReason] = useState("");
+  const [challengeSent, setChallengeSent] = useState(false);
+  const [reviewContext, setReviewContext] = useState<AnalysisReviewContext>();
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const transcriptCardRef = useRef<HTMLDivElement | null>(null);
+  const transcriptIslandRef = useRef<HTMLDivElement | null>(null);
   const analysisCardRef = useRef<HTMLDivElement | null>(null);
-  const score = analysisScore100(analysis);
+  const displayedAnalysis = applyEffectiveAnalysis(analysis, reviewContext?.effective_analysis);
+  const score = analysisScore100(displayedAnalysis);
+  const canEditAnalysis = reviewContext?.capabilities.can_edit_analysis === true;
+  const canDisputeAnalysis = reviewContext?.capabilities.can_dispute_analysis === true;
+
+  async function createQualityReview() {
+    if (!call || !analysis || qualityReviewBusy) return;
+    setQualityReviewBusy(true); setQualityReviewError("");
+    try {
+      const reviewId = reviewContext?.review_uuid ?? (await api.createQualityReview(call.id, { analysis_uuid: analysis.id })).review_uuid;
+      window.history.pushState({}, "", `/app/quality-reviews/${encodeURIComponent(reviewId)}`);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    } catch (cause) {
+      setQualityReviewError(cause instanceof Error ? cause.message : "Не удалось создать проверку");
+    } finally { setQualityReviewBusy(false); }
+  }
+
+  async function challengeAnalysis() {
+    if (!call || !analysis || qualityReviewBusy || challengeReason.trim().length < 10) return;
+    setQualityReviewBusy(true); setQualityReviewError("");
+    try {
+      await api.challengeCallAnalysis(call.id, analysis.id, challengeReason.trim());
+      setChallengeOpen(false); setChallengeReason(""); setChallengeSent(true);
+      setReviewContext(await api.getAnalysisReviewContext(call.id, analysis.id));
+    } catch (cause) {
+      setQualityReviewError(cause instanceof Error ? cause.message : "Не удалось отправить анализ на пересмотр");
+    } finally { setQualityReviewBusy(false); }
+  }
+
+  async function runAnalysis() {
+    if (!call || analysisBusy) return;
+    setAnalysisBusy(true);
+    setAnalysisRunError("");
+    setChallengeOpen(false);
+    setChallengeReason("");
+    setChallengeSent(false);
+    try {
+      const result = await api.analyzeCall(call.id);
+      onAnalysisReady?.(call.id, result);
+    } catch (cause) {
+      setAnalysisRunError(cause instanceof Error ? cause.message : "Не удалось запустить анализ");
+    } finally {
+      setAnalysisBusy(false);
+    }
+  }
 
   useEffect(() => {
     setShowFullTranscript(false);
     setShowFullAnalysis(false);
     setDeleteError("");
+    setAnalysisRunError("");
     setDeleteConfirmOpen(false);
     setFolderMenuOpen(false);
     setActiveWordIndex(-1);
     setSeekTarget(null);
   }, [call?.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReviewContext(undefined);
+    setChallengeSent(false);
+    if (!call || !analysis || !isAnalysisDone(analysis)) return;
+    void api.getAnalysisReviewContext(call.id, analysis.id)
+      .then((value) => {
+        if (!cancelled) {
+          setReviewContext(value);
+          setChallengeSent(Boolean(value.challenge) || value.status === "appealed");
+        }
+      })
+      .catch(() => { if (!cancelled) setReviewContext(undefined); });
+    return () => { cancelled = true; };
+  }, [call?.id, analysis?.id, analysis?.status]);
+
+  useEffect(() => {
+    if (!qualityReviewError) return;
+    const timer = window.setTimeout(() => setQualityReviewError(""), 5200);
+    return () => window.clearTimeout(timer);
+  }, [qualityReviewError]);
+
+  useEffect(() => {
+    if (!analysisRunError) return;
+    const timer = window.setTimeout(() => setAnalysisRunError(""), 5200);
+    return () => window.clearTimeout(timer);
+  }, [analysisRunError]);
+
+  useLayoutEffect(() => {
+    const card = transcriptCardRef.current;
+    const island = transcriptIslandRef.current;
+    if (!showFullTranscript || !card || !island) return;
+    const scrollArea = card.closest(".call-overview");
+    const mainToggle = card.querySelector<HTMLElement>(":scope > .analysis-toggle-button");
+    if (!mainToggle) {
+      island.hidden = true;
+      return;
+    }
+    let cardVisible = true;
+    let islandBottom = window.innerHeight - 10;
+    let lastCollision = "";
+    let lastHidden: boolean | null = null;
+    let lastReceiving: boolean | null = null;
+
+    const measureLayout = () => {
+      const rect = card.getBoundingClientRect();
+      const areaRect = scrollArea?.getBoundingClientRect() ?? { bottom: window.innerHeight };
+      islandBottom = areaRect.bottom - 10;
+      island.style.setProperty("--island-left", `${rect.left + rect.width / 2}px`);
+      island.style.setProperty("--island-bottom", `${Math.max(0, window.innerHeight - areaRect.bottom) + 10}px`);
+    };
+    const updatePosition = () => {
+      const toggleRect = mainToggle.getBoundingClientRect();
+      const distanceToIsland = toggleRect.top - islandBottom;
+      const collisionApproachDistance = 96;
+      const collision = Math.min(1, Math.max(0, (collisionApproachDistance - distanceToIsland) / collisionApproachDistance));
+      const crossed = distanceToIsland <= 0;
+      const collisionValue = collision.toFixed(3);
+      const hidden = !cardVisible || crossed;
+      const receiving = collision > 0 && !crossed;
+
+      if (collisionValue !== lastCollision) {
+        island.style.setProperty("--island-collision", collisionValue);
+        mainToggle.style.setProperty("--island-collision", collisionValue);
+        lastCollision = collisionValue;
+      }
+      if (hidden !== lastHidden) {
+        island.hidden = hidden;
+        lastHidden = hidden;
+      }
+      if (receiving !== lastReceiving) {
+        mainToggle.classList.toggle("is-island-receiving", receiving);
+        lastReceiving = receiving;
+      }
+    };
+    let frame = 0;
+    const scheduleUpdate = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updatePosition();
+      });
+    };
+    const measureAndSchedule = () => {
+      measureLayout();
+      scheduleUpdate();
+    };
+    measureAndSchedule();
+    const intersectionObserver = new IntersectionObserver(([entry]) => {
+      cardVisible = entry?.isIntersecting ?? false;
+      scheduleUpdate();
+    }, { root: scrollArea });
+    intersectionObserver.observe(card);
+    const resizeObserver = new ResizeObserver(measureAndSchedule);
+    resizeObserver.observe(card);
+    if (scrollArea) resizeObserver.observe(scrollArea);
+    scrollArea?.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", measureAndSchedule);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      intersectionObserver.disconnect();
+      resizeObserver.disconnect();
+      scrollArea?.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", measureAndSchedule);
+      mainToggle.classList.remove("is-island-receiving");
+      mainToggle.style.removeProperty("--island-collision");
+    };
+  }, [showFullTranscript, call?.id]);
 
   useEffect(() => { setLocalTranscription(transcription); }, [transcription]);
   useEffect(() => { setRevisions([]); setShowRevisionHistory(false); }, [call?.id]);
@@ -307,6 +478,12 @@ export function CallDetailPanel({
             </div>
           )}
           {onDeleteCall && (
+            <button className="ghost-button small call-analysis-button" type="button" onClick={() => void runAnalysis()} disabled={analysisBusy}>
+              <WandSparkles size={16} />
+              {analysisBusy ? "Анализирую…" : "Сделать анализ"}
+            </button>
+          )}
+          {onDeleteCall && (
             <button className="ghost-button small danger-button" onClick={() => setDeleteConfirmOpen(true)} disabled={deleting}>
               <Trash2 size={16} />
               {deleting ? "Удаляю..." : "Удалить"}
@@ -314,6 +491,7 @@ export function CallDetailPanel({
           )}
         </div>
       </div>
+      {analysisRunError && <div className="form-error is-dismissible" role="alert">{analysisRunError}</div>}
       {deleteError && <div className="form-error">{deleteError}</div>}
       <div className="selected-call-card">
         <div className="play-large">
@@ -342,6 +520,7 @@ export function CallDetailPanel({
       <div className="detail-grid">
         <InfoCard
           title="Расшифровка"
+          className="transcript-card"
           cardRef={transcriptCardRef}
           status={transcriptionState.label}
           statusTone={transcriptionState.tone}
@@ -373,6 +552,15 @@ export function CallDetailPanel({
               </div>}
             </div>
           )}
+          {showFullTranscript && createPortal(
+            <div ref={transcriptIslandRef} className="transcript-collapse-island">
+              <button type="button" onClick={() => toggleExpandedCard(true, setShowFullTranscript, transcriptCardRef)}>
+                <ChevronUp size={18} />
+                Свернуть расшифровку
+              </button>
+            </div>,
+            document.body
+          )}
           <TranscriptPreview
             transcription={localTranscription}
             expanded={showFullTranscript}
@@ -382,25 +570,29 @@ export function CallDetailPanel({
             speakerAssignments={speakerAssignments}
           />
         </InfoCard>
-        <InfoCard
-          title="AI-анализ"
-          cardRef={analysisCardRef}
-          status={analysisState.label}
-          statusTone={analysisState.tone}
-          statusThinking={analysisState.thinking}
-          action={showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
-          onAction={() => toggleExpandedCard(showFullAnalysis, setShowFullAnalysis, analysisCardRef)}
-          actionVariant="analysis"
-          expanded={showFullAnalysis}
-        >
-          <AnalysisPreview
-            analysis={analysis}
+        <div className="analysis-card-stack">
+          {isAnalysisDone(analysis) && reviewContext && (canEditAnalysis || canDisputeAnalysis || reviewContext.human_review_count > 0) && <div className="quality-review-entry"><div><ClipboardCheck size={20} /><span><strong>{reviewContext.human_review_count > 0 ? `Действует человеческая оценка ${reviewContext.human_review_count}` : "Проверка человеком"}</strong><small>{reviewContext.source_outdated ? "Эта проверка относится к устаревшей версии анализа и доступна только для просмотра." : canEditAnalysis ? `Опубликовано ${reviewContext.human_review_count} из ${reviewContext.human_review_limit} допустимых переоценок.${reviewContext.next_review_requires_different_author ? " Следующую должен выполнить другой проверяющий." : ""}` : canDisputeAnalysis ? "Если выводы или оценки неверны, отправьте анализ своего звонка на независимый пересмотр." : "Доступны просмотр и история оценок."}</small></span></div><div className="quality-review-entry-actions">{canEditAnalysis && <button className="primary-button" type="button" disabled={qualityReviewBusy} onClick={() => void createQualityReview()}>{qualityReviewBusy ? "Открываю…" : "Исправить анализ"}</button>}{reviewContext.review_uuid && !canEditAnalysis && reviewContext.human_review_count > 0 && <button className="ghost-button" type="button" onClick={() => { window.history.pushState({}, "", `/app/quality-reviews/${encodeURIComponent(reviewContext.review_uuid!)}`); window.dispatchEvent(new PopStateEvent("popstate")); }}>История оценок</button>}{canDisputeAnalysis && <button className="ghost-button" type="button" disabled={qualityReviewBusy || challengeSent} onClick={() => setChallengeOpen(true)}><MessageSquareWarning size={17} />{challengeSent ? "Отправлено на пересмотр" : "Оспорить анализ"}</button>}</div></div>}
+          {qualityReviewError && <div className="form-error is-dismissible" role="alert">{qualityReviewError}</div>}
+          <InfoCard
+            title="AI-анализ"
+            cardRef={analysisCardRef}
+            status={analysisState.label}
+            statusTone={analysisState.tone}
+            statusThinking={analysisState.thinking}
+            action={showFullAnalysis ? "Свернуть анализ" : "Открыть полный анализ"}
+            onAction={() => toggleExpandedCard(showFullAnalysis, setShowFullAnalysis, analysisCardRef)}
+            actionVariant="analysis"
             expanded={showFullAnalysis}
-            loading={loadingDetails}
-            pendingMessage={analysisState.thinking ? "Производится анализ транскрипции. Результат появится после завершения обработки." : undefined}
-            onEvidenceActivate={openEvidence}
-          />
-        </InfoCard>
+          >
+            <AnalysisPreview
+              analysis={displayedAnalysis}
+              expanded={showFullAnalysis}
+              loading={loadingDetails}
+              pendingMessage={analysisState.thinking ? "Производится анализ транскрипции. Результат появится после завершения обработки." : undefined}
+              onEvidenceActivate={openEvidence}
+            />
+          </InfoCard>
+        </div>
       </div>
       <div className="next-step">
         <span className="step-icon">
@@ -408,7 +600,7 @@ export function CallDetailPanel({
         </span>
         <div>
           <h3>Следующий шаг</h3>
-          <p>{analysisNextStep(analysis)}</p>
+          <p>{analysisNextStep(displayedAnalysis)}</p>
         </div>
         <button className="ghost-button">
           Выполнить действие
@@ -427,6 +619,7 @@ export function CallDetailPanel({
         }}
         onConfirm={() => void deleteSelectedCall()}
       />
+      {challengeOpen && createPortal(<div className="quality-challenge-backdrop" role="presentation" onMouseDown={() => !qualityReviewBusy && setChallengeOpen(false)}><section className="quality-challenge-dialog" role="dialog" aria-modal="true" aria-labelledby="quality-challenge-title" onMouseDown={(event) => event.stopPropagation()}><span className="eyebrow">Пересмотр анализа</span><h2 id="quality-challenge-title">Что вас не устроило?</h2><p>Опишите, с какими выводами, оценками или формулировками ИИ вы не согласны. Сообщение увидит специалист по проверке качества.</p><label><span>Сопроводительное сообщение</span><textarea autoFocus maxLength={5000} value={challengeReason} placeholder="Например: в анализе неверно указано, что я не уточнил следующий шаг…" onChange={(event) => setChallengeReason(event.target.value)} /><small>{challengeReason.trim().length}/5000 · минимум 10 символов</small></label><div className="quality-challenge-dialog-actions"><button className="ghost-button" type="button" disabled={qualityReviewBusy} onClick={() => setChallengeOpen(false)}>Отмена</button><button className="primary-button" type="button" disabled={qualityReviewBusy || challengeReason.trim().length < 10} onClick={() => void challengeAnalysis()}>{qualityReviewBusy ? "Отправляю…" : "Отправить на пересмотр"}</button></div></section></div>, document.body)}
     </>
   );
 }
@@ -448,6 +641,41 @@ function transcriptionCardState(
   }
 
   return { label: "Ожидает", tone: "warn" };
+}
+
+function applyEffectiveAnalysis(analysis: AnalysisResponse | undefined, effective: EffectiveAnalysis | undefined): AnalysisResponse | undefined {
+  if (!analysis || !effective || !analysis.result_json || typeof analysis.result_json !== "object" || Array.isArray(analysis.result_json)) return analysis;
+  const source = analysis.result_json as Record<string, unknown>;
+  const criteriaByKey = new Map(effective.criteria.map((item) => [item.criterion_key, item]));
+  const criteria = Array.isArray(source.criteria_results)
+    ? source.criteria_results.map((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+      const item = value as Record<string, unknown>;
+      const key = typeof item.code === "string" ? item.code : "";
+      const replacement = criteriaByKey.get(key);
+      if (!replacement) return value;
+      const max = replacement.score_max && replacement.score_max > 0 ? replacement.score_max : 100;
+      const normalized = replacement.effective_score === undefined ? undefined : replacement.effective_score / max * 100;
+      return {
+        ...item,
+        status: replacement.not_applicable ? "not_applicable" : item.status,
+        points_awarded: replacement.effective_score,
+        points_max: replacement.score_max,
+        score: normalized,
+        effective_source: replacement.effective_source
+      };
+    })
+    : source.criteria_results;
+  return {
+    ...analysis,
+    result_json: {
+      ...source,
+      score: effective.total_score,
+      score_scale: 100,
+      effective_source: effective.source,
+      criteria_results: criteria
+    }
+  };
 }
 
 function analysisCardState(
