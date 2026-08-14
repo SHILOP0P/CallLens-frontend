@@ -1,4 +1,5 @@
 import {
+  Building2,
   Check,
   ChevronDown,
   ChevronRight,
@@ -12,6 +13,8 @@ import {
   Plus,
   Star,
   Trash2,
+  UserRound,
+  UsersRound,
   X
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -27,6 +30,7 @@ import type {
   CallFilterOptionsResponse,
   CompanyResponse,
   CreateCallFolderRequest,
+  DepartmentMemberResponse,
   DepartmentResponse,
   SessionState,
   TranscriptionResponse,
@@ -35,6 +39,7 @@ import type {
 } from "../../types";
 
 import { formatDate, formatDuration } from "../../shared/lib/formatters";
+import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/access";
 import { StatusChip } from "../../shared/ui/call";
 import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
@@ -58,6 +63,7 @@ export function CallsPage({
   calls,
   companies,
   departments,
+  departmentMembers,
   selectedCall,
   selectedCallId,
   selectedCallTimeline,
@@ -78,6 +84,7 @@ export function CallsPage({
   calls: CallResponse[];
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  departmentMembers: DepartmentMemberResponse[];
   selectedCall?: CallResponse;
   selectedCallId: string;
   selectedCallTimeline?: CallStatus[];
@@ -125,6 +132,40 @@ export function CallsPage({
   const [callActionError, setCallActionError] = useState("");
   const [callBusyId, setCallBusyId] = useState("");
   const [pendingDelete, setPendingDelete] = useState<PendingDelete>(null);
+  const managedCompanyIds = new Set(
+    companies.filter((company) => isCompanyManager(company, session.user.id)).map((company) => company.id)
+  );
+  const ledDepartmentIds = activeDepartmentLeaderIds(departmentMembers, session.user.id);
+  const manageableDepartments = departments.filter(
+    (department) => managedCompanyIds.has(department.company_uuid) || ledDepartmentIds.has(department.id)
+  );
+
+  function canManageFolder(folder: CallFolderResponse) {
+    if (folder.scope === "personal") return folder.user_uuid === session.user.id;
+    if (folder.scope === "company") return Boolean(folder.company_uuid && managedCompanyIds.has(folder.company_uuid));
+    return Boolean(
+      folder.department_uuid &&
+      (ledDepartmentIds.has(folder.department_uuid) || (folder.company_uuid && managedCompanyIds.has(folder.company_uuid)))
+    );
+  }
+
+  function selectFolderScope(scope: VisibilityScope) {
+    const firstManagedCompany = companies.find((company) => managedCompanyIds.has(company.id));
+    const currentDepartment = manageableDepartments.find((department) => department.id === folderForm.department_uuid);
+    const firstDepartment = currentDepartment ?? manageableDepartments[0];
+    const companyId = scope === "company"
+      ? (managedCompanyIds.has(folderForm.company_uuid) ? folderForm.company_uuid : firstManagedCompany?.id ?? "")
+      : scope === "department"
+        ? firstDepartment?.company_uuid ?? ""
+        : "";
+
+    setFolderForm((current) => ({
+      ...current,
+      scope,
+      company_uuid: companyId,
+      department_uuid: scope === "department" ? firstDepartment?.id ?? "" : ""
+    }));
+  }
   const [favoriteCallIds, setFavoriteCallIds] = useState<string[]>([]);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [callListCollapsed, setCallListCollapsed] = useState(() => window.localStorage.getItem("verbatrace:calls-list-collapsed") === "1");
@@ -900,7 +941,7 @@ export function CallsPage({
                         </small>
                       </span>
                     </button>
-                    <div
+                    {canManageFolder(folder) && <div
                       className="call-folder-actions"
                       onClick={(event) => event.stopPropagation()}
                       onPointerDown={(event) => event.stopPropagation()}
@@ -935,7 +976,7 @@ export function CallsPage({
                           </button>
                         </span>
                       )}
-                    </div>
+                    </div>}
                   </div>
                   {expanded && (
                     <div className="call-folder-child-list">
@@ -1000,6 +1041,7 @@ export function CallsPage({
       <section className="call-overview glass custom-scroll-target" ref={callOverviewScrollRef}>
         <CallDetailPanel
           call={selectedCall}
+          currentUserId={session.user.id}
           companies={companies}
           departments={departments}
           transcription={transcription}
@@ -1052,32 +1094,42 @@ export function CallsPage({
             {folderError && <div className="form-error compact">{folderError}</div>}
             <div className="call-folder-form modal-form">
               {!editingFolderId && (
-                <SelectControl
-                  aria-label="Область папки"
-                  value={folderForm.scope}
-                  onChange={(event) => {
-                    const scope = event.target.value as VisibilityScope;
-                    const nextCompanyId = scope === "personal" ? "" : folderForm.company_uuid || companies[0]?.id || "";
-                    const nextDepartmentId =
-                      scope === "department"
-                        ? folderForm.department_uuid || departments.find((department) => department.company_uuid === nextCompanyId)?.id || ""
-                        : "";
-                    setFolderForm((current) => ({
-                      ...current,
-                      scope,
-                      company_uuid: nextCompanyId,
-                      department_uuid: nextDepartmentId
-                    }));
-                  }}
-                >
-                  <option value="personal">Личная</option>
-                  {companies.length > 0 && <option value="company">Компания</option>}
-                  {companies.length > 0 && <option value="department">Отдел</option>}
-                </SelectControl>
+                <fieldset className="call-folder-scope-picker">
+                  <legend>Куда добавить папку?</legend>
+                  <div className="call-folder-scope-options">
+                    {([
+                      { scope: "personal", title: "Личная", hint: "Только ваши звонки", icon: UserRound },
+                      ...(managedCompanyIds.size > 0
+                        ? [
+                            { scope: "company", title: "Компания", hint: "Для всей компании", icon: Building2 },
+                          ]
+                        : [])
+                      ,...(manageableDepartments.length > 0
+                        ? [{ scope: "department", title: "Отдел", hint: "Для выбранного отдела", icon: UsersRound }]
+                        : [])
+                    ] as Array<{ scope: VisibilityScope; title: string; hint: string; icon: typeof UserRound }>).map((option) => {
+                      const Icon = option.icon;
+                      return (
+                        <button
+                          className={folderForm.scope === option.scope ? "active" : ""}
+                          type="button"
+                          key={option.scope}
+                          aria-pressed={folderForm.scope === option.scope}
+                          onClick={() => selectFolderScope(option.scope)}
+                        >
+                          <Icon size={18} />
+                          <span><strong>{option.title}</strong><small>{option.hint}</small></span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
               )}
               {!editingFolderId && folderForm.scope !== "personal" && (
-                <SelectControl
-                  aria-label="Компания папки"
+                <label className="call-folder-scope-field">
+                  <span>Компания</span>
+                  <SelectControl
+                    aria-label="Компания папки"
                   value={folderForm.company_uuid}
                   onChange={(event) => {
                     const companyId = event.target.value;
@@ -1088,24 +1140,30 @@ export function CallsPage({
                       department_uuid: current.scope === "department" ? departmentId : ""
                     }));
                   }}
-                >
-                  <option value="">Выберите компанию</option>
-                  {companies.map((company) => (
-                    <option key={company.id} value={company.id}>{company.name}</option>
-                  ))}
-                </SelectControl>
+                  >
+                    <option value="">Выберите компанию</option>
+                    {companies.filter((company) => folderForm.scope === "company"
+                      ? managedCompanyIds.has(company.id)
+                      : manageableDepartments.some((department) => department.company_uuid === company.id)).map((company) => (
+                      <option key={company.id} value={company.id}>{company.name}</option>
+                    ))}
+                  </SelectControl>
+                </label>
               )}
               {!editingFolderId && folderForm.scope === "department" && (
-                <SelectControl
-                  aria-label="Отдел папки"
+                <label className="call-folder-scope-field">
+                  <span>Отдел</span>
+                  <SelectControl
+                    aria-label="Отдел папки"
                   value={folderForm.department_uuid}
                   onChange={(event) => setFolderForm((current) => ({ ...current, department_uuid: event.target.value }))}
-                >
-                  <option value="">Выберите отдел</option>
-                  {formDepartmentOptions.map((department) => (
-                    <option key={department.id} value={department.id}>{department.name}</option>
-                  ))}
-                </SelectControl>
+                  >
+                    <option value="">Выберите отдел</option>
+                    {formDepartmentOptions.filter((department) => manageableDepartments.some((item) => item.id === department.id)).map((department) => (
+                      <option key={department.id} value={department.id}>{department.name}</option>
+                    ))}
+                  </SelectControl>
+                </label>
               )}
               <input
                 aria-label="Название папки"
@@ -1187,7 +1245,7 @@ export function CallsPage({
             </div>
           </form>
         </div>,
-        document.body
+        document.querySelector<HTMLElement>(".app-shell") ?? document.body
       )}
       {editingCall && (
         <div

@@ -10,6 +10,7 @@ import type {
   DepartmentMemberResponse,
   DepartmentResponse,
   Invitation,
+  NotificationResponse,
   SessionState,
   Subscription,
   TranscriptionResponse,
@@ -30,12 +31,15 @@ import { CallsPage } from "./features/calls/CallsPage";
 import { TranscriptionEditPage } from "./features/calls/TranscriptionEditPage";
 import { TranscriptionComparePage } from "./features/calls/TranscriptionComparePage";
 import { CompaniesPage } from "./features/companies/CompaniesPage";
+import { CreateCompanyPage } from "./features/companies/CreateCompanyPage";
+import { ActionDetailPage, ActionsPage } from "./features/actions/ActionsPage";
 import { ContactsPage } from "./features/contacts/ContactsPage";
 import { InstructionsPage } from "./features/instructions/InstructionsPage";
 import { InvitationsPage } from "./features/invitations/InvitationsPage";
 import { Landing } from "./features/landing/Landing";
 import { AuthenticatedShell } from "./features/layout/AuthenticatedShell";
 import { MonitoringPage } from "./features/monitoring/MonitoringPage";
+import { NotificationsPage } from "./features/notifications/NotificationsPage";
 import { OverviewPage } from "./features/overview/OverviewPage";
 import { DevicesPage, ProfileEditPage, ProfilePage } from "./features/profile/ProfilePage";
 import { AiReportsPage } from "./features/reports/AiReportsPage";
@@ -402,6 +406,25 @@ function App() {
     window.history.pushState({}, "", `/app/settings/companies/${encodeURIComponent(companyId)}`);
   }
 
+  function openNotificationTarget(notification: NotificationResponse) {
+    if (notification.entity_type === "call" && notification.entity_uuid) {
+      openCallPage(notification.entity_uuid);
+      return;
+    }
+    if (notification.entity_type === "company" && notification.entity_uuid) {
+      openCompany(notification.entity_uuid);
+      return;
+    }
+    if (notification.entity_type === "call_action" && notification.entity_uuid) {
+      window.history.pushState({}, "", `/app/actions/${encodeURIComponent(notification.entity_uuid)}`);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+      return;
+    }
+    if (notification.type === "invitation") navigate("settingsInvitations");
+    else if (notification.entity_type === "report") navigate("reports");
+    else if (notification.entity_type === "instruction") navigate("settingsInstructions");
+  }
+
   function openDepartment(companyId: string, departmentId: string) {
     setShowPublicLanding(false);
     setPage("settingsCompanies");
@@ -596,6 +619,7 @@ function App() {
           calls={calls}
           companies={companies}
           departments={departments}
+          departmentMembers={departmentMembers}
           selectedCall={selectedCall}
           selectedCallId={selectedCallId}
           selectedCallTimeline={selectedCallTimeline}
@@ -694,11 +718,22 @@ function App() {
 
       {page === "contacts" && <ContactsPage />}
 
+      {page === "actions" && <ActionsPage onOpen={(id) => { window.history.pushState({}, "", `/app/actions/${encodeURIComponent(id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }} />}
+
+      {page === "notifications" && <NotificationsPage onOpen={openNotificationTarget} />}
+
+      {page === "action" && <ActionDetailPage actionId={decodeURIComponent(window.location.pathname.split("/").at(-1) ?? "")} onBack={() => navigate("actions")} onOpenEvidence={(action,evidence)=>{setShowPublicLanding(false);setPage("calls");setSelectedCompanyId("");setSelectedDepartmentId("");setSelectedCallId(action.call_uuid);const query=new URLSearchParams({call:action.call_uuid});if(typeof evidence.word_start_index==="number")query.set("evidence_start",String(evidence.word_start_index));if(typeof evidence.word_end_index==="number")query.set("evidence_end",String(evidence.word_end_index));if(typeof evidence.start_seconds==="number")query.set("evidence_time",String(evidence.start_seconds));if(typeof evidence.end_seconds==="number")query.set("evidence_end_time",String(evidence.end_seconds));window.history.pushState({},"",`/app/calls?${query}`)}} />}
+
       {page === "qualityReviews" && <QualityReviewsPage onOpen={openQualityReview} />}
 
       {page === "qualityReview" && <QualityReviewPage reviewId={decodeURIComponent(window.location.pathname.split("/").at(-1) ?? "")} onBack={() => navigate("qualityReviews")} />}
 
-      {page === "monitoring" && adminCapabilities && <MonitoringPage calls={calls} />}
+      {page === "monitoring" && adminCapabilities && <MonitoringPage calls={calls} onBack={() => {
+        const from = new URLSearchParams(window.location.search).get("from");
+        const section = from === "companies" || from === "actions" || from === "users" ? from : "users";
+        navigate("admin");
+        window.history.replaceState({}, "", `/app/admin/${section}`);
+      }} />}
 
       {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} onNavigate={navigate} />}
 
@@ -772,8 +807,11 @@ function App() {
               invitation.invited_user_uuid === session.user.id ? [invitation, ...current] : current
             )
           }
+          onCreateCompany={() => navigate("companyCreate")}
         />
       )}
+
+      {page === "companyCreate" && <CreateCompanyPage onBack={() => navigate("settingsCompanies")} onCreated={async (company) => { setCompanies((current) => [company, ...current]); await refreshOrganizationContext().catch(() => undefined); openCompany(company.id); }} />}
 
       {page === "profile" && (
         <ProfilePage

@@ -21,6 +21,7 @@ import type {
   AppPage,
   CallFolderResponse,
   CallResponse,
+  CallAction,
   CallStatus,
   CompanyResponse,
   DepartmentResponse,
@@ -41,6 +42,7 @@ import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { CallDetailSkeleton } from "../../shared/ui/loading";
 import { ReportExportPanel } from "../reports/ReportExportPanel";
 import { AnalysisComments } from "./AnalysisComments";
+import { CreateActionDialog } from "../actions/ActionsPage";
 
 type CardProcessState = {
   label: string;
@@ -50,6 +52,7 @@ type CardProcessState = {
 
 export function CallDetailPanel({
   call,
+  currentUserId,
   companies,
   departments,
   transcription,
@@ -71,6 +74,7 @@ export function CallDetailPanel({
   showReports = false
 }: {
   call?: CallResponse;
+  currentUserId: string;
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
   transcription?: TranscriptionResponse;
@@ -114,14 +118,36 @@ export function CallDetailPanel({
   const [challengeReason, setChallengeReason] = useState("");
   const [challengeSent, setChallengeSent] = useState(false);
   const [reviewContext, setReviewContext] = useState<AnalysisReviewContext>();
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [actionDecisionBusy, setActionDecisionBusy] = useState(false);
+  const [actionDecisionMessage, setActionDecisionMessage] = useState("");
+  const [linkedAction, setLinkedAction] = useState<CallAction>();
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const transcriptCardRef = useRef<HTMLDivElement | null>(null);
   const transcriptIslandRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(()=>{if(!call?.id)return;const query=new URLSearchParams(window.location.search);if(query.get("call")!==call.id)return;const wordStart=optionalNonNegativeNumber(query.get("evidence_start"));const wordEnd=optionalNonNegativeNumber(query.get("evidence_end"));const startSeconds=optionalNonNegativeNumber(query.get("evidence_time"));const endSeconds=optionalNonNegativeNumber(query.get("evidence_end_time"));if(wordStart===undefined&&startSeconds===undefined)return;setShowFullTranscript(true);setSeekTarget({startSeconds:startSeconds??localTranscription?.words?.[wordStart??-1]?.start_seconds??0,endSeconds:endSeconds,wordStartIndex:wordStart,wordEndIndex:wordEnd??wordStart});requestAnimationFrame(()=>transcriptCardRef.current?.scrollIntoView({block:"start",behavior:"smooth"}))},[call?.id,localTranscription?.words]);
   const analysisCardRef = useRef<HTMLDivElement | null>(null);
   const displayedAnalysis = applyEffectiveAnalysis(analysis, reviewContext?.effective_analysis);
   const score = analysisScore100(displayedAnalysis);
   const canEditAnalysis = reviewContext?.capabilities.can_edit_analysis === true;
   const canDisputeAnalysis = reviewContext?.capabilities.can_dispute_analysis === true;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!call?.id || !call.company_uuid) {
+      setLinkedAction(undefined);
+      return;
+    }
+    api.listActions({ call_uuid: call.id, limit: 1, offset: 0 })
+      .then((result) => {
+        if (!cancelled) setLinkedAction(result.items[0]);
+      })
+      .catch(() => {
+        if (!cancelled) setLinkedAction(undefined);
+      });
+    return () => { cancelled = true; };
+  }, [call?.id, call?.company_uuid]);
 
   async function createQualityReview() {
     if (!call || !analysis || qualityReviewBusy) return;
@@ -602,14 +628,24 @@ export function CallDetailPanel({
           <WandSparkles size={19} />
         </span>
         <div>
-          <h3>Следующий шаг</h3>
-          <p>{analysisNextStep(displayedAnalysis)}</p>
+          <h3>{linkedAction ? linkedActionHeading(linkedAction.status) : "Следующий шаг"}</h3>
+          <p>{linkedAction ? linkedAction.title : analysisNextStep(displayedAnalysis)}</p>
         </div>
-        <button className="ghost-button">
-          Выполнить действие
-          <ChevronRight size={16} />
-        </button>
+        <div className="next-step-actions">
+          {linkedAction ? <>
+            <button className="ghost-button" type="button" onClick={() => { window.history.pushState({}, "", `/app/actions/${encodeURIComponent(linkedAction.id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }}>Открыть действие<ChevronRight size={16} /></button>
+            {linkedAction.status === "cancelled" && <button className="text-button" type="button" disabled={!analysis || !isAnalysisDone(analysis)} onClick={() => setActionDialogOpen(true)}>Создать новое</button>}
+          </> : <>
+            <button className="ghost-button" type="button" disabled={!call.company_uuid || !analysis || !isAnalysisDone(analysis)} onClick={() => setActionDialogOpen(true)}>Создать действие<ChevronRight size={16} /></button>
+            <button className="text-button" type="button" disabled={actionDecisionBusy || !call.company_uuid || !analysis || !isAnalysisDone(analysis)} onClick={async () => { if (!analysis) return; setActionDecisionBusy(true); setActionDecisionMessage(""); try { await api.setNoActionRequired(call.id, analysis.id); setActionDecisionMessage("Отмечено: дальнейших действий не требуется."); } catch (cause) { setActionDecisionMessage(cause instanceof Error ? cause.message : "Не удалось сохранить решение"); } finally { setActionDecisionBusy(false); } }}>Действий не требуется</button>
+          </>}
+        </div>
       </div>
+      {actionDecisionMessage && <div className="action-decision-message" role="status">{actionDecisionMessage}</div>}
+      {actionDialogOpen && analysis && createPortal(
+        <CreateActionDialog call={call} analysis={analysis} transcription={localTranscription} speakerAssignments={speakerAssignments} companies={companies} departments={departments} currentUserId={currentUserId} onClose={() => setActionDialogOpen(false)} onCreated={(created) => { setLinkedAction(created); setActionDialogOpen(false); window.history.pushState({}, "", `/app/actions/${encodeURIComponent(created.id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }} />,
+        document.querySelector<HTMLElement>(".app-shell") ?? document.body
+      )}
       <ConfirmDialog
         open={deleteConfirmOpen}
         variant="danger"
@@ -626,6 +662,16 @@ export function CallDetailPanel({
     </>
   );
 }
+
+function linkedActionHeading(status: CallAction["status"]) {
+  if (status === "completed") return "Действие выполнено";
+  if (status === "cancelled") return "Действие отменено";
+  if (status === "overdue") return "Действие просрочено";
+  if (status === "in_progress") return "Действие выполняется";
+  return "Действие отправлено";
+}
+
+function optionalNonNegativeNumber(value:string|null){if(value===null||value.trim()==="")return undefined;const parsed=Number(value);return Number.isFinite(parsed)&&parsed>=0?parsed:undefined}
 
 function transcriptionCardState(
   call: CallResponse,

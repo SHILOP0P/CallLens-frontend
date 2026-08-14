@@ -278,8 +278,13 @@
     .file-picker,
   .file-dropzone,
   .context-note,
-  .instruction-preview {
+    .instruction-preview {
     grid-template-columns: 1fr;
+  }
+
+  .next-step-actions {
+    width: 100%;
+    min-width: 0;
   }
 
   .report-actions {

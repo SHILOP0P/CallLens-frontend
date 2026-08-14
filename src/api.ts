@@ -17,6 +17,10 @@ import type {
   CallFoldersListResponse,
   CallFolderResponse,
   CallResponse,
+  CallAction,
+  CallActionsResponse,
+  CallActionAssigneesResponse,
+  CreateCallActionRequest,
   CallStatus,
   CallsListResponse,
   CompanyResponse,
@@ -895,6 +899,38 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name })
     });
+  },
+
+  listActions(input: { company_uuid?: string; call_uuid?: string; department_uuid?: string; assignee_uuid?: string; status?: string; q?: string; mine?: boolean; limit?: number; offset?: number } = {}) {
+    return request<CallActionsResponse>(`/actions${queryString(input)}`);
+  },
+
+  getAction(actionId: string) {
+    return request<CallAction>(`/actions/${encodeURIComponent(actionId)}`);
+  },
+
+  listAdminActions(input: { status?: string; q?: string; limit?: number; offset?: number } = {}) {
+    return request<CallActionsResponse>(`/admin/actions${queryString(input)}`);
+  },
+
+  createAction(callId: string, input: CreateCallActionRequest) {
+    return request<CallAction>(`/calls/${encodeURIComponent(callId)}/actions`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(input) });
+  },
+
+  setNoActionRequired(callId: string, analysisId: string, reason = "") {
+    return request<void>(`/calls/${encodeURIComponent(callId)}/analyses/${encodeURIComponent(analysisId)}/action-disposition`, { method: "PUT", body: JSON.stringify({ kind: "no_action_required", reason }) });
+  },
+
+  listActionAssignees(companyId: string, input: { q?: string; department_uuid?: string } = {}) {
+    return request<CallActionAssigneesResponse>(`/companies/${encodeURIComponent(companyId)}/action-assignees${queryString(input)}`);
+  },
+
+  mutateAction(actionId: string, operation: "start" | "complete" | "cancel" | "reschedule" | "reassign", input: Record<string, unknown>) {
+    return request<CallAction>(`/actions/${encodeURIComponent(actionId)}/${operation}`, { method: "POST", body: JSON.stringify(input) });
+  },
+
+  createActionTransfer(actionId: string, input: { reason: string; proposed_assignee_user_uuid?: string; proposed_department_uuid?: string }) {
+    return request(`/actions/${encodeURIComponent(actionId)}/transfer-requests`, { method: "POST", body: JSON.stringify(input) });
   },
 
   getCompany(companyId: string) {

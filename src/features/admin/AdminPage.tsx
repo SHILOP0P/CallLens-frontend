@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, Building2, CheckCircle2, Headphones, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+import { Activity, ArrowLeft, Building2, CheckCircle2, Headphones, ListTodo, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
 import { api, ApiError, getAdminCallAudioBlob } from "../../api";
 import { isVideoCall } from "../../shared/lib/media";
 import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
@@ -8,6 +8,7 @@ import type {
   AppPage,
   AdminCapabilitiesResponse,
   CallResponse,
+  CallAction,
   CompanyResponse,
   AdminSubscriptionResponse,
   Plan,
@@ -16,7 +17,7 @@ import type {
   UserSessionResponse
 } from "../../types";
 
-type AdminSection = "users" | "companies";
+type AdminSection = "users" | "companies" | "actions";
 type SubscriptionOwner = "users" | "companies";
 type AdminDetailRoute = { section: AdminSection; id: string } | null;
 type AdminAlert = { id: number; message: string; tone: "success" | "error" };
@@ -50,21 +51,29 @@ function adminDetailFromPath(pathname: string): AdminDetailRoute {
   return match ? { section: match[1] as AdminSection, id: decodeURIComponent(match[2]) } : null;
 }
 
+function adminSectionFromPath(pathname: string): AdminSection | null {
+  const match = pathname.match(/^\/app\/admin\/(users|companies|actions)$/);
+  return match ? match[1] as AdminSection : null;
+}
+
 export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCapabilitiesResponse; onNavigate: (page: AppPage) => void }) {
   const availableSections = useMemo<AdminSection[]>(() => [
     ...(has(capabilities, "admin.users.read") ? ["users" as const] : []),
     ...(has(capabilities, "admin.companies.read") ? ["companies" as const] : [])
+    , ...(has(capabilities, "admin.actions.read") ? ["actions" as const] : [])
   ], [capabilities]);
-  const [section, setSection] = useState<AdminSection>(availableSections[0] ?? "users");
+  const [section, setSection] = useState<AdminSection>(() => adminSectionFromPath(window.location.pathname) ?? availableSections[0] ?? "users");
   const [query, setQuery] = useState("");
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [companies, setCompanies] = useState<CompanyResponse[]>([]);
+  const [actions, setActions] = useState<CallAction[]>([]);
   const [usersTotal, setUsersTotal] = useState(0);
   const [companiesTotal, setCompaniesTotal] = useState(0);
+  const [actionsTotal, setActionsTotal] = useState(0);
   const [selectedUser, setSelectedUser] = useState<UserResponse | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<CompanyResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [loaded, setLoaded] = useState<Record<AdminSection, boolean>>({ users: false, companies: false });
+  const [loaded, setLoaded] = useState<Record<AdminSection, boolean>>({ users: false, companies: false, actions: false });
   const [notice, setNotice] = useState("");
   const [routeLoading, setRouteLoading] = useState(() => Boolean(adminDetailFromPath(window.location.pathname)));
   const requestSequence = useRef(0);
@@ -79,11 +88,16 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
         if (requestId !== requestSequence.current) return;
         setUsers(response.items);
         setUsersTotal(response.total);
-      } else {
+      } else if (nextSection === "companies") {
         const response = await api.listAdminCompanies({ q: search.trim(), limit: 50, offset: 0 });
         if (requestId !== requestSequence.current) return;
         setCompanies(response.items);
         setCompaniesTotal(response.total);
+      } else {
+        const response = await api.listAdminActions({ q: search.trim(), limit: 50, offset: 0 });
+        if (requestId !== requestSequence.current) return;
+        setActions(response.items);
+        setActionsTotal(response.total);
       }
     } catch (error) {
       if (requestId === requestSequence.current) setNotice(message(error));
@@ -107,6 +121,8 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
     async function restoreDetailFromRoute() {
       const route = adminDetailFromPath(window.location.pathname);
       if (!route) {
+        const routeSection = adminSectionFromPath(window.location.pathname);
+        if (routeSection && availableSections.includes(routeSection)) setSection(routeSection);
         setSelectedUser(null);
         setSelectedCompany(null);
         setRouteLoading(false);
@@ -133,7 +149,7 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
     void restoreDetailFromRoute();
     window.addEventListener("popstate", restoreDetailFromRoute);
     return () => { cancelled = true; window.removeEventListener("popstate", restoreDetailFromRoute); };
-  }, [capabilities]);
+  }, [availableSections, capabilities]);
 
   async function openUser(user: UserResponse) {
     setNotice("");
@@ -169,7 +185,19 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
     setSelectedUser(null);
     setSelectedCompany(null);
     setSection(section);
-    window.history.pushState({}, "", "/app/admin");
+    window.history.pushState({}, "", `/app/admin/${section}`);
+  }
+
+  function selectSection(nextSection: AdminSection) {
+    setSection(nextSection);
+    setSelectedUser(null);
+    setSelectedCompany(null);
+    window.history.pushState({}, "", `/app/admin/${nextSection}`);
+  }
+
+  function openMonitoring() {
+    onNavigate("monitoring");
+    window.history.replaceState({}, "", `/app/admin/monitoring?from=${encodeURIComponent(section)}`);
   }
 
   if (routeLoading) {
@@ -186,21 +214,22 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
     <AdminHeading capabilities={capabilities} />
     <div className="admin-layout">
       <nav className="admin-nav" aria-label="Административные разделы">
-        {has(capabilities, "admin.users.read") && <button className={section === "users" ? "active" : ""} type="button" onClick={() => setSection("users")}><span><Users size={17} />Пользователи</span></button>}
-        {has(capabilities, "admin.companies.read") && <button className={section === "companies" ? "active" : ""} type="button" onClick={() => setSection("companies")}><span><Building2 size={17} />Компании</span></button>}
-        {has(capabilities, "admin.monitoring.read") && <button type="button" onClick={() => onNavigate("monitoring")}><span><Activity size={17} />Мониторинг</span></button>}
+        {has(capabilities, "admin.users.read") && <button className={section === "users" ? "active" : ""} type="button" onClick={() => selectSection("users")}><span><Users size={17} />Пользователи</span></button>}
+        {has(capabilities, "admin.companies.read") && <button className={section === "companies" ? "active" : ""} type="button" onClick={() => selectSection("companies")}><span><Building2 size={17} />Компании</span></button>}
+        {has(capabilities, "admin.actions.read") && <button className={section === "actions" ? "active" : ""} type="button" onClick={() => selectSection("actions")}><span><ListTodo size={17} />Действия</span></button>}
+        {has(capabilities, "admin.monitoring.read") && <button type="button" onClick={openMonitoring}><span><Activity size={17} />Мониторинг</span></button>}
       </nav>
       <div className="admin-content">
         <>
           <form className="admin-toolbar" onSubmit={(event) => { event.preventDefault(); void load(section, query); }}>
-            <label><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={section === "users" ? "Имя, @username или email" : "Название или тег компании"} /></label>
+            <label><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={section === "users" ? "Имя, @username или email" : section === "companies" ? "Название или тег компании" : "Название или ответственный"} /></label>
             <button className="ghost-button small" type="submit">Найти</button>
             <button className="icon-button" type="button" aria-label="Обновить" aria-busy={loading} disabled={loading} onClick={() => void load(section, query)}><RefreshCw className={loading ? "refresh-icon spinning" : "refresh-icon"} size={17} /></button>
           </form>
-          <p className="admin-section-summary">{section === "users" ? `Пользователей: ${usersTotal}` : `Компаний: ${companiesTotal}`}</p>
+          <p className="admin-section-summary">{section === "users" ? `Пользователей: ${usersTotal}` : section === "companies" ? `Компаний: ${companiesTotal}` : `Действий: ${actionsTotal}`}</p>
           {notice && <p className="admin-notice" role="status">{notice}</p>}
           <div className="admin-results" aria-busy={loading}>
-            {loading && !loaded[section] ? <p className="admin-empty">Загрузка данных…</p> : section === "users" ? <UsersTable users={users} onOpen={openUser} /> : <CompaniesTable companies={companies} onOpen={openCompany} />}
+            {loading && !loaded[section] ? <p className="admin-empty">Загрузка данных…</p> : section === "users" ? <UsersTable users={users} onOpen={openUser} /> : section === "companies" ? <CompaniesTable companies={companies} onOpen={openCompany} /> : <ActionsTable actions={actions} />}
           </div>
         </>
       </div>
@@ -383,11 +412,17 @@ function ReasonDialog({ title, reason, busy, onReason, onCancel, onConfirm }: { 
 function UsersTable({ users, onOpen }: { users: UserResponse[]; onOpen: (user: UserResponse) => void }) { return <div className="admin-table-wrap"><table><thead><tr><th>Пользователь</th><th>Роль</th><th>Создан</th><th /></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{fullName(user)}</strong><small>{user.username} · {user.email}</small></td><td><span className="chip">{roleLabel(user.role)}</span></td><td>{date(user.created_at)}</td><td><button className="ghost-button small" type="button" onClick={() => onOpen(user)}>Открыть</button></td></tr>)}</tbody></table>{users.length === 0 && <p className="admin-empty">Пользователи не найдены</p>}</div>; }
 function CompaniesTable({ companies, onOpen }: { companies: CompanyResponse[]; onOpen: (company: CompanyResponse) => void }) { return <div className="admin-table-wrap"><table><thead><tr><th>Компания</th><th>Тег</th><th>Создана</th><th /></tr></thead><tbody>{companies.map((company) => <tr key={company.id}><td><strong>{company.name}</strong></td><td>{company.tag || "Тег не задан"}</td><td>{date(company.created_at)}</td><td><button className="ghost-button small" type="button" onClick={() => onOpen(company)}>Открыть</button></td></tr>)}</tbody></table>{companies.length === 0 && <p className="admin-empty">Компании не найдены</p>}</div>; }
 
+function ActionsTable({ actions }: { actions: CallAction[] }) {
+  return <div className="admin-table-wrap admin-actions-table"><table><thead><tr><th>Действие</th><th>Ответственный</th><th>Статус</th><th>Срок</th></tr></thead><tbody>{actions.map((action) => <tr key={action.id}><td className="admin-action-title"><strong>{action.title}</strong></td><td className="admin-action-assignee">{usernameLabel(action.assignee_username)}</td><td><span className={`admin-action-status-chip is-${action.status}`}>{actionStatusLabel(action.status)}</span></td><td className="admin-action-due">{date(action.due_at)}</td></tr>)}</tbody></table>{actions.length === 0 && <p className="admin-empty">Действия не найдены</p>}</div>;
+}
+
 function canTargetRole(actor: AdminCapabilitiesResponse["role"], target: string) { return target !== "superadmin" && (actor === "superadmin" || (actor === "admin" && (target === "user" || target === "helper"))); }
 function canChangeRole(capabilities: AdminCapabilitiesResponse, target: string) { if (target === "superadmin") return false; return target === "admin" ? has(capabilities, "admin.roles.manage_admins") : has(capabilities, "admin.roles.manage_helpers"); }
 function availableRoleTargets(capabilities: AdminCapabilitiesResponse) { const roles = has(capabilities, "admin.roles.manage_helpers") ? ["user", "helper"] : []; return has(capabilities, "admin.roles.manage_admins") ? [...roles, "admin"] : roles; }
 function roleLabel(role: string) { return ({ user: "Пользователь", helper: "Помощник", admin: "Администратор", superadmin: "Супер-администратор" } as Record<string, string>)[role] ?? role; }
 function callStatusLabel(status: string) { return ({ new: "Новый", processing: "Обрабатывается", transcribed: "Расшифрован", analyzed: "Проанализирован", failed: "Не обработан" } as Record<string, string>)[status] ?? "Статус неизвестен"; }
+function actionStatusLabel(status: string) { return ({ open: "Открыто", in_progress: "В работе", completed: "Выполнено", cancelled: "Отменено", overdue: "Просрочено" } as Record<string, string>)[status] ?? status; }
+function usernameLabel(username: string) { const normalized = username.trim().replace(/^@+/, ""); return normalized ? `@${normalized}` : "—"; }
 function fullName(user: UserResponse) { return `${user.full_name} ${user.full_surname}`.trim() || user.username; }
 function initials(user: UserResponse) { return fullName(user).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 function date(value: string) { const parsed = new Date(value); return value && !Number.isNaN(parsed.getTime()) ? new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(parsed) : "—"; }

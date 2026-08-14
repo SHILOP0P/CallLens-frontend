@@ -46,7 +46,8 @@ export function CompaniesPage({
   onNavigate,
   onOpenCompany,
   onOpenDepartment,
-  onInvitationCreated
+  onInvitationCreated,
+  onCreateCompany
 }: {
   session: SessionState;
   companies: CompanyResponse[];
@@ -64,6 +65,7 @@ export function CompaniesPage({
   onOpenCompany: (companyId: string) => void;
   onOpenDepartment: (companyId: string, departmentId: string) => void;
   onInvitationCreated: (invitation: Invitation) => void;
+  onCreateCompany?: () => void;
 }) {
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
   const selectedDepartment = departments.find(
@@ -71,6 +73,7 @@ export function CompaniesPage({
   );
   const [activeCompanyId, setActiveCompanyId] = useState("");
   const activeCompany = companies.find((company) => company.id === activeCompanyId) ?? companies[0];
+  const hasManagedCompany = companies.some((company) => company.manager_user_uuid === session.user.id);
   const activeBusinessSubscriptions = Object.values(companySubscriptions).filter(
     (subscription): subscription is Subscription => Boolean(subscription && subscription.status === "active")
   );
@@ -91,6 +94,10 @@ export function CompaniesPage({
       setActiveCompanyId(companies[0].id);
     }
   }, [activeCompanyId, companies]);
+
+  if (companies.length === 0 && !loading) {
+    return <section className="companies-layout"><div className="company-workspace-empty glass"><Building2 size={38}/><h1>Компании пока нет</h1><p>Создайте компанию, чтобы организовать отделы и назначать действия по звонкам.</p><button className="primary-button" type="button" onClick={onCreateCompany}><Plus size={18}/>Создать компанию</button></div></section>;
+  }
 
   if (selectedCompanyId) {
     if (loading && (!selectedCompany || (selectedDepartmentId && !selectedDepartment))) {
@@ -166,7 +173,12 @@ export function CompaniesPage({
               <h2>Список компаний</h2>
               <p>Активная компания выбирается здесь для текущей рабочей сессии.</p>
             </div>
-            {companies.length > 0 && (
+            {!hasManagedCompany ? (
+              <button className="primary-button small" type="button" onClick={onCreateCompany}>
+                <Plus size={16} />
+                Создать свою компанию
+              </button>
+            ) : companies.length > 0 ? (
               <SelectControl
                 value={activeCompany?.id ?? ""}
                 onChange={(event) => setActiveCompanyId(event.target.value)}
@@ -177,7 +189,7 @@ export function CompaniesPage({
                   </option>
                 ))}
               </SelectControl>
-            )}
+            ) : null}
           </div>
 
           {loading ? (

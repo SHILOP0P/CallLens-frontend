@@ -5,6 +5,10 @@ export type AppPage =
   | "transcriptionCompare"
   | "qualityReviews"
   | "qualityReview"
+  | "actions"
+  | "action"
+  | "notifications"
+  | "companyCreate"
   | "analysis"
   | "reports"
   | "contacts"
@@ -997,6 +1001,75 @@ export interface NotificationResponse {
   entity_uuid: string | null;
   read_at: string | null;
   created_at: string;
+}
+
+export type CallActionStatus = "open" | "in_progress" | "completed" | "cancelled" | "overdue";
+export interface CallActionEvidence {
+  id: string;
+  kind: "word_range" | "legacy_text";
+  position: number;
+  word_start_index?: number;
+  word_end_index?: number;
+  quote: string;
+  speaker?: string;
+  start_seconds?: number;
+  end_seconds?: number;
+}
+export interface CallActionCapabilities {
+  can_start: boolean;
+  can_complete: boolean;
+  can_cancel: boolean;
+  can_reschedule: boolean;
+  can_reassign: boolean;
+  can_request_transfer: boolean;
+  can_resolve_transfer: boolean;
+}
+export interface CallAction {
+  id: string;
+  company_uuid: string;
+  source_department_uuid: string;
+  target_department_uuid: string;
+  call_uuid: string;
+  analysis_uuid: string;
+  transcription_revision: number;
+  title: string;
+  description: string;
+  status: CallActionStatus;
+  assignment_state: "valid" | "invalid";
+  assignee_user_uuid: string;
+  assignee_username: string;
+  due_at: string;
+  grace_expires_at: string;
+  lock_version: number;
+  created_by_user_uuid: string;
+  created_at: string;
+  updated_at: string;
+  completed_at?: string;
+  cancelled_at?: string;
+  cancel_reason?: string;
+  evidence: CallActionEvidence[];
+  capabilities: CallActionCapabilities;
+}
+export interface CallActionsResponse { items: CallAction[]; total: number; limit: number; offset: number; }
+export interface CallActionAssigneeDepartment { id: string; name: string; }
+export interface CallActionAssignee {
+  user_uuid: string;
+  username: string;
+  full_name: string;
+  full_surname: string;
+  job_title?: string;
+  departments: CallActionAssigneeDepartment[];
+}
+export interface CallActionAssigneesResponse { items: CallActionAssignee[]; }
+export interface CreateCallActionRequest {
+  analysis_uuid: string;
+  source_department_uuid: string;
+  target_department_uuid: string;
+  assignee_user_uuid?: string;
+  title: string;
+  description: string;
+  due_at: string;
+  evidence: Array<{ word_start_index?: number; word_end_index?: number; legacy_quote?: string }>;
 }
 
 export interface NotificationsResponse {

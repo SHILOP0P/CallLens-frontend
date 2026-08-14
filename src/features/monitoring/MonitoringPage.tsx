@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeft,
   Clock3,
   RotateCcw,
   Workflow
@@ -8,7 +9,7 @@ import { useEffect, useState } from "react";
 import { ApiError, api } from "../../api";
 import type { CallResponse } from "../../types";
 
-export function MonitoringPage({ calls }: { calls: CallResponse[]; }) {
+export function MonitoringPage({ calls, onBack }: { calls: CallResponse[]; onBack: () => void; }) {
   const [monitoring, setMonitoring] = useState<Awaited<ReturnType<typeof api.getProcessingMonitoring>> | null>(null);
   const [restricted, setRestricted] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -43,6 +44,7 @@ export function MonitoringPage({ calls }: { calls: CallResponse[]; }) {
   const queue = monitoring?.queue;
   return (
     <section className="monitoring-page app-page atmospheric-page">
+      <div className="settings-back-row"><button className="ghost-button small" type="button" onClick={onBack}><ArrowLeft size={16} />Назад в админ-панель</button></div>
       <div className="app-page-heading readable-heading">
         <h1>Мониторинг</h1>
         <p>Состояние обработки звонков: очередь, ошибки, повторы и среднее время.</p>
@@ -51,7 +53,7 @@ export function MonitoringPage({ calls }: { calls: CallResponse[]; }) {
       <div className="monitoring-kpi-grid">
         <MetricCard icon={<Workflow size={20} />} label="В очереди" value={loading ? "..." : (queue?.pending ?? 0).toString()} note={`${queue?.running ?? 0} выполняется`} />
         <MetricCard icon={<Activity size={20} />} label="Ошибки" value={loading ? "..." : (queue?.failed ?? 0).toString()} note={`${queue?.retry ?? 0} на повторе`} />
-        <MetricCard icon={<Clock3 size={20} />} label="Среднее время" value={formatSeconds(monitoring?.average_processing_seconds)} note="задачи обработки" />
+        <MetricCard icon={<Clock3 size={20} />} label="Среднее время" value={formatDuration(monitoring?.average_processing_seconds)} note="на одну завершённую обработку" />
         <MetricCard icon={<RotateCcw size={20} />} label="Повторы" value={loading ? "..." : (queue?.retry ?? 0).toString()} note="ожидают повторной обработки" />
       </div>
 
@@ -80,10 +82,18 @@ export function MonitoringPage({ calls }: { calls: CallResponse[]; }) {
   );
 }
 
-function formatSeconds(value?: number | null) {
+function formatDuration(value?: number | null) {
   if (value === undefined) return "...";
   if (value === null) return "Нет данных";
-  return `${Math.round(value)} с`;
+  if (!Number.isFinite(value) || value < 0) return "Нет данных";
+  if (value < 10) return `${value.toLocaleString("ru-RU", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} с`;
+  const seconds = Math.round(value);
+  if (seconds < 60) return `${seconds} с`;
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  if (hours > 0) return `${hours} ч ${minutes} мин`;
+  return remainder > 0 ? `${minutes} мин ${remainder} с` : `${minutes} мин`;
 }
 
 function queueProgress(value = 0, queue?: { pending: number; running: number; done: number; failed: number; retry: number }) {

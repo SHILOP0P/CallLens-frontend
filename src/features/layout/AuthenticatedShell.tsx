@@ -2,6 +2,7 @@ import {
   Bell,
   CalendarDays,
   ChevronDown,
+  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   LogOut,
@@ -9,6 +10,8 @@ import {
   Moon,
   Search,
   CheckCheck,
+  Settings,
+  UsersRound,
   UserRound,
   X
 } from "lucide-react";
@@ -33,7 +36,7 @@ import { useDismissibleLayer } from "../../shared/ui/dismissible-layer";
 const WORKSPACE_COMPANY_STORAGE_KEY = "verbatrace.activeWorkspaceCompanyId";
 const LEGACY_WORKSPACE_COMPANY_STORAGE_KEY = "calllens.activeWorkspaceCompanyId";
 const PERSONAL_WORKSPACE_VALUE = "__personal__";
-const MOBILE_NAV_PAGES: AppPage[] = ["overview", "calls", "analysis", "reports", "settings"];
+const MOBILE_NAV_PAGES: AppPage[] = ["overview", "calls", "actions", "reports"];
 
 export function AuthenticatedShell({
   activePage,
@@ -101,6 +104,8 @@ export function AuthenticatedShell({
   const teamLabel = selectedCompany?.name ?? "Личный кабинет";
   const displayTimeZone = session.user.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const selectedCompanySubscription = selectedCompany?.id ? companySubscriptions[selectedCompany.id] : null;
+  const recentNotifications = notifications.filter((notification) => isRecentNotification(notification.created_at));
+  const recentUnreadNotifications = recentNotifications.filter((notification) => !notification.read_at).length;
 
   function navigateFromMobileBar(nextPage: AppPage) {
     const currentMobilePage = isSettingsPage(activePage) ? "settings" : activePage;
@@ -272,6 +277,19 @@ export function AuthenticatedShell({
   useDismissibleLayer(searchOpen, searchPopoverRef, () => setSearchOpen(false));
   useDismissibleLayer(dateOpen, calendarPopoverRef, () => setDateOpen(false));
   useDismissibleLayer(notificationsOpen, notificationPopoverRef, () => setNotificationsOpen(false));
+
+  useEffect(() => {
+    function handleNotificationRead(event: Event) {
+      const detail = (event as CustomEvent<{ id?: string; readAt?: string }>).detail;
+      if (!detail?.id) return;
+      setNotifications((current) => current.map((item) => item.id === detail.id
+        ? { ...item, read_at: item.read_at ?? detail.readAt ?? new Date().toISOString() }
+        : item));
+      setUnreadNotifications((current) => Math.max(0, current - 1));
+    }
+    window.addEventListener("verbatrace:notification-read", handleNotificationRead);
+    return () => window.removeEventListener("verbatrace:notification-read", handleNotificationRead);
+  }, []);
   useDismissibleLayer(profileOpen, profilePopoverRef, () => setProfileOpen(false));
 
   function persistPreferences(next: {
@@ -300,6 +318,11 @@ export function AuthenticatedShell({
     }
     if (notification.entity_type === "company" && notification.entity_uuid) {
       onOpenCompany(notification.entity_uuid);
+      return;
+    }
+    if (notification.entity_type === "call_action" && notification.entity_uuid) {
+      window.history.pushState({}, "", `/app/actions/${encodeURIComponent(notification.entity_uuid)}`);
+      window.dispatchEvent(new PopStateEvent("popstate"));
       return;
     }
     if (notification.type === "invitation") onNavigate("settingsInvitations");
@@ -510,29 +533,30 @@ export function AuthenticatedShell({
               onClick={() => setNotificationsOpen((open) => !open)}
             >
               <Bell size={19} />
-              {unreadNotifications > 0 && <span className="notification-badge">{unreadNotifications}</span>}
+              {recentUnreadNotifications > 0 && <span className="notification-badge">{recentUnreadNotifications}</span>}
             </button>
             {notificationsOpen && (
               <div className="header-popover notifications-popover">
                 <div className="popover-head">
-                  <strong>Уведомления</strong>
+                  <button className="notification-history-link" type="button" onClick={() => { setNotificationsOpen(false); onNavigate("notifications"); }}>Уведомления<ChevronRight size={15}/></button>
                   <button type="button" onClick={markAllNotificationsRead} aria-label="Прочитать все">
                     <CheckCheck size={15} />
                   </button>
                 </div>
-                {notifications.length === 0 ? (
-                  <span className="popover-empty">Новых событий нет</span>
+                {recentNotifications.length === 0 ? (
+                  <span className="popover-empty">За последние 24 часа событий нет</span>
                 ) : (
-                  notifications.map((notification) => (
+                  recentNotifications.map((notification) => (
                     <button
                       type="button"
                       key={notification.id}
                       className={notification.read_at ? "" : "unread"}
                       onClick={() => openNotification(notification)}
                     >
-                      <span>
+                      <span className="notification-content">
                         <strong>{notification.title}</strong>
                         <small>{notification.body}</small>
+                        <span className="notification-meta"><time>{formatNotificationTime(notification.created_at)}</time><em>{notificationActionLabel(notification)}<ChevronRight size={13}/></em></span>
                       </span>
                     </button>
                   ))
@@ -565,6 +589,14 @@ export function AuthenticatedShell({
                 >
                   <UserRound size={17} />
                   <strong>Профиль</strong>
+                </button>
+                <button type="button" onClick={() => { setProfileOpen(false); onNavigate("contacts"); }}>
+                  <UsersRound size={17} />
+                  <strong>Контакты</strong>
+                </button>
+                <button type="button" onClick={() => { setProfileOpen(false); onNavigate("settings"); }}>
+                  <Settings size={17} />
+                  <strong>Настройки</strong>
                 </button>
                 <button
                   className="danger"
@@ -651,6 +683,13 @@ export function AuthenticatedShell({
       </nav>
     </div>
   );
+}
+
+function notificationActionLabel(notification:NotificationResponse){if(notification.entity_type==="call_action"){if(notification.type==="action_assigned")return"Открыть задачу";if(notification.type==="action_reminder"||notification.type==="action_grace_started"||notification.type==="action_overdue")return"Проверить срок";return"Посмотреть задачу"}if(notification.type==="invitation")return"Ответить на приглашение";if(notification.entity_type==="report")return"Открыть отчёт";if(notification.entity_type==="call")return"Открыть звонок";return"Посмотреть"}
+function formatNotificationTime(value:string){const date=new Date(value);if(Number.isNaN(date.getTime()))return"";return new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}).format(date)}
+function isRecentNotification(value: string) {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && timestamp >= Date.now() - 24 * 60 * 60 * 1000;
 }
 
 function profileInitial(value: string) {

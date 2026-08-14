@@ -28,7 +28,7 @@ import type {
   VisibilityScope
 } from "../../types";
 
-import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/access";
+import { isCompanyManager } from "../../shared/lib/access";
 import { callScopeLabel } from "../../shared/lib/formatters";
 import { FileDropZone, SelectControl } from "../../shared/ui/primitives";
 import { availableInstructionsForContext, InstructionChoiceList, instructionContextHint, InstructionMiniList, StepItem } from "../instructions/instruction-components";
@@ -59,7 +59,6 @@ export function UploadPage({
   session,
   companies,
   departments,
-  departmentMembers,
   instructions,
   loading,
   onNavigate,
@@ -102,22 +101,10 @@ export function UploadPage({
     () => companies.filter((company) => isCompanyManager(company, session.user.id)),
     [companies, session.user.id]
   );
-  const managedCompanyIds = useMemo(
-    () => new Set(managedCompanies.map((company) => company.id)),
-    [managedCompanies]
-  );
-  const ledDepartmentIds = useMemo(
-    () => activeDepartmentLeaderIds(departmentMembers, session.user.id),
-    [departmentMembers, session.user.id]
-  );
-  const accessibleDepartments = useMemo(
-    () =>
-      departments.filter(
-        (department) =>
-          managedCompanyIds.has(department.company_uuid) || ledDepartmentIds.has(department.id)
-      ),
-    [departments, ledDepartmentIds, managedCompanyIds]
-  );
+  // The departments endpoint already returns only departments visible to the
+  // current user. Re-filtering through the members endpoint excluded ordinary
+  // employees because only managers and department leaders may list members.
+  const accessibleDepartments = departments;
   const companiesWithAccessibleDepartments = useMemo(
     () =>
       companies.filter((company) =>
