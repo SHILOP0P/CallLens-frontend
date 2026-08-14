@@ -40,6 +40,7 @@ import { InfoCard, StatusChip, StatusTimeline, TranscriptPreview } from "../../s
 import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { CallDetailSkeleton } from "../../shared/ui/loading";
 import { ReportExportPanel } from "../reports/ReportExportPanel";
+import { AnalysisComments } from "./AnalysisComments";
 
 type CardProcessState = {
   label: string;
@@ -590,8 +591,10 @@ export function CallDetailPanel({
               loading={loadingDetails}
               pendingMessage={analysisState.thinking ? "Производится анализ транскрипции. Результат появится после завершения обработки." : undefined}
               onEvidenceActivate={openEvidence}
+              speakerAssignments={speakerAssignments}
             />
           </InfoCard>
+          {analysis && isAnalysisDone(analysis) && reviewContext && <AnalysisComments callId={call.id} analysisId={analysis.id} comments={reviewContext.comments ?? []} canComment={reviewContext.capabilities.can_comment_analysis} onChange={(comments)=>setReviewContext((current)=>current?{...current,comments}:current)} />}
         </div>
       </div>
       <div className="next-step">

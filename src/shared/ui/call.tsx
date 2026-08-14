@@ -219,19 +219,16 @@ export function TranscriptPreview({
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wordRefs = useRef(new Map<number, HTMLSpanElement>());
-  const programmaticScrollRef = useRef(false);
   const pendingEvidenceScrollRef = useRef(false);
-  const [followPlayback, setFollowPlayback] = useState(true);
   const words = useMemo(() => validTranscriptWords(transcription?.words), [transcription?.words]);
   const wordGroups = useMemo(() => groupTranscriptWords(words), [words]);
 
-  function scrollToWord(index: number, force = false) {
-    if ((!followPlayback && !force) || index < 0) return;
+  function scrollToWord(index: number) {
+    if (index < 0) return;
     const word = wordRefs.current.get(index);
     if (!word) return;
     const scrollContainer = nearestScrollContainer(word);
     if (!scrollContainer) return;
-    programmaticScrollRef.current = true;
     const containerRect = scrollContainer.getBoundingClientRect();
     const wordRect = word.getBoundingClientRect();
     const relativeWordTop = scrollContainer === document.scrollingElement
@@ -244,14 +241,12 @@ export function TranscriptPreview({
       top: Math.max(0, targetScrollTop),
       behavior: reducedMotion() ? "auto" : "smooth"
     });
-    window.setTimeout(() => { programmaticScrollRef.current = false; }, 250);
   }
 
   useEffect(() => {
     if (selectedEvidence?.wordStartIndex === undefined) return;
     pendingEvidenceScrollRef.current = true;
-    setFollowPlayback(true);
-    scrollToWord(selectedEvidence.wordStartIndex, true);
+    scrollToWord(selectedEvidence.wordStartIndex);
   }, [selectedEvidence]);
 
   useEffect(() => {
@@ -264,8 +259,7 @@ export function TranscriptPreview({
         return;
       }
     }
-    if (activeWordIndex >= 0) scrollToWord(activeWordIndex);
-  }, [activeWordIndex, followPlayback, selectedEvidence]);
+  }, [activeWordIndex, selectedEvidence]);
 
   if (loading) {
     return <TextBlockSkeleton rows={4} />;
@@ -274,16 +268,9 @@ export function TranscriptPreview({
   if (words.length > 0) {
     return (
       <div className="transcript-word-shell">
-        {!followPlayback && activeWordIndex >= 0 && (
-          <button className="transcript-follow-button" type="button" onClick={() => { setFollowPlayback(true); scrollToWord(activeWordIndex, true); }}>
-            Вернуться к текущему моменту
-          </button>
-        )}
         <div
           ref={containerRef}
           className={`transcript-preview word-synced expandable-content ${expanded ? "expanded" : "collapsed"}`}
-          onWheel={() => { if (!programmaticScrollRef.current) setFollowPlayback(false); }}
-          onTouchMove={() => { if (!programmaticScrollRef.current) setFollowPlayback(false); }}
         >
           {wordGroups.some((group) => group.speaker) ? wordGroups.map((group) => (
             <div className="transcript-segment word-segment" key={`${group.startIndex}-${group.speaker}`}>

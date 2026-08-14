@@ -528,6 +528,14 @@ export const api = {
     return request<AnalysisReviewContext>(`/calls/${encodeURIComponent(callId)}/quality-review-context${queryString({ analysis_uuid: analysisId })}`);
   },
 
+  createAnalysisComment(callId: string, analysisId: string, body: string) {
+    return request<import("./types").AnalysisComment>(`/calls/${encodeURIComponent(callId)}/analysis-comments${queryString({ analysis_uuid: analysisId })}`, { method: "POST", body: JSON.stringify({ body }) });
+  },
+
+  updateAnalysisComment(commentId: string, lockVersion: number, body: string) {
+    return request<import("./types").AnalysisComment>(`/analysis-comments/${encodeURIComponent(commentId)}`, { method: "PATCH", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify({ body }) });
+  },
+
   challengeCallAnalysis(callId: string, analysisId: string, reason: string) {
     return request<QualityReviewResponse>(`/calls/${encodeURIComponent(callId)}/quality-review-challenge`, { method: "POST", body: JSON.stringify({ analysis_uuid: analysisId, reason }) });
   },

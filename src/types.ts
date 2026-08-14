@@ -1085,6 +1085,20 @@ export interface QualityReviewCapabilities {
   can_edit_analysis: boolean;
   can_dispute_analysis: boolean;
   can_resolve_dispute: boolean;
+  can_comment_analysis: boolean;
+}
+
+export interface AnalysisComment {
+  comment_uuid: string;
+  call_uuid: string;
+  analysis_uuid: string;
+  author_user_uuid: string;
+  author_name: string;
+  body: string;
+  can_edit: boolean;
+  created_at: string;
+  edited_at?: string;
+  lock_version: number;
 }
 
 export interface EffectiveAnalysisCriterion {
@@ -1118,6 +1132,7 @@ export interface AnalysisReviewContext {
   source_outdated: boolean;
   challenge?: QualityReviewResponse["challenge"];
   effective_analysis?: EffectiveAnalysis;
+  comments: AnalysisComment[];
 }
 
 export interface QualityReviewResponse {

@@ -1,8 +1,11 @@
 import type {
   AnalysisEvidence,
   AnalysisResponse,
-  MediaSeekTarget
+  MediaSeekTarget,
+  TranscriptionSpeakerAssignment
 } from "../../types";
+import { createContext, useContext } from "react";
+import { transcriptionSpeakerLabel } from "../lib/formatters";
 
 import {
   analysisDetails,
@@ -24,18 +27,22 @@ import {
 } from "../lib/analysis";
 import { TextBlockSkeleton } from "./loading";
 
+const AnalysisSpeakerAssignmentsContext = createContext<TranscriptionSpeakerAssignment[]>([]);
+
 export function AnalysisPreview({
   analysis,
   expanded,
   loading,
   pendingMessage,
-  onEvidenceActivate
+  onEvidenceActivate,
+  speakerAssignments = []
 }: {
   analysis?: AnalysisResponse;
   expanded: boolean;
   loading?: boolean;
   pendingMessage?: string;
   onEvidenceActivate?: (target: MediaSeekTarget) => void;
+  speakerAssignments?: TranscriptionSpeakerAssignment[];
 }) {
   if (loading) {
     return <TextBlockSkeleton rows={4} />;
@@ -47,7 +54,9 @@ export function AnalysisPreview({
 
   return (
     <div className={`analysis-preview analysis-full-text expandable-content ${expanded ? "expanded" : "collapsed"}`}>
-      <AnalysisStructuredView analysis={analysis} onEvidenceActivate={onEvidenceActivate} />
+      <AnalysisSpeakerAssignmentsContext.Provider value={speakerAssignments}>
+        <AnalysisStructuredView analysis={analysis} onEvidenceActivate={onEvidenceActivate} />
+      </AnalysisSpeakerAssignmentsContext.Provider>
     </div>
   );
 }
@@ -389,6 +398,7 @@ export function AnalysisQuestionList({ questions, onEvidenceActivate }: { questi
 }
 
 function EvidenceItems({ evidence, fallbackQuotes, onActivate }: { evidence: AnalysisEvidence[]; fallbackQuotes: string[]; onActivate?: (target: MediaSeekTarget) => void; }) {
+  const speakerAssignments = useContext(AnalysisSpeakerAssignmentsContext);
   const rawItems: AnalysisEvidence[] = evidence.length > 0
     ? evidence
     : fallbackQuotes.filter(Boolean).map((quote) => ({ quote, match_status: "legacy" } satisfies AnalysisEvidence));
@@ -396,7 +406,8 @@ function EvidenceItems({ evidence, fallbackQuotes, onActivate }: { evidence: Ana
   return <>{items.map((item, index) => {
     const matched = item.match_status === "matched" && typeof item.start_seconds === "number";
     const time = matched ? formatEvidenceTime(item.start_seconds!) : "";
-    if (!matched) return <blockquote key={`${item.quote}-${index}`}>{item.speaker && <small className="evidence-speaker">{item.speaker}</small>}{item.quote}<small>Точное место не определено</small></blockquote>;
+    const speaker = item.speaker ? transcriptionSpeakerLabel(item.speaker, speakerAssignments) : "";
+    if (!matched) return <blockquote key={`${item.quote}-${index}`}>{speaker && <small className="evidence-speaker">{speaker}</small>}{item.quote}<small>Точное место не определено</small></blockquote>;
     return (
       <button
         className="evidence-link"
@@ -410,7 +421,7 @@ function EvidenceItems({ evidence, fallbackQuotes, onActivate }: { evidence: Ana
           wordEndIndex: item.word_end_index
         })}
       >
-        <span>{item.speaker && <small className="evidence-speaker">{item.speaker}</small>}{item.quote}</span><time>{time}</time>
+        <span>{speaker && <small className="evidence-speaker">{speaker}</small>}{item.quote}</span><time>{time}</time>
       </button>
     );
   })}</>;

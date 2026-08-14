@@ -1,5 +1,6 @@
 import { Download, Pause, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { getCallAudioBlob, getCallAudioUrl, getCallMediaBlob, getCallMediaUrl } from "../../api";
 import type { CallResponse, MediaSeekTarget, TranscriptionWordResponse } from "../../types";
 import { activeTranscriptWordIndex } from "../lib/transcript";
@@ -27,13 +28,95 @@ export function CallMediaPlayer(props: MediaPlayerProps) {
 
 function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onActiveWordChange }: MediaPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const speedControlRef = useRef<HTMLDivElement | null>(null);
+  const speedHoldTimerRef = useRef<number | null>(null);
+  const speedLongPressRef = useRef(false);
   const [error, setError] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(call.duration_seconds || 0);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const source = useMemo(() => getCallMediaUrl(call), [call.id, call.media_url, call.audio_url]);
 
   useEffect(() => {
-    if (videoRef.current && seekTarget) videoRef.current.currentTime = seekTarget.startSeconds;
+    if (videoRef.current && seekTarget) {
+      videoRef.current.currentTime = seekTarget.startSeconds;
+      setCurrentTime(seekTarget.startSeconds);
+    }
   }, [seekTarget]);
+
+  useEffect(() => {
+    if (!speedMenuOpen) return;
+    function closeOnOutsidePointer(event: PointerEvent) {
+      if (!speedControlRef.current?.contains(event.target as Node)) setSpeedMenuOpen(false);
+    }
+    window.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => window.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [speedMenuOpen]);
+
+  useEffect(() => () => clearVideoSpeedHoldTimer(), []);
+
+  function togglePlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) void video.play();
+    else video.pause();
+  }
+
+  function seek(value: number) {
+    if (videoRef.current) videoRef.current.currentTime = value;
+    setCurrentTime(value);
+  }
+
+  function changeRate(value: number) {
+    if (videoRef.current) videoRef.current.playbackRate = value;
+    setPlaybackRate(value);
+  }
+
+  function cycleVideoRate() {
+    const currentIndex = playbackRates.indexOf(playbackRate);
+    changeRate(playbackRates[(currentIndex + 1) % playbackRates.length] ?? 1);
+  }
+
+  function clearVideoSpeedHoldTimer() {
+    if (speedHoldTimerRef.current === null) return;
+    window.clearTimeout(speedHoldTimerRef.current);
+    speedHoldTimerRef.current = null;
+  }
+
+  function handleVideoSpeedPointerDown() {
+    speedLongPressRef.current = false;
+    clearVideoSpeedHoldTimer();
+    speedHoldTimerRef.current = window.setTimeout(() => {
+      speedLongPressRef.current = true;
+      setSpeedMenuOpen(true);
+    }, 420);
+  }
+
+  function handleVideoSpeedPointerUp() {
+    clearVideoSpeedHoldTimer();
+    if (speedLongPressRef.current) {
+      speedLongPressRef.current = false;
+      return;
+    }
+    cycleVideoRate();
+    setSpeedMenuOpen(false);
+  }
+
+  function handleVideoSpeedKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      cycleVideoRate();
+      setSpeedMenuOpen(false);
+    } else if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+      event.preventDefault();
+      setSpeedMenuOpen(true);
+    } else if (event.key === "Escape") {
+      setSpeedMenuOpen(false);
+    }
+  }
 
   async function downloadVideo() {
     setDownloading(true);
@@ -58,15 +141,35 @@ function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onAct
     <div className={`call-video-player ${error ? "video-error-state" : ""}`}>
       <video
         ref={videoRef}
-        controls
         crossOrigin="use-credentials"
         preload="metadata"
         src={source}
         aria-label={`Видеозапись звонка ${call.title}`}
         onError={() => setError("Видео недоступно")}
-        onTimeUpdate={(event) => onActiveWordChange?.(activeTranscriptWordIndex(words, event.currentTarget.currentTime))}
+        onClick={togglePlayback}
+        onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : call.duration_seconds || 0)}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => setPlaying(false)}
+        onTimeUpdate={(event) => {
+          setCurrentTime(event.currentTarget.currentTime);
+          onActiveWordChange?.(activeTranscriptWordIndex(words, event.currentTarget.currentTime));
+        }}
       />
       {error && <div className="call-video-placeholder" role="status">{error}</div>}
+      {!error && <div className="call-video-controls">
+        <input className="video-progress" type="range" min={0} max={Math.max(duration, 1)} step="0.1" value={Math.min(currentTime, Math.max(duration, 1))} onChange={(event) => seek(Number(event.target.value))} aria-label="Позиция видео" aria-valuetext={`${formatDuration(currentTime)} из ${formatDuration(duration)}`} style={{ "--media-progress": `${duration > 0 ? currentTime / duration * 100 : 0}%` } as CSSProperties} />
+        <div className="video-control-row">
+          <div className="video-control-primary">
+            <button type="button" className="video-play-button" onClick={togglePlayback} aria-label={playing ? "Пауза" : "Воспроизвести"}>{playing ? <Pause size={18} /> : <Play size={18} />}</button>
+            <span className="video-time"><strong>{formatDuration(currentTime)}</strong><span>/</span>{formatDuration(duration)}</span>
+          </div>
+          <div className={`video-speed-control ${speedMenuOpen ? "open" : ""}`} ref={speedControlRef}>
+            <button className="video-speed-button" type="button" aria-haspopup="menu" aria-expanded={speedMenuOpen} aria-label="Скорость видео" onKeyDown={handleVideoSpeedKeyDown} onPointerCancel={clearVideoSpeedHoldTimer} onPointerDown={handleVideoSpeedPointerDown} onPointerLeave={clearVideoSpeedHoldTimer} onPointerUp={handleVideoSpeedPointerUp}>{playbackRate}×</button>
+            <div className="video-speed-menu" role="menu">{playbackRates.map((rate) => <button className={rate === playbackRate ? "active" : ""} type="button" role="menuitemradio" aria-checked={rate === playbackRate} key={rate} onClick={() => { changeRate(rate); setSpeedMenuOpen(false); }}>{rate}×</button>)}</div>
+          </div>
+        </div>
+      </div>}
       <div className="call-video-meta">
         <span>{call.original_filename}</span>
         <button className="ghost-button small" type="button" disabled={downloading} onClick={downloadVideo}>
