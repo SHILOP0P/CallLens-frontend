@@ -34,6 +34,7 @@ export function CompaniesPage({
   session,
   companies,
   departments,
+  departmentMembers,
   calls,
   companySubscriptions,
   loading,
@@ -52,6 +53,7 @@ export function CompaniesPage({
   session: SessionState;
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
+  departmentMembers: DepartmentMemberResponse[];
   calls: CallResponse[];
   companySubscriptions: Record<string, Subscription | null>;
   loading: boolean;
@@ -126,6 +128,7 @@ export function CompaniesPage({
       <CompanyWorkspace
         company={selectedCompany}
         departments={departments.filter((department) => department.company_uuid === selectedCompanyId)}
+        departmentMembers={departmentMembers}
         session={session}
         onNavigate={onNavigate}
         onDepartmentCreated={onDepartmentCreated}
@@ -377,6 +380,7 @@ function formatMinutes(minutes: number) {
 export function CompanyWorkspace({
   company,
   departments,
+  departmentMembers,
   session,
   onNavigate,
   onDepartmentCreated,
@@ -386,6 +390,7 @@ export function CompanyWorkspace({
 }: {
   company?: CompanyResponse;
   departments: DepartmentResponse[];
+  departmentMembers: DepartmentMemberResponse[];
   session: SessionState;
   onNavigate: (page: AppPage) => void;
   onDepartmentCreated: (department: DepartmentResponse) => void;
@@ -415,6 +420,10 @@ export function CompanyWorkspace({
   }
 
   const isManager = company.manager_user_uuid === session.user.id;
+  const ledDepartmentIds = departments
+    .filter((department) => departmentMembers.some((member) => member.department_uuid === department.id && member.user_uuid === session.user.id && member.role === "department_leader" && member.status === "active"))
+    .map((department) => department.id);
+  const canInvite = isManager || ledDepartmentIds.length > 0;
 
   async function leaveCompany() {
     if (!company) return;
@@ -457,13 +466,13 @@ export function CompanyWorkspace({
       </div>
 
       <div className="company-workspace-grid">
-        <AnalysisPersonalizationCard
+        {isManager && <AnalysisPersonalizationCard
           scope="company"
           ownerUuid={company.id}
           title="Персонализация компании"
           description="Используется для звонков компании и дополняется персонализацией отдела для звонков отдела."
           editable={isManager}
-        />
+        />}
         <section className="company-card glass">
           <div className="panel-heading">
             <div>
@@ -500,18 +509,20 @@ export function CompanyWorkspace({
           )}
         </section>
 
-        {isManager ? (
+        {canInvite ? (
           <InvitationCreatePanel
             companies={[company]}
             departments={departments}
             session={session}
+            allowCompanyInvitations={isManager}
+            allowedDepartmentIds={isManager ? undefined : ledDepartmentIds}
             onInvitationCreated={onInvitationCreated}
           />
         ) : (
           <section className="company-card glass">
             <div className="company-lock-note">
               <LockKeyhole size={18} />
-              <p>Приглашать пользователей и назначать роли может менеджер компании.</p>
+              <p>Приглашать пользователей может менеджер компании или руководитель своего отдела.</p>
             </div>
           </section>
         )}

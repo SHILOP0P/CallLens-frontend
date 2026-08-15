@@ -1,7 +1,8 @@
-import { Bell, ChevronRight, LoaderCircle } from "lucide-react";
+import { Bell, CheckCheck, ChevronRight, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../api";
 import type { NotificationResponse } from "../../types";
+import { notificationPresentation } from "../../shared/ui/notification-presentation";
 
 const pageSize = 50;
 
@@ -28,6 +29,16 @@ export function NotificationsPage({ onOpen }: { onOpen: (notification: Notificat
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    function handleNotification(event: Event) {
+      const notification = (event as CustomEvent<NotificationResponse>).detail;
+      if (!notification?.id) return;
+      setNotifications((current) => current.some((item) => item.id === notification.id) ? current : [notification, ...current]);
+    }
+    window.addEventListener("verbatrace:notification-received", handleNotification);
+    return () => window.removeEventListener("verbatrace:notification-received", handleNotification);
   }, []);
 
   async function loadMore() {
@@ -75,24 +86,29 @@ export function NotificationsPage({ onOpen }: { onOpen: (notification: Notificat
         <div className="notifications-page-state">Уведомлений пока нет.</div>
       ) : (
         <div className="notifications-history">
-          {notifications.map((notification) => (
+          {notifications.map((notification) => {
+            const presentation = notificationPresentation(notification);
+            const TypeIcon = presentation.icon;
+            return (
             <button
-              className={`notification-history-row ${notification.read_at ? "" : "unread"}`}
+              className={`notification-history-row notification-tone-${presentation.tone} ${notification.read_at ? "" : "unread"}`}
               key={notification.id}
               type="button"
               onClick={() => openNotification(notification)}
             >
-              <span className="notification-history-dot" aria-hidden="true" />
+              <span className="notification-history-type" title={presentation.label} aria-label={presentation.label}><TypeIcon size={18}/></span>
               <span className="notification-history-content">
                 <strong>{notification.title}</strong>
                 <span>{notification.body}</span>
               </span>
               <span className="notification-history-side">
+                {notification.read_at && <span className="notification-history-read-state" title="Просмотрено" aria-label="Просмотрено"><CheckCheck size={15}/></span>}
                 <time>{formatHistoryTime(notification.created_at)}</time>
                 <ChevronRight size={17} />
               </span>
             </button>
-          ))}
+            );
+          })}
         </div>
       )}
 

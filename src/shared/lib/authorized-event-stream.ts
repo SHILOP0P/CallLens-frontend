@@ -6,6 +6,7 @@ export class AuthorizedEventStream {
   private readonly controller = new AbortController();
   private readonly listeners = new Map<string, Set<StreamListener>>();
   private closed = false;
+  private retryTimer: number | undefined;
 
   constructor(private readonly url: string, private readonly refreshTokens: RefreshTokens) {
     void this.connect(true);
@@ -19,7 +20,16 @@ export class AuthorizedEventStream {
 
   close() {
     this.closed = true;
+    if (this.retryTimer !== undefined) window.clearTimeout(this.retryTimer);
     this.controller.abort();
+  }
+
+  private scheduleReconnect() {
+    if (this.closed || this.retryTimer !== undefined) return;
+    this.retryTimer = window.setTimeout(() => {
+      this.retryTimer = undefined;
+      if (!this.closed) void this.connect(true);
+    }, 2_000);
   }
 
   private emit(type: string, event: Event) {
@@ -36,6 +46,7 @@ export class AuthorizedEventStream {
       }
       if (!response.ok || !response.body) {
         this.emit("error", new Event("error"));
+        this.scheduleReconnect();
         return;
       }
 
@@ -62,10 +73,14 @@ export class AuthorizedEventStream {
         }
         if (done) break;
       }
-      if (!this.closed) this.emit("error", new Event("error"));
+      if (!this.closed) {
+        this.emit("error", new Event("error"));
+        this.scheduleReconnect();
+      }
     } catch (error) {
       if (!this.closed && !(error instanceof DOMException && error.name === "AbortError")) {
         this.emit("error", new Event("error"));
+        this.scheduleReconnect();
       }
     }
   }

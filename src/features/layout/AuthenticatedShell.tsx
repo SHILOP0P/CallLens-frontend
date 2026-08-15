@@ -16,7 +16,7 @@ import {
   X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "../../api";
+import { api, openAuthorizedEventStream } from "../../api";
 import type {
   AppPage,
   CallResponse,
@@ -32,6 +32,8 @@ import type {
 import { adminSidebarItem, AppTheme, isSettingsPage, sidebarItems, ThemeToggleEvent } from "../../app/runtime";
 import { Logo } from "../../shared/ui/primitives";
 import { useDismissibleLayer } from "../../shared/ui/dismissible-layer";
+import { CustomScrollbar } from "../../shared/ui/custom-scrollbar";
+import { notificationPresentation } from "../../shared/ui/notification-presentation";
 
 const WORKSPACE_COMPANY_STORAGE_KEY = "verbatrace.activeWorkspaceCompanyId";
 const LEGACY_WORKSPACE_COMPANY_STORAGE_KEY = "calllens.activeWorkspaceCompanyId";
@@ -47,6 +49,7 @@ export function AuthenticatedShell({
   personalSubscription,
   companySubscriptions,
   invitationCount,
+  pendingInvitationIds,
   adminCapabilities,
   children,
   onNavigate,
@@ -64,6 +67,7 @@ export function AuthenticatedShell({
   personalSubscription: Subscription | null;
   companySubscriptions: Record<string, Subscription | null>;
   invitationCount: number;
+  pendingInvitationIds: string[];
   adminCapabilities: AdminCapabilitiesResponse | null;
   children: React.ReactNode;
   onNavigate: (page: AppPage) => void;
@@ -84,6 +88,8 @@ export function AuthenticatedShell({
   const [searchResults, setSearchResults] = useState<SearchResponse | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [notifications, setNotifications] = useState<NotificationResponse[]>([]);
+  const notificationIdsRef = useRef(new Set<string>());
+  const [notificationsBootstrapped, setNotificationsBootstrapped] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(invitationCount);
   const [personalUsage, setPersonalUsage] = useState<SubscriptionUsageResponse | null>(null);
   const [companyUsage, setCompanyUsage] = useState<Record<string, SubscriptionUsageResponse | null>>({});
@@ -92,6 +98,7 @@ export function AuthenticatedShell({
   const teamPopoverRef = useRef<HTMLDivElement>(null);
   const searchPopoverRef = useRef<HTMLLabelElement>(null);
   const notificationPopoverRef = useRef<HTMLDivElement>(null);
+  const notificationListRef = useRef<HTMLDivElement>(null);
   const calendarPopoverRef = useRef<HTMLDivElement>(null);
   const profilePopoverRef = useRef<HTMLDivElement>(null);
   const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
@@ -232,9 +239,11 @@ export function AuthenticatedShell({
         }
       }
       if (notificationResponse) {
+        notificationIdsRef.current = new Set(notificationResponse.notifications.map((notification) => notification.id));
         setNotifications(notificationResponse.notifications);
         setUnreadNotifications(notificationResponse.unread_count);
       }
+      setNotificationsBootstrapped(true);
     }
 
     loadPreferencesAndNotifications();
@@ -242,6 +251,25 @@ export function AuthenticatedShell({
       cancelled = true;
     };
   }, [companies]);
+
+  useEffect(() => {
+    if (!notificationsBootstrapped) return;
+    const source = openAuthorizedEventStream(api.notificationEventsUrl());
+    const handleNotification = (event: Event) => {
+      try {
+        const notification = JSON.parse((event as MessageEvent<string>).data) as NotificationResponse;
+        if (!notification.id || notificationIdsRef.current.has(notification.id)) return;
+        notificationIdsRef.current.add(notification.id);
+        setNotifications((current) => [notification, ...current].slice(0, 50));
+        if (!notification.read_at) setUnreadNotifications((current) => current + 1);
+        window.dispatchEvent(new CustomEvent("verbatrace:notification-received", { detail: notification }));
+      } catch {
+        // Ignore malformed events and keep the stream alive.
+      }
+    };
+    source.addEventListener("notification", handleNotification);
+    return () => source.close();
+  }, [notificationsBootstrapped, session.user.id]);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -536,7 +564,7 @@ export function AuthenticatedShell({
               {recentUnreadNotifications > 0 && <span className="notification-badge">{recentUnreadNotifications}</span>}
             </button>
             {notificationsOpen && (
-              <div className="header-popover notifications-popover">
+              <div ref={notificationListRef} className="header-popover notifications-popover custom-scroll-target">
                 <div className="popover-head">
                   <button className="notification-history-link" type="button" onClick={() => { setNotificationsOpen(false); onNavigate("notifications"); }}>Уведомления<ChevronRight size={15}/></button>
                   <button type="button" onClick={markAllNotificationsRead} aria-label="Прочитать все">
@@ -546,23 +574,32 @@ export function AuthenticatedShell({
                 {recentNotifications.length === 0 ? (
                   <span className="popover-empty">За последние 24 часа событий нет</span>
                 ) : (
-                  recentNotifications.map((notification) => (
+                  recentNotifications.map((notification) => {
+                    const presentation = notificationPresentation(notification);
+                    const TypeIcon = presentation.icon;
+                    return (
                     <button
                       type="button"
                       key={notification.id}
-                      className={notification.read_at ? "" : "unread"}
+                      className={`notification-tone-${presentation.tone}${notification.read_at ? "" : " unread"}`}
                       onClick={() => openNotification(notification)}
                     >
+                      <span className="notification-type-icon" title={presentation.label} aria-label={presentation.label}><TypeIcon size={17}/></span>
                       <span className="notification-content">
-                        <strong>{notification.title}</strong>
+                        <span className="notification-title-row">
+                          <strong>{notification.title}</strong>
+                          {notification.read_at && <span className="notification-read-state" title="Просмотрено" aria-label="Просмотрено"><CheckCheck size={15}/></span>}
+                        </span>
                         <small>{notification.body}</small>
-                        <span className="notification-meta"><time>{formatNotificationTime(notification.created_at)}</time><em>{notificationActionLabel(notification)}<ChevronRight size={13}/></em></span>
+                        <span className="notification-meta"><time>{formatNotificationTime(notification.created_at)}</time><em>{notificationActionLabel(notification, pendingInvitationIds)}<ChevronRight size={13}/></em></span>
                       </span>
                     </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
             )}
+            {notificationsOpen && <CustomScrollbar targetRef={notificationListRef} className="notifications-scroll-thumb" />}
           </div>
           <button className="icon-button theme-toggle" type="button" onClick={onToggleTheme} aria-label={themeLabel}>
             <Moon size={19} fill={theme === "dark" ? "currentColor" : "none"} />
@@ -685,7 +722,7 @@ export function AuthenticatedShell({
   );
 }
 
-function notificationActionLabel(notification:NotificationResponse){if(notification.entity_type==="call_action"){if(notification.type==="action_assigned")return"Открыть задачу";if(notification.type==="action_reminder"||notification.type==="action_grace_started"||notification.type==="action_overdue")return"Проверить срок";return"Посмотреть задачу"}if(notification.type==="invitation")return"Ответить на приглашение";if(notification.entity_type==="report")return"Открыть отчёт";if(notification.entity_type==="call")return"Открыть звонок";return"Посмотреть"}
+function notificationActionLabel(notification:NotificationResponse,pendingInvitationIds:string[]){if(notification.entity_type==="call_action"){if(notification.type==="action_assigned")return"Открыть задачу";if(notification.type==="action_reminder"||notification.type==="action_grace_started"||notification.type==="action_overdue")return"Проверить срок";return"Посмотреть задачу"}if(notification.type==="invitation")return notification.entity_uuid&&pendingInvitationIds.includes(notification.entity_uuid)?"Ответить на приглашение":"Приглашение обработано";if(notification.entity_type==="report")return"Открыть отчёт";if(notification.entity_type==="call")return"Открыть звонок";return"Посмотреть"}
 function formatNotificationTime(value:string){const date=new Date(value);if(Number.isNaN(date.getTime()))return"";return new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}).format(date)}
 function isRecentNotification(value: string) {
   const timestamp = new Date(value).getTime();

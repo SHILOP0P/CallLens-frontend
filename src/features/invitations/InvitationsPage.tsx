@@ -179,14 +179,18 @@ export function InvitationCreatePanel({
   companies,
   departments,
   session,
+  allowCompanyInvitations = true,
+  allowedDepartmentIds,
   onInvitationCreated
 }: {
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
   session: SessionState;
+  allowCompanyInvitations?: boolean;
+  allowedDepartmentIds?: string[];
   onInvitationCreated: (invitation: Invitation) => void;
 }) {
-  const [mode, setMode] = useState<"company" | "department">("company");
+  const [mode, setMode] = useState<"company" | "department">(allowCompanyInvitations ? "company" : "department");
   const [companyId, setCompanyId] = useState(companies[0]?.id ?? "");
   const [departmentId, setDepartmentId] = useState("");
   const [username, setUsername] = useState("");
@@ -194,9 +198,13 @@ export function InvitationCreatePanel({
   const [success, setSuccess] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const availableDepartments = departments.filter((department) => department.company_uuid === companyId);
+  const availableDepartments = departments.filter((department) => department.company_uuid === companyId && (!allowedDepartmentIds || allowedDepartmentIds.includes(department.id)));
   const selectedCompany = companies.find((company) => company.id === companyId);
   const canInviteDepartmentLeader = selectedCompany?.manager_user_uuid === session.user.id;
+
+  useEffect(() => {
+    if (!allowCompanyInvitations && mode !== "department") setMode("department");
+  }, [allowCompanyInvitations, mode]);
 
   useEffect(() => {
     if (!companyId && companies[0]) setCompanyId(companies[0].id);
@@ -230,7 +238,7 @@ export function InvitationCreatePanel({
     }
 
     if (!username.trim()) {
-      setError("Введите username.");
+      setError("Введите тэг пользователя.");
       return;
     }
 
@@ -253,7 +261,7 @@ export function InvitationCreatePanel({
   return (
     <form className="invitation-create glass" onSubmit={submit}>
       <h2>Отправить приглашение</h2>
-      <div className="segmented scope">
+      {allowCompanyInvitations && <div className="segmented scope">
         <button
           type="button"
           className={mode === "company" ? "active" : ""}
@@ -268,7 +276,7 @@ export function InvitationCreatePanel({
         >
           Отдел
         </button>
-      </div>
+      </div>}
       <label>
         Компания
         <SelectControl value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
@@ -304,7 +312,7 @@ export function InvitationCreatePanel({
         </>
       )}
       <label>
-        Username
+        Тэг
         <input
           value={username}
           onChange={(event) => setUsername(event.target.value)}

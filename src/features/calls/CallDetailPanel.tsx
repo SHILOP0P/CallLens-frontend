@@ -121,6 +121,8 @@ export function CallDetailPanel({
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [actionDecisionBusy, setActionDecisionBusy] = useState(false);
   const [actionDecisionMessage, setActionDecisionMessage] = useState("");
+  const [noActionRequired, setNoActionRequired] = useState(false);
+  const [noActionConfirmOpen, setNoActionConfirmOpen] = useState(false);
   const [linkedAction, setLinkedAction] = useState<CallAction>();
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const transcriptCardRef = useRef<HTMLDivElement | null>(null);
@@ -624,20 +626,20 @@ export function CallDetailPanel({
         </div>
       </div>
       <div className="next-step">
-        <span className="step-icon">
-          <WandSparkles size={19} />
+        <span className={`step-icon${linkedAction?.status === "completed" || noActionRequired ? " is-complete" : ""}`}>
+          {linkedAction?.status === "completed" || noActionRequired ? <CheckCircle2 size={19} /> : <WandSparkles size={19} />}
         </span>
         <div>
-          <h3>{linkedAction ? linkedActionHeading(linkedAction.status) : "Следующий шаг"}</h3>
-          <p>{linkedAction ? linkedAction.title : analysisNextStep(displayedAnalysis)}</p>
+          <h3>{linkedAction ? linkedActionHeading(linkedAction.status) : noActionRequired ? "Действия не требуются" : "Следующий шаг"}</h3>
+          <p>{linkedAction ? linkedAction.title : noActionRequired ? "Решение сохранено. Новое действие для этого анализа создать нельзя." : analysisNextStep(displayedAnalysis)}</p>
         </div>
         <div className="next-step-actions">
           {linkedAction ? <>
             <button className="ghost-button" type="button" onClick={() => { window.history.pushState({}, "", `/app/actions/${encodeURIComponent(linkedAction.id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }}>Открыть действие<ChevronRight size={16} /></button>
             {linkedAction.status === "cancelled" && <button className="text-button" type="button" disabled={!analysis || !isAnalysisDone(analysis)} onClick={() => setActionDialogOpen(true)}>Создать новое</button>}
-          </> : <>
+          </> : noActionRequired ? null : <>
             <button className="ghost-button" type="button" disabled={!call.company_uuid || !analysis || !isAnalysisDone(analysis)} onClick={() => setActionDialogOpen(true)}>Создать действие<ChevronRight size={16} /></button>
-            <button className="text-button" type="button" disabled={actionDecisionBusy || !call.company_uuid || !analysis || !isAnalysisDone(analysis)} onClick={async () => { if (!analysis) return; setActionDecisionBusy(true); setActionDecisionMessage(""); try { await api.setNoActionRequired(call.id, analysis.id); setActionDecisionMessage("Отмечено: дальнейших действий не требуется."); } catch (cause) { setActionDecisionMessage(cause instanceof Error ? cause.message : "Не удалось сохранить решение"); } finally { setActionDecisionBusy(false); } }}>Действий не требуется</button>
+            <button className="text-button no-action-button" type="button" disabled={actionDecisionBusy || !call.company_uuid || !analysis || !isAnalysisDone(analysis)} onClick={() => setNoActionConfirmOpen(true)}>Действий не требуется</button>
           </>}
         </div>
       </div>
@@ -646,6 +648,15 @@ export function CallDetailPanel({
         <CreateActionDialog call={call} analysis={analysis} transcription={localTranscription} speakerAssignments={speakerAssignments} companies={companies} departments={departments} currentUserId={currentUserId} onClose={() => setActionDialogOpen(false)} onCreated={(created) => { setLinkedAction(created); setActionDialogOpen(false); window.history.pushState({}, "", `/app/actions/${encodeURIComponent(created.id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }} />,
         document.querySelector<HTMLElement>(".app-shell") ?? document.body
       )}
+      <ConfirmDialog
+        open={noActionConfirmOpen}
+        title="Подтвердить отсутствие действий?"
+        message="После подтверждения новое действие для текущего анализа звонка создать будет нельзя."
+        confirmLabel="Подтвердить"
+        busy={actionDecisionBusy}
+        onCancel={() => { if (!actionDecisionBusy) setNoActionConfirmOpen(false); }}
+        onConfirm={async () => { if (!analysis) return; setActionDecisionBusy(true); setActionDecisionMessage(""); try { await api.setNoActionRequired(call.id, analysis.id); setNoActionRequired(true); setNoActionConfirmOpen(false); setActionDecisionMessage("Отмечено: дальнейших действий не требуется."); } catch (cause) { setActionDecisionMessage(cause instanceof Error ? cause.message : "Не удалось сохранить решение"); } finally { setActionDecisionBusy(false); } }}
+      />
       <ConfirmDialog
         open={deleteConfirmOpen}
         variant="danger"

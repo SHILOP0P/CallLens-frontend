@@ -597,6 +597,7 @@ function App() {
       personalSubscription={personalSubscription}
       companySubscriptions={companySubscriptions}
       invitationCount={invitations.filter((invitation) => invitation.status === "pending").length}
+      pendingInvitationIds={invitations.filter((invitation) => invitation.status === "pending").map((invitation) => invitation.id)}
       adminCapabilities={adminCapabilities}
       onNavigate={navigate}
       onOpenCall={(callId) => {
@@ -728,6 +729,7 @@ function App() {
 
       {page === "qualityReview" && <QualityReviewPage reviewId={decodeURIComponent(window.location.pathname.split("/").at(-1) ?? "")} onBack={() => navigate("qualityReviews")} />}
 
+      {page === "monitoring" && !adminCapabilities && <AccessDeniedPage />}
       {page === "monitoring" && adminCapabilities && <MonitoringPage calls={calls} onBack={() => {
         const from = new URLSearchParams(window.location.search).get("from");
         const section = from === "companies" || from === "actions" || from === "users" ? from : "users";
@@ -735,6 +737,7 @@ function App() {
         window.history.replaceState({}, "", `/app/admin/${section}`);
       }} />}
 
+      {page === "admin" && !adminCapabilities && <AccessDeniedPage />}
       {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} onNavigate={navigate} />}
 
       {page === "settings" && <SettingsPage onNavigate={navigate} />}
@@ -782,6 +785,7 @@ function App() {
           session={session}
           companies={companies}
           departments={departments}
+          departmentMembers={departmentMembers}
           calls={calls}
           companySubscriptions={companySubscriptions}
           loading={loadingWorkspace}
@@ -860,6 +864,10 @@ function App() {
       )}
     </AuthenticatedShell>
   );
+}
+
+function AccessDeniedPage() {
+  return <section className="access-denied-page glass" role="alert"><span aria-hidden="true">403</span><h1>Доступ запрещён</h1><p>У вашей учётной записи нет прав для просмотра этой страницы.</p><button className="primary-button" type="button" onClick={() => { window.history.pushState({}, "", "/app"); window.dispatchEvent(new PopStateEvent("popstate")); }}>Вернуться в обзор</button></section>;
 }
 
 export default App;

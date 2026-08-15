@@ -1313,6 +1313,10 @@ export const api = {
     return request<NotificationsResponse>(`/notifications${queryString(input)}`);
   },
 
+  notificationEventsUrl() {
+    return `${apiRoot}/notifications/events`;
+  },
+
   markNotificationRead(notificationId: string) {
     return request<void>(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
   },

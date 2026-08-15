@@ -34,8 +34,3 @@ coverage/
 *.sw?
 .DS_Store
 Thumbs.db
-
-# Graphify local files
-AGENTS.md
-.codex/
-graphify-out/

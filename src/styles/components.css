@@ -547,6 +547,45 @@ html[data-theme="light"] .app-shell .quality-challenge-letter { color: #2f2119; 
   .quality-edit-button { width: 100%; }
 }
 
+.step-icon.is-complete { color: #74d67a; background: color-mix(in srgb, #42b84b 18%, transparent); border-color: color-mix(in srgb, #42b84b 42%, var(--app-border)); }
+.next-step-actions .no-action-button { margin-left: 28px; }
+.date-time-picker { position: relative; min-width: 0; }
+.date-time-picker-value { position: absolute; width: 1px !important; height: 1px !important; min-height: 0 !important; padding: 0 !important; border: 0 !important; opacity: 0; pointer-events: none; }
+.date-time-trigger { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; align-items: center; gap: 9px; width: 100%; min-height: 46px; padding: 10px 12px; color: var(--app-text); font: inherit; text-align: left; background: var(--app-panel-soft); border: 1px solid var(--app-border); border-radius: 12px; cursor: pointer; }
+.date-time-trigger:hover, .date-time-trigger[aria-expanded="true"] { border-color: color-mix(in srgb, var(--app-accent) 62%, var(--app-border)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--app-accent) 12%, transparent); }
+.date-time-trigger > svg { color: var(--app-accent-strong); }
+.date-time-trigger > i { width: 1px; height: 22px; background: var(--app-border); }
+.date-time-popover { position: absolute; z-index: 80; top: calc(100% + 8px); right: 0; width: min(360px, calc(100vw - 48px)); padding: 16px; color: var(--app-text); background: color-mix(in srgb, var(--app-panel) 97%, #17100d); border: 1px solid var(--app-border); border-radius: 18px; box-shadow: 0 22px 58px rgba(0,0,0,.36); }
+.date-time-month { display: grid; grid-template-columns: 38px 1fr 38px; align-items: center; gap: 8px; margin-bottom: 12px; }
+.date-time-month strong { text-align: center; text-transform: capitalize; }
+.date-time-month button, .date-time-actions button { min-height: 36px; color: inherit; font: inherit; font-weight: 750; background: transparent; border: 1px solid var(--app-border); border-radius: 10px; cursor: pointer; }
+.date-time-month button { display: grid; place-items: center; padding: 0; }
+.date-time-weekdays, .date-time-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.date-time-weekdays { margin-bottom: 5px; color: var(--app-muted); font-size: 12px; text-align: center; }
+.date-time-grid button { aspect-ratio: 1; min-width: 0; padding: 0; color: inherit; font: inherit; font-size: 13px; font-weight: 700; background: transparent; border: 1px solid transparent; border-radius: 10px; cursor: pointer; }
+.date-time-grid button:hover { color: var(--app-accent-strong); background: var(--app-active); border-color: var(--app-border); }
+.date-time-grid button.is-outside { color: color-mix(in srgb, var(--app-muted) 52%, transparent); }
+.date-time-grid button.is-today { border-color: color-mix(in srgb, var(--app-accent) 55%, transparent); }
+.date-time-grid button.is-selected { color: #fff; background: linear-gradient(135deg, var(--app-accent), var(--app-accent-strong)); border-color: transparent; box-shadow: 0 5px 14px color-mix(in srgb, var(--app-accent) 28%, transparent); }
+.date-time-clock { display: grid; grid-template-columns: auto 1fr 72px auto 72px; align-items: center; gap: 8px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--app-border); }
+.date-time-clock > svg { color: var(--app-accent-strong); }
+.date-time-clock select { width: 100%; min-height: 38px; padding: 6px 8px; color: var(--app-text); font: inherit; font-weight: 750; background: var(--app-panel-soft); border: 1px solid var(--app-border); border-radius: 10px; }
+.date-time-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 14px; }
+.date-time-actions button { padding: 8px 12px; }
+.date-time-actions .date-time-confirm { color: #fff; background: linear-gradient(135deg, var(--app-accent), var(--app-accent-strong)); border-color: transparent; }
+.date-time-actions button:disabled { opacity: .45; cursor: not-allowed; }
+html[data-theme="light"] .date-time-trigger { color: #2b1e18; background: #fffaf6; border-color: rgba(112,75,54,.24); }
+html[data-theme="light"] .date-time-popover { color: #2b1e18; background: #fffaf6; border-color: rgba(112,75,54,.22); box-shadow: 0 22px 52px rgba(77,48,31,.22); }
+html[data-theme="light"] .date-time-clock select { color: #2b1e18; background: #fff; border-color: rgba(112,75,54,.22); }
+.access-denied-page { display:grid; justify-items:center; align-content:center; gap:12px; min-height:420px; margin:24px; padding:32px; text-align:center; border:1px solid var(--app-border); border-radius:24px; }
+.access-denied-page > span { display:grid; place-items:center; width:72px; height:72px; color:var(--app-accent-strong); font-size:20px; font-weight:850; background:var(--app-active); border:1px solid var(--app-border); border-radius:22px; }
+.access-denied-page h1,.access-denied-page p { margin:0; }
+.access-denied-page p { color:var(--app-muted); }
+html[data-theme="light"] .notifications-history { background:rgba(255,250,246,.98); border-color:rgba(115,77,55,.2); box-shadow:0 18px 42px rgba(77,48,31,.12); }
+html[data-theme="light"] .notification-history-row { color:#261b16; border-color:rgba(115,77,55,.14); }
+html[data-theme="light"] .notification-history-content > span, html[data-theme="light"] .notification-history-side { color:#715f56; }
+html[data-theme="dark"] .notifications-popover .notification-content > small, html[data-theme="dark"] .notification-history-content > span, html[data-theme="dark"] .notification-history-side { color:color-mix(in srgb, var(--app-text) 78%, transparent); }
+
 .landing {
   --landing-header-offset: 8px;
   --landing-header-space: 108px;

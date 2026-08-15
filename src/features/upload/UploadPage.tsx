@@ -188,11 +188,12 @@ export function UploadPage({
     setFolderError("");
 
     api
-      .listCallFolders({ ...filters, limit: 100, offset: 0 })
+      .listCallFolders({ limit: 100, offset: 0 })
       .then((response) => {
         if (cancelled) return;
-        setCallFolders(response.items);
-        setFolderId((current) => response.items.some((folder) => folder.id === current) ? current : "");
+        const matchingFolders = response.items.filter((folder) => folderMatchesUploadContext(folder, scope, companyId, departmentId));
+        setCallFolders(matchingFolders);
+        setFolderId((current) => matchingFolders.some((folder) => folder.id === current) ? current : "");
       })
       .catch((loadError) => {
         if (cancelled) return;
@@ -686,6 +687,18 @@ function folderFiltersForUpload(
   return companyId && departmentId
     ? { scope, company_uuid: companyId, department_uuid: departmentId }
     : null;
+}
+
+function folderMatchesUploadContext(
+  folder: CallFolderResponse,
+  scope: VisibilityScope,
+  companyId: string,
+  departmentId: string
+) {
+  if (folder.scope !== scope) return false;
+  if (scope === "personal") return true;
+  if (folder.company_uuid !== companyId) return false;
+  return scope !== "department" || folder.department_uuid === departmentId;
 }
 
 function titleFromFilename(filename: string) {
