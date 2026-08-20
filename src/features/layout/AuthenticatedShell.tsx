@@ -1,5 +1,6 @@
 import {
   Bell,
+  Check,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -99,6 +100,7 @@ export function AuthenticatedShell({
   const searchPopoverRef = useRef<HTMLLabelElement>(null);
   const notificationPopoverRef = useRef<HTMLDivElement>(null);
   const notificationListRef = useRef<HTMLDivElement>(null);
+  const deferUnreadUntilNextCloseRef = useRef(new Set<string>());
   const calendarPopoverRef = useRef<HTMLDivElement>(null);
   const profilePopoverRef = useRef<HTMLDivElement>(null);
   const themeLabel = theme === "dark" ? "Включить светлую тему" : "Включить тёмную тему";
@@ -183,6 +185,16 @@ export function AuthenticatedShell({
   useEffect(() => {
     const timer = window.setInterval(() => setCurrentTime(new Date()), 60_000);
     return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    function handleNotificationReadState(event: Event) {
+      const detail = (event as CustomEvent<{ id?: string; readAt?: string | null }>).detail;
+      if (!detail?.id) return;
+      setNotifications((current) => current.map((item) => item.id === detail.id ? { ...item, read_at: detail.readAt ?? null } : item));
+      setUnreadNotifications((current) => Math.max(0, current + (detail.readAt ? -1 : 1)));
+    }
+    window.addEventListener("verbatrace:notification-read-state", handleNotificationReadState);
+    return () => window.removeEventListener("verbatrace:notification-read-state", handleNotificationReadState);
   }, []);
 
   useEffect(() => {
@@ -304,7 +316,7 @@ export function AuthenticatedShell({
   useDismissibleLayer(teamOpen, teamPopoverRef, () => setTeamOpen(false));
   useDismissibleLayer(searchOpen, searchPopoverRef, () => setSearchOpen(false));
   useDismissibleLayer(dateOpen, calendarPopoverRef, () => setDateOpen(false));
-  useDismissibleLayer(notificationsOpen, notificationPopoverRef, () => setNotificationsOpen(false));
+  useDismissibleLayer(notificationsOpen, notificationPopoverRef, closeNotifications);
 
   useEffect(() => {
     function handleNotificationRead(event: Event) {
@@ -338,7 +350,7 @@ export function AuthenticatedShell({
       current.map((item) => item.id === notification.id ? { ...item, read_at: item.read_at ?? new Date().toISOString() } : item)
     );
     setUnreadNotifications((current) => Math.max(0, current - (notification.read_at ? 0 : 1)));
-    setNotificationsOpen(false);
+    closeNotifications();
 
     if (notification.entity_type === "call" && notification.entity_uuid) {
       onOpenCall(notification.entity_uuid);
@@ -364,6 +376,36 @@ export function AuthenticatedShell({
       current.map((notification) => ({ ...notification, read_at: notification.read_at ?? new Date().toISOString() }))
     );
     setUnreadNotifications(0);
+    deferUnreadUntilNextCloseRef.current.clear();
+    window.dispatchEvent(new CustomEvent("verbatrace:notifications-read-all", { detail: { readAt: new Date().toISOString() } }));
+  }
+
+  function closeNotifications() {
+    if (notificationsOpen) {
+      const deferred = deferUnreadUntilNextCloseRef.current;
+      const notificationIds = recentNotifications.filter((notification) => !notification.read_at && !deferred.has(notification.id)).map((notification) => notification.id);
+      deferUnreadUntilNextCloseRef.current = new Set<string>();
+      if (notificationIds.length > 0) {
+        const readAt = new Date().toISOString();
+        void Promise.all(notificationIds.map(async (id) => {
+          try { await api.markNotificationRead(id); return id; } catch { return null; }
+        })).then((results) => {
+          results.forEach((id) => { if (id) window.dispatchEvent(new CustomEvent("verbatrace:notification-read-state", { detail: { id, readAt } })); });
+        });
+      }
+    }
+    setNotificationsOpen(false);
+  }
+
+  async function toggleNotificationRead(notification: NotificationResponse) {
+    const readAt = notification.read_at ? null : new Date().toISOString();
+    if (readAt) deferUnreadUntilNextCloseRef.current.delete(notification.id); else deferUnreadUntilNextCloseRef.current.add(notification.id);
+    window.dispatchEvent(new CustomEvent("verbatrace:notification-read-state", { detail: { id: notification.id, readAt } }));
+    try { if (readAt) await api.markNotificationRead(notification.id); else await api.markNotificationUnread(notification.id); }
+    catch {
+      deferUnreadUntilNextCloseRef.current.delete(notification.id);
+      window.dispatchEvent(new CustomEvent("verbatrace:notification-read-state", { detail: { id: notification.id, readAt: notification.read_at } }));
+    }
   }
 
   return (
@@ -558,7 +600,7 @@ export function AuthenticatedShell({
             <button
               className={`icon-button notification-button ${notificationsOpen ? "active" : ""}`}
               aria-label="Уведомления"
-              onClick={() => setNotificationsOpen((open) => !open)}
+              onClick={() => { if (notificationsOpen) closeNotifications(); else setNotificationsOpen(true); }}
             >
               <Bell size={19} />
               {recentUnreadNotifications > 0 && <span className="notification-badge">{recentUnreadNotifications}</span>}
@@ -566,7 +608,7 @@ export function AuthenticatedShell({
             {notificationsOpen && (
               <div ref={notificationListRef} className="header-popover notifications-popover custom-scroll-target">
                 <div className="popover-head">
-                  <button className="notification-history-link" type="button" onClick={() => { setNotificationsOpen(false); onNavigate("notifications"); }}>Уведомления<ChevronRight size={15}/></button>
+                  <button className="notification-history-link" type="button" onClick={() => { closeNotifications(); onNavigate("notifications"); }}>Уведомления<ChevronRight size={15}/></button>
                   <button type="button" onClick={markAllNotificationsRead} aria-label="Прочитать все">
                     <CheckCheck size={15} />
                   </button>
@@ -578,22 +620,16 @@ export function AuthenticatedShell({
                     const presentation = notificationPresentation(notification);
                     const TypeIcon = presentation.icon;
                     return (
-                    <button
-                      type="button"
+                    <article
                       key={notification.id}
-                      className={`notification-tone-${presentation.tone}${notification.read_at ? "" : " unread"}`}
-                      onClick={() => openNotification(notification)}
+                      className={`notification-popover-item notification-tone-${presentation.tone}${notification.read_at ? "" : " unread"}`}
                     >
-                      <span className="notification-type-icon" title={presentation.label} aria-label={presentation.label}><TypeIcon size={17}/></span>
-                      <span className="notification-content">
-                        <span className="notification-title-row">
-                          <strong>{notification.title}</strong>
-                          {notification.read_at && <span className="notification-read-state" title="Просмотрено" aria-label="Просмотрено"><CheckCheck size={15}/></span>}
-                        </span>
+                      <div className="notification-popover-headline"><span className="notification-type-icon" title={presentation.label} aria-label={presentation.label}><TypeIcon size={18}/></span><strong>{notification.title}</strong><button className={`notification-read-state${notification.read_at ? " is-read" : ""}`} type="button" title={notification.read_at ? "Пометить непрочитанным" : "Пометить прочитанным"} aria-label={notification.read_at ? "Пометить непрочитанным" : "Пометить прочитанным"} onClick={() => void toggleNotificationRead(notification)}>{notification.read_at ? <CheckCheck size={15}/> : <Check size={15}/>}</button></div>
+                      <button className="notification-popover-open" type="button" onClick={() => openNotification(notification)}><span className="notification-content">
                         <small>{notification.body}</small>
                         <span className="notification-meta"><time>{formatNotificationTime(notification.created_at)}</time><em>{notificationActionLabel(notification, pendingInvitationIds)}<ChevronRight size={13}/></em></span>
-                      </span>
-                    </button>
+                      </span></button>
+                    </article>
                     );
                   })
                 )}

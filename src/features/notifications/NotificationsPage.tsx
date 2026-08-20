@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, ChevronRight, LoaderCircle } from "lucide-react";
+import { Bell, Check, CheckCheck, ChevronRight, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { api, ApiError } from "../../api";
 import type { NotificationResponse } from "../../types";
@@ -29,6 +29,21 @@ export function NotificationsPage({ onOpen }: { onOpen: (notification: Notificat
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    function handleReadState(event: Event) {
+      const detail = (event as CustomEvent<{ id?: string; readAt?: string | null }>).detail;
+      if (!detail?.id) return;
+      setNotifications((current) => current.map((item) => item.id === detail.id ? { ...item, read_at: detail.readAt ?? null } : item));
+    }
+    function handleReadAll(event: Event) {
+      const readAt = (event as CustomEvent<{ readAt?: string }>).detail?.readAt ?? new Date().toISOString();
+      setNotifications((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? readAt })));
+    }
+    window.addEventListener("verbatrace:notification-read-state", handleReadState);
+    window.addEventListener("verbatrace:notifications-read-all", handleReadAll);
+    return () => { window.removeEventListener("verbatrace:notification-read-state", handleReadState); window.removeEventListener("verbatrace:notifications-read-all", handleReadAll); };
   }, []);
 
   useEffect(() => {
@@ -69,6 +84,20 @@ export function NotificationsPage({ onOpen }: { onOpen: (notification: Notificat
     onOpen(notification);
   }
 
+  async function toggleRead(notification: NotificationResponse) {
+    setError("");
+    const readAt = notification.read_at ? null : new Date().toISOString();
+    setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: readAt } : item));
+    window.dispatchEvent(new CustomEvent("verbatrace:notification-read-state", { detail: { id: notification.id, readAt } }));
+    try {
+      if (readAt) await api.markNotificationRead(notification.id); else await api.markNotificationUnread(notification.id);
+    } catch (requestError) {
+      setNotifications((current) => current.map((item) => item.id === notification.id ? { ...item, read_at: notification.read_at } : item));
+      window.dispatchEvent(new CustomEvent("verbatrace:notification-read-state", { detail: { id: notification.id, readAt: notification.read_at } }));
+      setError(requestError instanceof ApiError ? requestError.message : "Не удалось изменить состояние уведомления");
+    }
+  }
+
   return (
     <section className="notifications-page">
       <header className="notifications-page-head">
@@ -90,23 +119,21 @@ export function NotificationsPage({ onOpen }: { onOpen: (notification: Notificat
             const presentation = notificationPresentation(notification);
             const TypeIcon = presentation.icon;
             return (
-            <button
+            <article
               className={`notification-history-row notification-tone-${presentation.tone} ${notification.read_at ? "" : "unread"}`}
               key={notification.id}
-              type="button"
-              onClick={() => openNotification(notification)}
             >
               <span className="notification-history-type" title={presentation.label} aria-label={presentation.label}><TypeIcon size={18}/></span>
-              <span className="notification-history-content">
+              <button className="notification-history-open" type="button" onClick={() => openNotification(notification)}><span className="notification-history-content">
                 <strong>{notification.title}</strong>
                 <span>{notification.body}</span>
-              </span>
+              </span></button>
               <span className="notification-history-side">
-                {notification.read_at && <span className="notification-history-read-state" title="Просмотрено" aria-label="Просмотрено"><CheckCheck size={15}/></span>}
+                <button className={`notification-history-read-state${notification.read_at ? " is-read" : ""}`} type="button" title={notification.read_at ? "Пометить непрочитанным" : "Пометить прочитанным"} aria-label={notification.read_at ? "Пометить непрочитанным" : "Пометить прочитанным"} onClick={() => void toggleRead(notification)}>{notification.read_at ? <CheckCheck size={15}/> : <Check size={15}/>}</button>
                 <time>{formatHistoryTime(notification.created_at)}</time>
-                <ChevronRight size={17} />
+                <button className="notification-history-chevron" type="button" aria-label="Открыть уведомление" onClick={() => openNotification(notification)}><ChevronRight size={17} /></button>
               </span>
-            </button>
+            </article>
             );
           })}
         </div>

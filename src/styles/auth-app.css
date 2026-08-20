@@ -334,9 +334,9 @@ html[data-theme="light"] .calendar-popover {
   scrollbar-width: none;
 }
 
-.notifications-popover > button {
+.notifications-popover .notification-popover-item {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr) 32px;
   column-gap: 10px;
   width: 100%;
   box-sizing: border-box;
@@ -348,6 +348,13 @@ html[data-theme="light"] .calendar-popover {
   background: #241814;
   border-color: #49332b;
 }
+.notifications-popover .notification-popover-open { display:block; min-width:0; padding:0; color:inherit; text-align:left; background:transparent; border:0; cursor:pointer; }
+.notifications-popover .notification-popover-headline { display:grid; grid-column:1/-1; grid-template-columns:34px minmax(0,1fr) 32px; align-items:center; gap:10px; width:100%; }
+.notifications-popover .notification-popover-headline>strong { display:-webkit-box; min-width:0; overflow:hidden; color:var(--app-text); font-size:14px; line-height:1.3; overflow-wrap:anywhere; text-overflow:ellipsis; white-space:normal; -webkit-box-orient:vertical; -webkit-line-clamp:2; line-clamp:2; }
+.notifications-popover .notification-popover-open { grid-column:1/-1; width:100%; padding-top:8px; }
+.notifications-popover .notification-popover-open:hover,.notifications-popover .notification-popover-open:focus-visible { color:inherit; background:transparent; border-color:transparent; outline:none; }
+.notifications-popover .notification-popover-item { transition:background-color .16s ease,border-color .16s ease; }
+.notifications-popover .notification-popover-item:hover,.notifications-popover .notification-popover-item:focus-within { background:#30201a; border-color:color-mix(in srgb,var(--app-accent) 32%,#49332b); }
 
 .notifications-popover .notification-type-icon,
 .notification-history-type {
@@ -360,7 +367,13 @@ html[data-theme="light"] .calendar-popover {
   border-radius: 10px;
 }
 
-.notifications-popover .notification-type-icon { width:32px; height:32px; }
+.notifications-popover .notification-type-icon { width:32px; min-width:32px; max-width:32px; height:32px; min-height:32px; max-height:32px; box-sizing:border-box; }
+.notifications-popover .notification-type-icon>svg { display:block; color:var(--notification-tone-fg); stroke:currentColor; opacity:1; }
+html[data-theme="light"] .app-shell .notifications-popover .notification-tone-info .notification-type-icon>svg { color:#165ea8; }
+html[data-theme="light"] .app-shell .notifications-popover .notification-tone-success .notification-type-icon>svg { color:#267a31; }
+html[data-theme="light"] .app-shell .notifications-popover .notification-tone-warning .notification-type-icon>svg { color:#8a5a00; }
+html[data-theme="light"] .app-shell .notifications-popover .notification-tone-danger .notification-type-icon>svg { color:#a72f2b; }
+html[data-theme="light"] .app-shell .notifications-popover .notification-tone-invitation .notification-type-icon>svg { color:#6d3ca0; }
 .notification-tone-info { --notification-tone-fg:#78aef8; --notification-tone-bg:#17263b; --notification-tone-border:#365b88; }
 .notification-tone-success { --notification-tone-fg:#72d37b; --notification-tone-bg:#17301e; --notification-tone-border:#3e7147; }
 .notification-tone-warning { --notification-tone-fg:#f2bd58; --notification-tone-bg:#382a12; --notification-tone-border:#7d6028; }
@@ -405,15 +418,24 @@ html[data-theme="light"] .calendar-popover {
 .notifications-popover .notification-read-state {
   display: inline-flex;
   flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  box-sizing: border-box;
   align-items: center;
   justify-content: center;
-  color: var(--app-success, #65c96f);
-  background: color-mix(in srgb, var(--app-success, #65c96f) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--app-success, #65c96f) 32%, var(--app-border));
-  border-radius: 8px;
+  padding: 0;
+  color: var(--app-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  gap: 0;
+  cursor: pointer;
 }
+.notifications-popover .notification-read-state.is-read { color:var(--app-success,#65c96f); background:color-mix(in srgb,var(--app-success,#65c96f) 12%,transparent); border-color:color-mix(in srgb,var(--app-success,#65c96f) 32%,var(--app-border)); }
 
 .notifications-popover .notification-content > small {
   display: block;
@@ -476,7 +498,7 @@ html[data-theme="light"] .calendar-popover {
   line-height: 1.4;
 }
 
-.notifications-popover > button.unread {
+.notifications-popover .notification-popover-item.unread {
   background: #3a1d14;
   border-color: #8f452d;
 }
@@ -487,16 +509,18 @@ html[data-theme="light"] .app-shell .notifications-popover {
   box-shadow: 0 18px 42px rgba(77, 48, 31, .16);
 }
 
-html[data-theme="light"] .app-shell .notifications-popover > button {
+html[data-theme="light"] .app-shell .notifications-popover .notification-popover-item {
   color: #261b16;
   background: #fffdfb;
   border-color: #dbc8bd;
 }
 
-html[data-theme="light"] .app-shell .notifications-popover > button.unread {
+html[data-theme="light"] .app-shell .notifications-popover .notification-popover-item.unread {
   background: #fff0e8;
   border-color: #f0a487;
 }
+html[data-theme="light"] .app-shell .notifications-popover .notification-popover-item:hover,
+html[data-theme="light"] .app-shell .notifications-popover .notification-popover-item:focus-within { color:#261b16; background:#fff0e7; border-color:rgba(218,78,37,.25); }
 
 html[data-theme="light"] .notification-tone-info { --notification-tone-fg:#165ea8; --notification-tone-bg:#e8f2ff; --notification-tone-border:#8cb9e8; }
 html[data-theme="light"] .notification-tone-success { --notification-tone-fg:#267a31; --notification-tone-bg:#eaf7e9; --notification-tone-border:#93c993; }
@@ -587,8 +611,9 @@ html[data-theme="light"] .app-shell .notifications-popover > button:focus-visibl
   background: transparent;
   border: 0;
   border-bottom: 1px solid var(--app-border);
-  cursor: pointer;
 }
+.notification-history-open { display:block; min-width:0; padding:0; color:inherit; text-align:left; background:transparent; border:0; cursor:pointer; }
+.notification-history-chevron { display:grid; place-items:center; padding:4px; color:inherit; background:transparent; border:0; border-radius:7px; cursor:pointer; }
 
 .notification-history-type { width:36px; height:36px; }
 
@@ -650,15 +675,17 @@ html[data-theme="light"] .app-shell .notifications-popover > button:focus-visibl
 
 .notification-history-read-state {
   display: inline-flex;
-  width: 26px;
-  height: 26px;
+  width: 36px;
+  height: 36px;
   align-items: center;
   justify-content: center;
-  color: var(--app-success, #65c96f);
-  background: color-mix(in srgb, var(--app-success, #65c96f) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--app-success, #65c96f) 30%, var(--app-border));
-  border-radius: 8px;
+  padding: 0;
+  color: var(--app-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 10px;
 }
+.notification-history-read-state.is-read { color:var(--app-success,#65c96f); background:color-mix(in srgb,var(--app-success,#65c96f) 12%,transparent); border-color:color-mix(in srgb,var(--app-success,#65c96f) 30%,var(--app-border)); }
 
 .notifications-load-more {
   justify-self: center;
@@ -4320,29 +4347,30 @@ html[data-theme="light"] .progress-ring::before {
   height: 0;
 }
 
-.app-shell .action-dialog {
+.app-shell :is(.action-dialog, .date-time-popover) {
   scrollbar-color: color-mix(in srgb, var(--app-muted) 44%, transparent) transparent;
   scrollbar-width: thin;
 }
 
-.app-shell .action-dialog::-webkit-scrollbar {
+.app-shell :is(.action-dialog, .date-time-popover)::-webkit-scrollbar {
   width: 4px;
+  height: 4px;
 }
 
-.app-shell .action-dialog::-webkit-scrollbar-track {
+.app-shell :is(.action-dialog, .date-time-popover)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.app-shell .action-dialog::-webkit-scrollbar-thumb {
+.app-shell :is(.action-dialog, .date-time-popover)::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--app-muted, #b8aaa1) 44%, transparent);
   border-radius: 999px;
 }
 
-.app-shell .action-dialog:hover::-webkit-scrollbar-thumb {
+.app-shell :is(.action-dialog, .date-time-popover):hover::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--app-accent, #ff6b3d) 42%, var(--app-muted, #b8aaa1));
 }
 
-.app-shell .action-dialog::-webkit-scrollbar-button {
+.app-shell :is(.action-dialog, .date-time-popover)::-webkit-scrollbar-button {
   display: none;
   width: 0;
   height: 0;

@@ -1023,12 +1023,19 @@ export interface CallActionCapabilities {
   can_reassign: boolean;
   can_request_transfer: boolean;
   can_resolve_transfer: boolean;
+  can_reopen: boolean;
 }
 export interface CallAction {
   id: string;
-  company_uuid: string;
-  source_department_uuid: string;
-  target_department_uuid: string;
+  company_uuid?: string;
+  company_name?: string;
+  company_tag?: string;
+  scope_type?: "company" | "personal";
+  scope_tag?: string;
+  source_department_uuid?: string;
+  source_department_name?: string;
+  target_department_uuid?: string;
+  target_department_name?: string;
   call_uuid: string;
   analysis_uuid: string;
   transcription_revision: number;
@@ -1063,8 +1070,8 @@ export interface CallActionAssignee {
 export interface CallActionAssigneesResponse { items: CallActionAssignee[]; }
 export interface CreateCallActionRequest {
   analysis_uuid: string;
-  source_department_uuid: string;
-  target_department_uuid: string;
+  source_department_uuid?: string;
+  target_department_uuid?: string;
   assignee_user_uuid?: string;
   title: string;
   description: string;
@@ -1168,6 +1175,7 @@ export interface AnalysisComment {
   author_user_uuid: string;
   author_name: string;
   body: string;
+  criterion_key?: string;
   can_edit: boolean;
   created_at: string;
   edited_at?: string;

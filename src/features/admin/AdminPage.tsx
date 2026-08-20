@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, ArrowLeft, Building2, CheckCircle2, Headphones, ListTodo, RefreshCw, Search, ShieldCheck, Users, X } from "lucide-react";
+import { Activity, ArrowLeft, Building2, CalendarClock, CheckCircle2, Headphones, ListTodo, RefreshCw, RotateCcw, Search, ShieldCheck, Users, X, XCircle } from "lucide-react";
 import { api, ApiError, getAdminCallAudioBlob } from "../../api";
 import { isVideoCall } from "../../shared/lib/media";
 import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
 import { SelectControl } from "../../shared/ui/primitives";
+import { DateTimePicker } from "../../shared/ui/DateTimePicker";
 import type {
   AppPage,
   AdminCapabilitiesResponse,
   CallResponse,
   CallAction,
+  CallActionAssignee,
   CompanyResponse,
   AdminSubscriptionResponse,
   Plan,
@@ -21,6 +23,7 @@ type AdminSection = "users" | "companies" | "actions";
 type SubscriptionOwner = "users" | "companies";
 type AdminDetailRoute = { section: AdminSection; id: string } | null;
 type AdminAlert = { id: number; message: string; tone: "success" | "error" };
+type AdminActionFilters = { status?: string; company_tag?: string; department?: string };
 
 const adminAlertEvent = "verbatrace:admin-alert";
 
@@ -64,6 +67,9 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
   ], [capabilities]);
   const [section, setSection] = useState<AdminSection>(() => adminSectionFromPath(window.location.pathname) ?? availableSections[0] ?? "users");
   const [query, setQuery] = useState("");
+  const [actionStatus, setActionStatus] = useState("");
+  const [actionCompanyTag, setActionCompanyTag] = useState("");
+  const [actionDepartment, setActionDepartment] = useState("");
   const [users, setUsers] = useState<UserResponse[]>([]);
   const [companies, setCompanies] = useState<CompanyResponse[]>([]);
   const [actions, setActions] = useState<CallAction[]>([]);
@@ -72,13 +78,14 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
   const [actionsTotal, setActionsTotal] = useState(0);
   const [selectedUser, setSelectedUser] = useState<UserResponse | null>(null);
   const [selectedCompany, setSelectedCompany] = useState<CompanyResponse | null>(null);
+  const [selectedAction, setSelectedAction] = useState<CallAction | null>(null);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState<Record<AdminSection, boolean>>({ users: false, companies: false, actions: false });
   const [notice, setNotice] = useState("");
   const [routeLoading, setRouteLoading] = useState(() => Boolean(adminDetailFromPath(window.location.pathname)));
   const requestSequence = useRef(0);
 
-  const load = useCallback(async (nextSection: AdminSection, search: string) => {
+  const load = useCallback(async (nextSection: AdminSection, search: string, actionFilters: AdminActionFilters = {}) => {
     const requestId = ++requestSequence.current;
     setLoading(true);
     setNotice("");
@@ -94,7 +101,7 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
         setCompanies(response.items);
         setCompaniesTotal(response.total);
       } else {
-        const response = await api.listAdminActions({ q: search.trim(), limit: 50, offset: 0 });
+        const response = await api.listAdminActions({ q: search.trim(), ...actionFilters, limit: 50, offset: 0 });
         if (requestId !== requestSequence.current) return;
         setActions(response.items);
         setActionsTotal(response.total);
@@ -171,6 +178,29 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
     }
   }
 
+  async function openAction(action: CallAction) {
+    setNotice("");
+    try { setSelectedAction(await api.getAdminAction(action.id)); } catch (error) { setNotice(message(error)); }
+  }
+
+  async function openActionScope(action: CallAction) {
+    setNotice("");
+    try {
+      if (action.company_uuid) {
+        setSelectedCompany(await api.getAdminCompany(action.company_uuid));
+        window.history.pushState({}, "", `/app/admin/companies/${encodeURIComponent(action.company_uuid)}`);
+      } else {
+        setSelectedUser(await api.getAdminUser(action.assignee_user_uuid));
+        window.history.pushState({}, "", `/app/admin/users/${encodeURIComponent(action.assignee_user_uuid)}`);
+      }
+    } catch (error) { setNotice(message(error)); }
+  }
+
+  function replaceAction(updated: CallAction) {
+    setSelectedAction(updated);
+    setActions((items) => items.map((item) => item.id === updated.id ? updated : item));
+  }
+
   function replaceUser(updated: UserResponse) {
     setSelectedUser(updated);
     setUsers((items) => items.map((item) => item.id === updated.id ? updated : item));
@@ -209,6 +239,9 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
   if (selectedCompany) {
     return <><AdminAlertViewport /><CompanyDetail company={selectedCompany} capabilities={capabilities} onBack={() => closeDetail("companies")} onUpdated={replaceCompany} /></>;
   }
+  if (selectedAction) {
+    return <><AdminAlertViewport /><ActionAdminDetail action={selectedAction} canManage={has(capabilities, "admin.actions.manage")} onBack={() => setSelectedAction(null)} onUpdated={replaceAction} /></>;
+  }
 
   return <><AdminAlertViewport /><section className="admin-page">
     <AdminHeading capabilities={capabilities} />
@@ -221,15 +254,16 @@ export function AdminPage({ capabilities, onNavigate }: { capabilities: AdminCap
       </nav>
       <div className="admin-content">
         <>
-          <form className="admin-toolbar" onSubmit={(event) => { event.preventDefault(); void load(section, query); }}>
-            <label><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={section === "users" ? "Имя, @username или email" : section === "companies" ? "Название или тег компании" : "Название или ответственный"} /></label>
+          <form className={`admin-toolbar${section === "actions" ? " admin-actions-toolbar" : ""}`} onSubmit={(event) => { event.preventDefault(); void load(section, query, { status: actionStatus || undefined, company_tag: actionCompanyTag.trim() || undefined, department: actionDepartment.trim() || undefined }); }}>
+            <label><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={section === "users" ? "Имя, @username или email" : section === "companies" ? "Название или тег компании" : "Действие, ответственный, компания или отдел"} /></label>
+            {section === "actions" && <div className="admin-action-filter-fields"><SelectControl aria-label="Статус действия" value={actionStatus} onChange={(event) => setActionStatus(event.target.value)}><option value="">Все статусы</option><option value="open">Открыто</option><option value="in_progress">В работе</option><option value="completed">Выполнено</option><option value="cancelled">Отменено</option><option value="overdue">Просрочено</option></SelectControl><input aria-label="Тег компании" value={actionCompanyTag} onChange={(event) => setActionCompanyTag(event.target.value)} placeholder="Тег компании"/><input aria-label="Отдел" value={actionDepartment} onChange={(event) => setActionDepartment(event.target.value)} placeholder="Отдел"/></div>}
             <button className="ghost-button small" type="submit">Найти</button>
-            <button className="icon-button" type="button" aria-label="Обновить" aria-busy={loading} disabled={loading} onClick={() => void load(section, query)}><RefreshCw className={loading ? "refresh-icon spinning" : "refresh-icon"} size={17} /></button>
+            <button className="icon-button" type="button" aria-label="Обновить" aria-busy={loading} disabled={loading} onClick={() => void load(section, query, { status: actionStatus || undefined, company_tag: actionCompanyTag.trim() || undefined, department: actionDepartment.trim() || undefined })}><RefreshCw className={loading ? "refresh-icon spinning" : "refresh-icon"} size={17} /></button>
           </form>
           <p className="admin-section-summary">{section === "users" ? `Пользователей: ${usersTotal}` : section === "companies" ? `Компаний: ${companiesTotal}` : `Действий: ${actionsTotal}`}</p>
           {notice && <p className="admin-notice" role="status">{notice}</p>}
           <div className="admin-results" aria-busy={loading}>
-            {loading && !loaded[section] ? <p className="admin-empty">Загрузка данных…</p> : section === "users" ? <UsersTable users={users} onOpen={openUser} /> : section === "companies" ? <CompaniesTable companies={companies} onOpen={openCompany} /> : <ActionsTable actions={actions} />}
+            {loading && !loaded[section] ? <p className="admin-empty">Загрузка данных…</p> : section === "users" ? <UsersTable users={users} onOpen={openUser} /> : section === "companies" ? <CompaniesTable companies={companies} onOpen={openCompany} /> : <ActionsTable actions={actions} onOpen={openAction} onOpenScope={openActionScope} />}
           </div>
         </>
       </div>
@@ -412,8 +446,46 @@ function ReasonDialog({ title, reason, busy, onReason, onCancel, onConfirm }: { 
 function UsersTable({ users, onOpen }: { users: UserResponse[]; onOpen: (user: UserResponse) => void }) { return <div className="admin-table-wrap"><table><thead><tr><th>Пользователь</th><th>Роль</th><th>Создан</th><th /></tr></thead><tbody>{users.map((user) => <tr key={user.id}><td><strong>{fullName(user)}</strong><small>{user.username} · {user.email}</small></td><td><span className="chip">{roleLabel(user.role)}</span></td><td>{date(user.created_at)}</td><td><button className="ghost-button small" type="button" onClick={() => onOpen(user)}>Открыть</button></td></tr>)}</tbody></table>{users.length === 0 && <p className="admin-empty">Пользователи не найдены</p>}</div>; }
 function CompaniesTable({ companies, onOpen }: { companies: CompanyResponse[]; onOpen: (company: CompanyResponse) => void }) { return <div className="admin-table-wrap"><table><thead><tr><th>Компания</th><th>Тег</th><th>Создана</th><th /></tr></thead><tbody>{companies.map((company) => <tr key={company.id}><td><strong>{company.name}</strong></td><td>{company.tag || "Тег не задан"}</td><td>{date(company.created_at)}</td><td><button className="ghost-button small" type="button" onClick={() => onOpen(company)}>Открыть</button></td></tr>)}</tbody></table>{companies.length === 0 && <p className="admin-empty">Компании не найдены</p>}</div>; }
 
-function ActionsTable({ actions }: { actions: CallAction[] }) {
-  return <div className="admin-table-wrap admin-actions-table"><table><thead><tr><th>Действие</th><th>Ответственный</th><th>Статус</th><th>Срок</th></tr></thead><tbody>{actions.map((action) => <tr key={action.id}><td className="admin-action-title"><strong>{action.title}</strong></td><td className="admin-action-assignee">{usernameLabel(action.assignee_username)}</td><td><span className={`admin-action-status-chip is-${action.status}`}>{actionStatusLabel(action.status)}</span></td><td className="admin-action-due">{date(action.due_at)}</td></tr>)}</tbody></table>{actions.length === 0 && <p className="admin-empty">Действия не найдены</p>}</div>;
+function ActionsTable({ actions, onOpen, onOpenScope }: { actions: CallAction[]; onOpen: (action: CallAction) => void; onOpenScope: (action: CallAction) => void }) {
+  return <div className="admin-actions-list"><div className="admin-action-list-head" aria-hidden="true"><span>Действие, компания и отдел</span><span>Ответственный</span><span>Статус</span><span>Срок</span><span/></div>{actions.map((action) => <article className="admin-action-list-row" key={action.id}><div className="admin-action-title"><strong>{action.title}</strong><small className="admin-action-scope"><span>{action.company_uuid ? (action.company_name || "Компания") : "Персональное действие"}</span> · <button type="button" onClick={() => void onOpenScope(action)}>{actionScopeTag(action)}</button>{action.target_department_name ? <> · <span>{action.target_department_name}</span></> : null}</small></div><div className="admin-action-assignee"><small>Ответственный</small>{usernameLabel(action.assignee_username)}</div><div className="admin-action-state"><small>Статус</small><span className={`admin-action-status-chip is-${action.status}`}>{actionStatusLabel(action.status)}</span></div><div className="admin-action-due"><small>Срок</small>{date(action.due_at)}</div><button className="ghost-button small" type="button" onClick={() => onOpen(action)}>Открыть</button></article>)}{actions.length === 0 && <p className="admin-empty">Действия не найдены</p>}</div>;
+}
+
+function ActionAdminDetail({ action, canManage, onBack, onUpdated }: { action: CallAction; canManage: boolean; onBack: () => void; onUpdated: (action: CallAction) => void }) {
+  const [reason, setReason] = useState("");
+  const [dueAt, setDueAt] = useState(() => localDateTime(action.due_at));
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [assignees, setAssignees] = useState<CallActionAssignee[]>([]);
+  const [assigneeId, setAssigneeId] = useState(action.assignee_user_uuid);
+  const [departmentId, setDepartmentId] = useState(action.target_department_uuid);
+  const terminal = action.status === "completed" || action.status === "cancelled";
+  useEffect(() => {
+    if (!canManage || !action.company_uuid) return;
+    let cancelled = false;
+    api.listAdminActionAssignees(action.company_uuid).then((response) => { if (!cancelled) setAssignees(response.items); }).catch((error) => { if (!cancelled) setNotice(message(error)); });
+    return () => { cancelled = true; };
+  }, [action.company_uuid, canManage]);
+  const selectedAssignee = assignees.find((item) => item.user_uuid === assigneeId);
+  async function mutate(operation: "complete" | "cancel" | "reschedule" | "reassign" | "reopen") {
+    if (reason.trim().length < 10) { setNotice("Укажите причину не короче 10 символов"); return; }
+    if (operation === "reschedule" && (!dueAt || new Date(dueAt) <= new Date())) { setNotice("Укажите будущий срок выполнения"); return; }
+    setBusy(true); setNotice("");
+    try {
+      const updated = await api.mutateAdminAction(action.id, operation, { expected_lock_version: action.lock_version, reason: reason.trim(), ...(operation === "reschedule" ? { due_at: new Date(dueAt).toISOString() } : {}), ...(operation === "reassign" ? { assignee_user_uuid: assigneeId, target_department_uuid: departmentId } : {}) });
+      onUpdated(updated); setReason(""); setDueAt(localDateTime(updated.due_at));
+      setAssigneeId(updated.assignee_user_uuid); setDepartmentId(updated.target_department_uuid);
+      const labels = { complete: "Действие завершено", cancel: "Действие отменено", reschedule: "Срок действия изменён", reassign: "Ответственный изменён", reopen: "Действие восстановлено" };
+      setNotice(labels[operation]); showAdminAlert(labels[operation]);
+    } catch (error) { setNotice(message(error)); } finally { setBusy(false); }
+  }
+  return <section className="admin-page admin-action-page">
+    <div className="settings-back-row"><button className="text-button action-back" type="button" onClick={onBack}><ArrowLeft size={16}/>К действиям</button></div>
+    <header className="admin-page-head admin-action-card-head"><span className="admin-action-card-icon" aria-hidden="true"><ListTodo size={25}/></span><div className="admin-action-card-copy"><p className="eyebrow">КАРТОЧКА ДЕЙСТВИЯ</p><h1>{action.title}</h1><p>{action.description || "Описание не указано"}</p></div><span className={`admin-action-status-chip is-${action.status}`}>{actionStatusLabel(action.status)}</span></header>
+    {notice && <p className="admin-notice" role="status">{notice}</p>}
+    <div className="admin-profile-grid"><section className="admin-detail"><h2>Сведения</h2><dl><dt>Область</dt><dd>{action.company_uuid ? (action.company_name || "Компания") : "Персональное действие"} · {actionScopeTag(action)}</dd>{action.target_department_name ? <><dt>Целевой отдел</dt><dd>{action.target_department_name}</dd></> : null}{action.source_department_name ? <><dt>Исходный отдел</dt><dd>{action.source_department_name}</dd></> : null}<dt>Ответственный</dt><dd>{usernameLabel(action.assignee_username)}</dd><dt>Срок</dt><dd>{dateTime(action.due_at)}</dd><dt>Статус</dt><dd>{actionStatusLabel(action.status)}</dd><dt>Версия</dt><dd>{action.lock_version}</dd></dl></section>
+    {canManage && <section className="admin-detail admin-action-management admin-action-block" aria-busy={busy}><h2>Корректировка</h2><p className="muted">Каждое изменение фиксируется в истории действия. Для завершённого или отменённого действия сначала выполните восстановление.</p><label>Причина<textarea value={reason} maxLength={2000} onChange={(event) => { setReason(event.target.value); setNotice(""); }} placeholder="Обязательно, не менее 10 символов"/></label>{notice && <p className="admin-notice admin-action-inline-notice" role="status">{notice}</p>}{terminal ? <button className="primary-button" type="button" disabled={busy} onClick={() => void mutate("reopen")}><RotateCcw size={17}/>{busy ? "Сохраняю…" : "Восстановить действие"}</button> : <>{action.company_uuid ? <><label>Ответственный<SelectControl value={assigneeId} onChange={(event) => { const next = event.target.value; setAssigneeId(next); const user = assignees.find((item) => item.user_uuid === next); setDepartmentId(user?.departments[0]?.id ?? ""); }}>{assignees.map((item) => <option key={item.user_uuid} value={item.user_uuid}>{usernameLabel(item.username)} · {item.full_name} {item.full_surname}</option>)}</SelectControl></label><label>Отдел<SelectControl value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>{selectedAssignee?.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectControl></label><button className="ghost-button" type="button" disabled={busy || !assigneeId || !departmentId} onClick={() => void mutate("reassign")}><Users size={17}/>{busy ? "Сохраняю…" : "Переназначить"}</button></> : <p className="muted">Персональное действие закреплено за владельцем звонка и не может быть переназначено.</p>}<label>Новый срок<DateTimePicker value={dueAt} onChange={setDueAt}/></label><div className="admin-action-buttons"><button className="ghost-button" type="button" disabled={busy} onClick={() => void mutate("reschedule")}><CalendarClock size={17}/>{busy ? "Сохраняю…" : "Изменить срок"}</button><button className="primary-button" type="button" disabled={busy} onClick={() => void mutate("complete")}><CheckCircle2 size={17}/>{busy ? "Сохраняю…" : "Завершить"}</button><button className="ghost-button danger" type="button" disabled={busy} onClick={() => void mutate("cancel")}><XCircle size={17}/>{busy ? "Сохраняю…" : "Отменить"}</button></div></>}</section>}
+    </div>
+  </section>;
 }
 
 function canTargetRole(actor: AdminCapabilitiesResponse["role"], target: string) { return target !== "superadmin" && (actor === "superadmin" || (actor === "admin" && (target === "user" || target === "helper"))); }
@@ -423,7 +495,11 @@ function roleLabel(role: string) { return ({ user: "Пользователь", h
 function callStatusLabel(status: string) { return ({ new: "Новый", processing: "Обрабатывается", transcribed: "Расшифрован", analyzed: "Проанализирован", failed: "Не обработан" } as Record<string, string>)[status] ?? "Статус неизвестен"; }
 function actionStatusLabel(status: string) { return ({ open: "Открыто", in_progress: "В работе", completed: "Выполнено", cancelled: "Отменено", overdue: "Просрочено" } as Record<string, string>)[status] ?? status; }
 function usernameLabel(username: string) { const normalized = username.trim().replace(/^@+/, ""); return normalized ? `@${normalized}` : "—"; }
+function normalizeTag(tag?: string | null) { const normalized = (tag ?? "").trim().replace(/^@+/, ""); return normalized ? `@${normalized}` : "Тег не задан"; }
+function actionScopeTag(action: CallAction) { return normalizeTag(action.scope_tag || action.company_tag || action.company_uuid || action.assignee_username); }
 function fullName(user: UserResponse) { return `${user.full_name} ${user.full_surname}`.trim() || user.username; }
 function initials(user: UserResponse) { return fullName(user).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase(); }
 function date(value: string) { const parsed = new Date(value); return value && !Number.isNaN(parsed.getTime()) ? new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(parsed) : "—"; }
+function dateTime(value: string) { const parsed = new Date(value); return value && !Number.isNaN(parsed.getTime()) ? new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium", timeStyle: "short" }).format(parsed) : "—"; }
+function localDateTime(value: string) { const parsed = new Date(value); if (Number.isNaN(parsed.getTime())) return ""; const offset = parsed.getTimezoneOffset() * 60_000; return new Date(parsed.getTime() - offset).toISOString().slice(0, 16); }
 function message(error: unknown) { return error instanceof Error ? error.message : "Не удалось выполнить операцию"; }

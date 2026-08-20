@@ -1,12 +1,14 @@
 import { ArrowLeft, CheckCircle2, ChevronUp, Pencil, Plus, RotateCcw, Save, Send, ShieldAlert, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../../api";
-import type { QualityReviewCriterion, QualityReviewResponse } from "../../types";
+import type { AnalysisComment, QualityReviewCriterion, QualityReviewResponse } from "../../types";
+import { AnalysisComments } from "../calls/AnalysisComments";
 
 type CriterionDraft = { key: string; title: string; custom: boolean; persistedEdited: boolean; aiScore?: number; scoreMin: number; scoreMax: number; storageMax: number; humanScore?: number; notApplicable: boolean; comment: string };
 
 export function QualityReviewPage({ reviewId, onBack }: { reviewId: string; onBack: () => void }) {
   const [review, setReview] = useState<QualityReviewResponse>();
+  const [comments, setComments] = useState<AnalysisComment[]>([]);
   const [criteria, setCriteria] = useState<CriterionDraft[]>([]);
   const [overall, setOverall] = useState("");
   const [resolutionComment, setResolutionComment] = useState("");
@@ -24,6 +26,8 @@ export function QualityReviewPage({ reviewId, onBack }: { reviewId: string; onBa
     try {
       const value = await api.getQualityReview(reviewId);
       setReview(value);
+      const context = await api.getAnalysisReviewContext(value.call_uuid, value.analysis_uuid);
+      setComments(context.comments ?? []);
     } catch (cause) { setError(message(cause)); }
     finally { setLoading(false); }
   }
@@ -163,6 +167,7 @@ export function QualityReviewPage({ reviewId, onBack }: { reviewId: string; onBa
       })}
       {!readOnly && <button className="quality-add-criterion" type="button" onClick={addCriterion}><Plus size={19} /><span><strong>Добавить свой критерий</strong><small>Создайте дополнительный пункт и оцените его по шкале от 0 до 10</small></span></button>}
     </main>
+    <AnalysisComments callId={review.call_uuid} analysisId={review.analysis_uuid} comments={comments} canComment onChange={setComments} criteria={criteria.map((criterion) => ({ key: criterion.key, title: criterion.title }))} title="Комментарии к критериям" subtitle="Комментарии не меняют официальную оценку." placeholder="Оставьте комментарий к выбранному критерию…" />
       {!readOnly && <footer className="quality-actions"><div>{saving ? "Сохраняю…" : dirty ? "Есть несохранённые изменения" : review.draft ? "Черновик сохранён — работу можно продолжить позже" : "Изменений пока нет"}{blockers.length > 0 && <span>{blockers[0]}</span>}</div><button className="ghost-button" type="button" disabled={saving || (!dirty && !review.draft)} onClick={() => void discardChanges()}><RotateCcw size={17} />Отменить изменения</button><button className="ghost-button" type="button" disabled={saving || !dirty} onClick={() => void saveDraft()}><Save size={17} />Сохранить</button><button className="primary-button" type="button" disabled={saving || blockers.length > 0 || review.source_outdated} title={blockers[0]} onClick={() => void publish()}><Send size={17} />Опубликовать</button></footer>}
     {review.published_revision && <div className="quality-published"><CheckCircle2 size={20} />Опубликована человеческая версия №{review.published_revision.revision_number}</div>}
     {openAppeal && <section className="quality-workflow"><h2>Апелляция</h2><p>{openAppeal.reason}</p>{review.capabilities.can_resolve_appeal && <><p>{review.capabilities.can_edit ? "Чтобы принять замечания, опубликуйте независимую переоценку выше. Она станет действующей и автоматически завершит пересмотр." : "Вы можете отклонить обращение, оставив действующую оценку без изменений."}</p><textarea value={resolutionComment} maxLength={5000} placeholder="Комментарий к решению" onChange={(event) => setResolutionComment(event.target.value)} /><div><button className="ghost-button" disabled={saving || resolutionComment.trim().length < 3} onClick={() => void resolveAppeal(openAppeal.appeal_uuid, "rejected")}>Отклонить обращение</button></div></>}</section>}

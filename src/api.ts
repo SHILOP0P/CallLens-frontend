@@ -532,8 +532,8 @@ export const api = {
     return request<AnalysisReviewContext>(`/calls/${encodeURIComponent(callId)}/quality-review-context${queryString({ analysis_uuid: analysisId })}`);
   },
 
-  createAnalysisComment(callId: string, analysisId: string, body: string) {
-    return request<import("./types").AnalysisComment>(`/calls/${encodeURIComponent(callId)}/analysis-comments${queryString({ analysis_uuid: analysisId })}`, { method: "POST", body: JSON.stringify({ body }) });
+  createAnalysisComment(callId: string, analysisId: string, body: string, criterionKey?: string) {
+    return request<import("./types").AnalysisComment>(`/calls/${encodeURIComponent(callId)}/analysis-comments${queryString({ analysis_uuid: analysisId })}`, { method: "POST", body: JSON.stringify({ body, criterion_key: criterionKey }) });
   },
 
   updateAnalysisComment(commentId: string, lockVersion: number, body: string) {
@@ -909,8 +909,20 @@ export const api = {
     return request<CallAction>(`/actions/${encodeURIComponent(actionId)}`);
   },
 
-  listAdminActions(input: { status?: string; q?: string; limit?: number; offset?: number } = {}) {
+  listAdminActions(input: { status?: string; q?: string; company_tag?: string; department?: string; limit?: number; offset?: number } = {}) {
     return request<CallActionsResponse>(`/admin/actions${queryString(input)}`);
+  },
+
+  getAdminAction(actionId: string) {
+    return request<CallAction>(`/admin/actions/${encodeURIComponent(actionId)}`);
+  },
+
+  listAdminActionAssignees(companyId: string) {
+    return request<CallActionAssigneesResponse>(`/admin/companies/${encodeURIComponent(companyId)}/action-assignees`);
+  },
+
+  mutateAdminAction(actionId: string, operation: "complete" | "cancel" | "reschedule" | "reassign" | "reopen", input: Record<string, unknown>) {
+    return request<CallAction>(`/admin/actions/${encodeURIComponent(actionId)}/${operation}`, { method: "POST", body: JSON.stringify(input) });
   },
 
   createAction(callId: string, input: CreateCallActionRequest) {
@@ -925,7 +937,7 @@ export const api = {
     return request<CallActionAssigneesResponse>(`/companies/${encodeURIComponent(companyId)}/action-assignees${queryString(input)}`);
   },
 
-  mutateAction(actionId: string, operation: "start" | "complete" | "cancel" | "reschedule" | "reassign", input: Record<string, unknown>) {
+  mutateAction(actionId: string, operation: "start" | "complete" | "cancel" | "reschedule" | "reassign" | "reopen", input: Record<string, unknown>) {
     return request<CallAction>(`/actions/${encodeURIComponent(actionId)}/${operation}`, { method: "POST", body: JSON.stringify(input) });
   },
 
@@ -1319,6 +1331,10 @@ export const api = {
 
   markNotificationRead(notificationId: string) {
     return request<void>(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
+  },
+
+  markNotificationUnread(notificationId: string) {
+    return request<void>(`/notifications/${encodeURIComponent(notificationId)}/unread`, { method: "POST" });
   },
 
   markAllNotificationsRead() {
