@@ -152,6 +152,7 @@ export function readStoredSession(): SessionState | null {
 
 export function pageFromPath(pathname: string): AppPage {
   if (pathname === "/app/monitoring") return "monitoring";
+  if (pathname === "/app/instructions") return "settingsInstructions";
   if (/^\/app\/actions\/[^/]+$/.test(pathname)) return "action";
   if (/^\/app\/calls\/[^/]+\/analyses\/[^/]+\/instructions\/[^/]+$/.test(pathname)) return "instructionHistory";
   if (pathname === "/app/instructions/new") return "instructionCreate";

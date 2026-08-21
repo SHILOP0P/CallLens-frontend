@@ -63,17 +63,21 @@ export function InstructionsPage({
     () => new Set(editableDepartments.map((department) => department.id)),
     [editableDepartments]
   );
-  const personalInstructions = localInstructions.filter((instruction) => instruction.scope === "personal");
-  const companyInstructions = localInstructions.filter(
+  const newestFirst = (items: AnalysisInstruction[]) => [...items].sort((left, right) => {
+    const dateDifference = Date.parse(right.created_at) - Date.parse(left.created_at);
+    return dateDifference || right.id.localeCompare(left.id);
+  });
+  const personalInstructions = newestFirst(localInstructions.filter((instruction) => instruction.scope === "personal"));
+  const companyInstructions = newestFirst(localInstructions.filter(
     (instruction) =>
       instruction.scope === "company" &&
       Boolean(instruction.company_uuid && managedCompanyIds.has(instruction.company_uuid))
-  );
-  const departmentInstructions = localInstructions.filter(
+  ));
+  const departmentInstructions = newestFirst(localInstructions.filter(
     (instruction) =>
       instruction.scope === "department" &&
       Boolean(instruction.department_uuid && editableDepartmentIds.has(instruction.department_uuid))
-  );
+  ));
   const instructionSections = [
     {
       title: "Личная инструкция",

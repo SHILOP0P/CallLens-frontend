@@ -3,7 +3,7 @@ import { Fragment, type CSSProperties, type DragEvent, useEffect, useRef, useSta
 import { flushSync } from "react-dom";
 import { api } from "../../api";
 import type { AnalysisInstruction, AnalysisInstructionVersion } from "../../types";
-import { InstructionDocumentViewer } from "./InstructionDocumentViewer";
+import { extractInstructionText, InstructionDocumentViewer } from "./InstructionDocumentViewerV2";
 
 const COLORS = ["#ff8058", "#66a8ff", "#b58cff", "#57c7a1", "#e6b85c"];
 type Loaded = Record<string, { blob: Blob; text?: string }>;
@@ -62,7 +62,7 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
     const needed=versions.filter((version)=>selectedNumbers.some((number,index)=>index<selectedNumbers.length-1&&version.version>Math.min(number,selectedNumbers[index+1])&&version.version<Math.max(number,selectedNumbers[index+1]))&&!files[version.id]);
     if(!needed.length)return;
     let cancelled=false;
-    Promise.all(needed.map(async(version)=>{const blob=await api.getInstructionVersionFile(instructionId,version.id);return [version.id,{blob,text:version.original_filename.toLowerCase().endsWith(".md")?await blob.text():undefined}] as const})).then((loaded)=>{if(!cancelled)setFiles((current)=>({...current,...Object.fromEntries(loaded)}))}).catch(()=>undefined);
+    Promise.all(needed.map(async(version)=>{const blob=await api.getInstructionVersionFile(instructionId,version.id);return [version.id,{blob,text:await extractInstructionText(version.original_filename,blob)}] as const})).then((loaded)=>{if(!cancelled)setFiles((current)=>({...current,...Object.fromEntries(loaded)}))}).catch(()=>undefined);
     return()=>{cancelled=true};
   }, [instructionId, selected, versions]);
 
@@ -71,7 +71,7 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
     const loaded = await Promise.all(missing.map(async (id) => {
       const version = source.find((item) => item.id === id)!;
       const blob = await api.getInstructionVersionFile(instructionId, id);
-      return [id, { blob, text: version.original_filename.toLowerCase().endsWith(".md") ? await blob.text() : undefined }] as const;
+      return [id, { blob, text: await extractInstructionText(version.original_filename, blob) }] as const;
     }));
     if (!cancelled) setFiles((current) => ({ ...current, ...Object.fromEntries(loaded) }));
   }
@@ -107,7 +107,7 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
   const selectedVersions = selected.map((id) => versions.find((item) => item.id === id)).filter((item): item is AnalysisInstructionVersion => Boolean(item));
   const changes = selectedVersions.slice(1).map((to, index) => ({ from: selectedVersions[index], to, lines: diffLines(files[selectedVersions[index].id]?.text, files[to.id]?.text) }));
   const intermediateByTarget=new Map<string,LineChange[]>();
-  changes.forEach((change)=>{const low=Math.min(change.from.version,change.to.version),high=Math.max(change.from.version,change.to.version),sequence=versions.filter((version)=>version.version>=low&&version.version<=high).sort((a,b)=>a.version-b.version),direct=new Set(change.lines.filter((line)=>line.kind!=="same").map(changeSignature)),all:LineChange[]=[];for(let index=0;index<sequence.length-1;index++)all.push(...diffLines(files[sequence[index].id]?.text,files[sequence[index+1].id]?.text).filter((line)=>line.kind!=="same"));const seen=new Set<string>();intermediateByTarget.set(change.to.id,all.filter((line)=>{const signature=changeSignature(line);if(direct.has(signature)||seen.has(signature))return false;seen.add(signature);return true}))});
+  changes.forEach((change)=>{const low=Math.min(change.from.version,change.to.version),high=Math.max(change.from.version,change.to.version);if(high-low<=1){intermediateByTarget.set(change.to.id,[]);return;}const direction=change.from.version<change.to.version?1:-1,sequence=versions.filter((version)=>version.version>=low&&version.version<=high).sort((a,b)=>(a.version-b.version)*direction),direct=new Set(change.lines.filter((line)=>line.kind!=="same").map(changeSignature)),all:LineChange[]=[];for(let index=0;index<sequence.length-1;index++)all.push(...diffLines(files[sequence[index].id]?.text,files[sequence[index+1].id]?.text).filter((line)=>line.kind!=="same"));const seen=new Set<string>();intermediateByTarget.set(change.to.id,all.filter((line)=>{const signature=changeSignature(line);if(direct.has(signature)||seen.has(signature))return false;seen.add(signature);return true}))});
   const changedLinesByVersion = new Map<string, Map<number,"added"|"removed">>();
   changes.forEach((change) => change.lines.forEach((line) => {
     if (line.kind === "remove" && line.beforeLine) { const map=changedLinesByVersion.get(change.from.id)??new Map<number,"added"|"removed">(); map.set(line.beforeLine,"removed"); changedLinesByVersion.set(change.from.id,map); }

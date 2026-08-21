@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
-import { InstructionDocumentViewer } from "./InstructionDocumentViewer";
+import { InstructionDocumentViewer } from "./InstructionDocumentViewerV2";
 
 const exampleMarkdown = `# Контроль следующего шага
 

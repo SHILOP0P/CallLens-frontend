@@ -42,7 +42,7 @@ function AdminAlertViewport() {
   }, []);
   useEffect(() => {
     if (!alert) return;
-    const timeout = window.setTimeout(() => setAlert(null), 4500);
+    const timeout = window.setTimeout(() => setAlert(null), 1800);
     return () => window.clearTimeout(timeout);
   }, [alert]);
   if (!alert) return null;

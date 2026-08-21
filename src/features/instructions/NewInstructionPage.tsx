@@ -7,6 +7,7 @@ import { FileDropZone, SelectControl } from "../../shared/ui/primitives";
 import type { AnalysisInstruction, CompanyResponse, DepartmentMemberResponse, DepartmentResponse, InstructionScope, SessionState } from "../../types";
 import { InstructionExample } from "./InstructionExample";
 import { LiveMarkdownEditor } from "./LiveMarkdownEditor";
+import { TransientAlert } from "../../shared/ui/TransientAlert";
 
 const initialMarkdown = "# Новая инструкция\n\n## Цель\n\nОпишите правила анализа звонка.\n";
 
@@ -73,7 +74,7 @@ export function NewInstructionPage({ session, companies, departments, department
       <div className="segmented scope instruction-create-mode"><button type="button" className={mode === "editor" ? "active" : ""} onClick={() => setMode("editor")}><PenLine size={15}/>Markdown</button><button type="button" className={mode === "upload" ? "active" : ""} onClick={() => setMode("upload")}><Upload size={15}/>Загрузить файл</button></div>
       {mode === "editor" ? <div className="instruction-live-editor-field"><div className="instruction-live-editor-label"><strong>Текст инструкции</strong><small>Кликните по строке, чтобы изменить Markdown-разметку</small></div><LiveMarkdownEditor value={markdown} onChange={setMarkdown}/></div> : <div><span className="field-title">Файл инструкции</span><FileDropZone file={file} icon={<FileText size={22}/>} accept=".md,.pdf,.docx,.xlsx,text/markdown,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" buttonLabel="Выбрать файл" emptyLabel="Перетащите MD, PDF, DOCX или XLSX сюда" onFile={setFile}/></div>}
       <InstructionExample />
-      {error && <div className="form-error" role="alert">{error}</div>}
+      {error && <TransientAlert message={error} />}
       <div className="instruction-create-actions"><button className="ghost-button" type="button" disabled={busy} onClick={onCancel}>Отмена</button><button className="primary-button" disabled={busy}>{busy ? "Сохраняю…" : "Создать инструкцию"}</button></div>
     </form>
   </section>;
