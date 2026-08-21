@@ -7,7 +7,8 @@ import {
   PhoneCall,
   ListTodo,
   ShieldCheck,
-  ClipboardCheck
+  ClipboardCheck,
+  BookOpenText
 } from "lucide-react";
 import { useEffect } from "react";
 import type {
@@ -54,6 +55,10 @@ export const pageRoutes: Record<AppPage, string> = {
   calls: "/app/calls",
   transcriptionEdit: "/app/calls/transcription-edit",
   transcriptionCompare: "/app/calls/transcription-compare",
+  instructionHistory: "/app/calls/instruction-history",
+  instructionCompare: "/app/instructions/compare",
+  instruction: "/app/instructions",
+  instructionCreate: "/app/instructions/new",
   qualityReviews: "/app/quality-reviews",
   qualityReview: "/app/quality-reviews/review",
   actions: "/app/actions",
@@ -67,7 +72,7 @@ export const pageRoutes: Record<AppPage, string> = {
   settings: "/app/settings",
   settingsTariffs: "/app/settings/tariffs",
   settingsCompanies: "/app/settings/companies",
-  settingsInstructions: "/app/settings/instructions",
+  settingsInstructions: "/app/instructions",
   settingsInvitations: "/app/settings/invitations",
   profile: "/app/profile",
   profileEdit: "/app/profile/edit",
@@ -90,6 +95,7 @@ export const sidebarItems: Array<{ page: AppPage; label: string; icon: React.Rea
   { page: "qualityReviews", label: "QA-проверка", icon: <ClipboardCheck size={19} /> },
   { page: "actions", label: "Действия", icon: <ListTodo size={19} /> },
   { page: "reports", label: "AI-отчеты", icon: <FileBarChart2 size={19} /> },
+  { page: "settingsInstructions", label: "Инструкции", icon: <BookOpenText size={19} /> },
   { page: "settingsCompanies", label: "Компании", icon: <Building2 size={19} /> }
 ];
 
@@ -127,6 +133,7 @@ const pathAliases: Record<string, AppPage> = {
   "/app/tariffs": "settingsTariffs",
   "/app/companies": "settingsCompanies",
   "/app/instructions": "settingsInstructions",
+  "/app/settings/instructions": "settingsInstructions",
   "/app/invitations": "settingsInvitations",
   "/app/settings/profile": "profile",
   "/app/settings/profile/edit": "profileEdit",
@@ -146,6 +153,10 @@ export function readStoredSession(): SessionState | null {
 export function pageFromPath(pathname: string): AppPage {
   if (pathname === "/app/monitoring") return "monitoring";
   if (/^\/app\/actions\/[^/]+$/.test(pathname)) return "action";
+  if (/^\/app\/calls\/[^/]+\/analyses\/[^/]+\/instructions\/[^/]+$/.test(pathname)) return "instructionHistory";
+  if (pathname === "/app/instructions/new") return "instructionCreate";
+  if (/^\/app\/instructions\/[^/]+\/compare$/.test(pathname)) return "instructionCompare";
+  if (/^\/app\/instructions\/[^/]+$/.test(pathname)) return "instruction";
   if (/^\/app\/admin\/(?:users|companies|actions)$/.test(pathname)) return "admin";
   if (pathname === "/app/companies/new") return "companyCreate";
   if (/^\/app\/quality-reviews\/[^/]+$/.test(pathname)) return "qualityReview";

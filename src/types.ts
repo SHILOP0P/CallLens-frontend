@@ -3,6 +3,10 @@ export type AppPage =
   | "calls"
   | "transcriptionEdit"
   | "transcriptionCompare"
+  | "instructionHistory"
+  | "instructionCompare"
+  | "instruction"
+  | "instructionCreate"
   | "qualityReviews"
   | "qualityReview"
   | "actions"
@@ -370,6 +374,23 @@ export interface AnalysisResponse {
   updated_at: string;
 }
 
+export interface AppliedInstruction {
+  analysis_uuid: string;
+  call_uuid: string;
+  instruction_id: string;
+  version_id: string;
+  version: number;
+  position: number;
+  title: string;
+  scope: InstructionScope;
+  selection_source: "explicit" | "personal" | "company" | "department" | "folder";
+  content_sha256: string;
+  content?: string;
+  original_filename?: string;
+  instruction_deleted: boolean;
+  created_at: string;
+}
+
 export interface AnalysisV2Question {
   question: string;
   manager_answer: string;
@@ -582,6 +603,21 @@ export interface AnalysisInstruction {
   created_by_user_uuid: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface AnalysisInstructionVersion {
+  id: string;
+  instruction_id: string;
+  version: number;
+  title: string;
+  scope: InstructionScope;
+  original_filename: string;
+  mime_type: string;
+  size_bytes: number;
+  status: "draft" | "published" | "retired" | string;
+  created_by_user_uuid: string;
+  created_at: string;
+  published_at: string;
 }
 
 export interface SubscriptionUsageResponse {

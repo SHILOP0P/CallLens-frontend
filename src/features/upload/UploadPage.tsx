@@ -13,7 +13,7 @@ import {
   UsersRound,
   X
 } from "lucide-react";
-import { DragEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { DragEvent, FormEvent, KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import type {
   AnalysisInstruction,
@@ -169,7 +169,7 @@ export function UploadPage({
       const available = new Set(availableIds);
       const preserved = current.filter((id) => available.has(id));
 
-      return preserved.length > 0 ? preserved : availableIds;
+      return preserved;
     });
   }, [availableInstructionKey]);
 
@@ -268,6 +268,19 @@ export function UploadPage({
     setDiarizationRoles((current) => [...current, { id: `${Date.now()}-${name}`, name, description }]);
     setRoleName("");
     setRoleDescription("");
+  }
+
+  function handleFormKeyDown(event: KeyboardEvent<HTMLFormElement>) {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) return;
+    const isTextInput = target instanceof HTMLTextAreaElement ||
+      target.isContentEditable ||
+      (target instanceof HTMLInputElement && !["button", "submit", "checkbox", "radio", "file"].includes(target.type));
+    if (!isTextInput) return;
+
+    event.preventDefault();
+    if (target.closest(".diarization-role-add")) addDiarizationRole();
   }
 
   function selectBatchFiles(files: FileList | null) {
@@ -412,7 +425,7 @@ export function UploadPage({
         <StepItem done title="Готово" text="Результаты появятся в обзоре звонка." />
       </aside>
 
-      <form className="upload-form glass" onSubmit={submit}>
+      <form className="upload-form glass" onSubmit={submit} onKeyDown={handleFormKeyDown}>
         <h1>Загрузить звонок</h1>
         <div>
           <span className="field-title">Режим загрузки</span>
@@ -562,11 +575,14 @@ export function UploadPage({
         </div>
         {folderId && (
           <div className="folder-instruction-summary">
-            <strong>Инструкции папки</strong>
+            <div className="folder-instruction-summary-heading">
+              <span><FileText size={19}/></span>
+              <div><strong>Инструкции папки</strong><small>Будут применены автоматически вместе с выбранными дополнительными инструкциями.</small></div>
+            </div>
             {(callFolders.find((folder) => folder.id === folderId)?.instructions ?? []).length > 0 ? (
               <div className="folder-instruction-chips">
                 {callFolders.find((folder) => folder.id === folderId)?.instructions.map((instruction) => (
-                  <span key={instruction.id}>{instruction.title}</span>
+                  <span key={instruction.id}><FileText size={15}/><strong>{instruction.title}</strong></span>
                 ))}
               </div>
             ) : (

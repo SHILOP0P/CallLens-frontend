@@ -646,6 +646,22 @@ html[data-theme="dark"] :is(
   color: #fffaf5;
 }
 
+html[data-theme="light"] .instruction-row-link strong {
+  color: #2a211d;
+}
+
+html[data-theme="light"] .instruction-row-link small {
+  color: #746861;
+}
+
+html[data-theme="dark"] .instruction-row-link strong {
+  color: #fffaf5;
+}
+
+html[data-theme="dark"] .instruction-row-link small {
+  color: rgba(255, 250, 245, 0.68);
+}
+
 html[data-theme="dark"] :is(
   .analysis-list,
   .analysis-question p,

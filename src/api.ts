@@ -6,9 +6,11 @@ import type {
   AdminUsersResponse,
   AggregateReportResponse,
   AnalysisInstruction,
+  AnalysisInstructionVersion,
   AnalysisPersonalization,
   AnalysisPersonalizationScope,
   AnalysisResponse,
+  AppliedInstruction,
   AnalysisReviewContext,
   AuthResponse,
   AnalyticsOverviewResponse,
@@ -832,6 +834,14 @@ export const api = {
     return request<void>(`/calls/${encodeURIComponent(callId)}`, { method: "DELETE" });
   },
 
+  listAppliedInstructions(analysisId: string) {
+    return request<{ items: AppliedInstruction[] }>(`/analyses/${encodeURIComponent(analysisId)}/instructions`);
+  },
+
+  getAppliedInstruction(analysisId: string, versionId: string) {
+    return request<AppliedInstruction>(`/analyses/${encodeURIComponent(analysisId)}/instructions/${encodeURIComponent(versionId)}`);
+  },
+
   listCallFolders(input?: {
     scope?: VisibilityScope;
     company_uuid?: string;
@@ -1394,6 +1404,14 @@ export const api = {
       ? apiPathFromUrl(idOrDownloadUrl)
       : `/instructions/${encodeURIComponent(idOrDownloadUrl)}/download`;
     return requestBlob(path);
+  },
+
+  listInstructionVersions(id: string) {
+    return request<{ items: AnalysisInstructionVersion[] }>(`/instructions/${encodeURIComponent(id)}/versions`);
+  },
+
+  getInstructionVersionFile(id: string, versionId: string) {
+    return requestBlob(`/instructions/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/file`);
   },
 
   reorderInstructions(input: {

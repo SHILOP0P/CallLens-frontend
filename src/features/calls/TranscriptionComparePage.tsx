@@ -16,9 +16,6 @@ const VERSION_COLORS = ["#ff8058", "#66a8ff", "#b58cff", "#57c7a1", "#e6b85c"];
 const MAX_COMPARED_VERSIONS = VERSION_COLORS.length;
 
 type LoadedVersions = Record<number, TranscriptionRevisionContent>;
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (update: () => void) => { finished: Promise<void> };
-};
 type CompareLane = number;
 type WordChange = {
   kind: "speaker" | "replace" | "add" | "remove" | "speaker-and-replace";
@@ -158,24 +155,11 @@ export function TranscriptionComparePage({
       flushSync(() => { setSelected(next); setVersionLanes(nextLanes); });
       return;
     }
-    const transitionDocument = document as ViewTransitionDocument;
-    if (transitionDocument.startViewTransition) {
-      transitionDocument.startViewTransition(() => flushSync(() => { setSelected(next); setVersionLanes(nextLanes); })).finished.catch(() => undefined);
-      return;
-    }
-    const elements = [...chipRefs.current.values(), ...cardRefs.current.values()];
-    const before = new Map(elements.map((element) => [element, element.getBoundingClientRect()]));
+    const chipRects = new Map([...chipRefs.current].map(([revision, element]) => [revision, element.getBoundingClientRect()]));
+    const cardRects = new Map([...cardRefs.current].map(([revision, element]) => [revision, element.getBoundingClientRect()]));
     flushSync(() => { setSelected(next); setVersionLanes(nextLanes); });
-    for (const element of elements) {
-      if (!element.isConnected) continue;
-      const first = before.get(element); const last = element.getBoundingClientRect();
-      if (!first) continue;
-      const deltaX = first.left - last.left; const deltaY = first.top - last.top;
-      const scaleX = last.width > 0 ? first.width / last.width : 1;
-      const scaleY = last.height > 0 ? first.height / last.height : 1;
-      if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1 && Math.abs(scaleX - 1) < .005 && Math.abs(scaleY - 1) < .005) continue;
-      element.animate([{ transformOrigin: "top left", transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})` }, { transformOrigin: "top left", transform: "translate(0, 0) scale(1, 1)" }], { duration: 480, easing: "cubic-bezier(.16,1,.3,1)" });
-    }
+    animateMovedVersions(chipRefs.current, chipRects);
+    animateMovedVersions(cardRefs.current, cardRects);
   }
 
   function updateDropTarget(event: DragEvent<HTMLDivElement>, lane: CompareLane) {
@@ -278,7 +262,7 @@ export function TranscriptionComparePage({
     {loading ? <div className="transcription-compare-loading">Загружаю версии…</div> : <>
       <section className="compare-selection-panel" aria-label="Выбранные версии">
         <div className="compare-selected-versions">
-          {selected.map((revision) => <span ref={(element) => { if (element) chipRefs.current.set(revision, element); else chipRefs.current.delete(revision); }} className="compare-version-chip" style={{ "--version-color": versionColor(revision), viewTransitionName: `compare-chip-${revision}` } as CSSProperties} key={revision}>
+          {selected.map((revision) => <span ref={(element) => { if (element) chipRefs.current.set(revision, element); else chipRefs.current.delete(revision); }} className="compare-version-chip" style={{ "--version-color": versionColor(revision) } as CSSProperties} key={revision}>
             <i />Версия {revision}
             {selected.length > 2 && <button type="button" aria-label={`Убрать версию ${revision}`} onClick={() => updateSelectedWithAnimation(selected.filter((item) => item !== revision))}><X size={14} /></button>}
           </span>)}
@@ -322,7 +306,7 @@ export function TranscriptionComparePage({
               : selectedVersions[globalIndex + 1]?.content.words ?? [];
             return <Fragment key={version.content.revision}>
               {dropTarget?.lane === laneIndex && !dropTarget.columnPlacement && dropTarget.index === lanePosition && <div className="compare-drop-marker" />}
-              <article data-revision={version.content.revision} ref={(element) => { if (element) cardRefs.current.set(version.content.revision, element); else cardRefs.current.delete(version.content.revision); }} className={`compare-version-card${draggingRevision === version.content.revision ? " is-dragging" : ""}`} style={{ "--version-color": versionColor(version.content.revision), viewTransitionName: `compare-card-${version.content.revision}` } as CSSProperties}>
+              <article data-revision={version.content.revision} ref={(element) => { if (element) cardRefs.current.set(version.content.revision, element); else cardRefs.current.delete(version.content.revision); }} className={`compare-version-card${draggingRevision === version.content.revision ? " is-dragging" : ""}`} style={{ "--version-color": versionColor(version.content.revision) } as CSSProperties}>
                 <header draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(version.content.revision)); setDraggingRevision(version.content.revision); }} onDragEnd={() => { setDraggingRevision(null); setDropTarget(null); }}><div><span className="version-dot" /><strong>Версия {version.content.revision}</strong>{version.summary.is_current && <em>Текущая</em>}</div><time>{formatDate(version.summary.created_at)}</time></header>
                 <VersionTranscript words={version.content.words} referenceWords={referenceWords} speakerAssignments={speakerAssignments} />
               </article>
@@ -435,4 +419,24 @@ function activeLaneIds(selected: number[], lanes: Record<number, CompareLane>) {
 
 function countLane(selected: number[], lanes: Record<number, CompareLane>, lane: CompareLane) {
   return selected.filter((revision) => (lanes[revision] ?? 0) === lane).length;
+}
+
+function animateMovedVersions<Key>(elements: Map<Key, HTMLElement>, before: Map<Key, DOMRect>) {
+  elements.forEach((element, key) => {
+    const first = before.get(key);
+    if (!first || !element.isConnected) return;
+    const last = element.getBoundingClientRect();
+    const deltaX = first.left - last.left;
+    const deltaY = first.top - last.top;
+    const scaleX = last.width > 0 ? first.width / last.width : 1;
+    const scaleY = last.height > 0 ? first.height / last.height : 1;
+    if (Math.abs(deltaX) < 1 && Math.abs(deltaY) < 1 && Math.abs(scaleX - 1) < .005 && Math.abs(scaleY - 1) < .005) return;
+    element.animate(
+      [
+        { transformOrigin: "top left", transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})` },
+        { transformOrigin: "top left", transform: "translate(0, 0) scale(1, 1)" },
+      ],
+      { duration: 560, easing: "cubic-bezier(.22,1,.36,1)" },
+    );
+  });
 }

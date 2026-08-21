@@ -125,6 +125,8 @@ export function CallsPage({
   const [expandedFolderIds, setExpandedFolderIds] = useState<Record<string, boolean>>({});
   const [folderForm, setFolderForm] = useState<FolderFormState>(() => emptyFolderForm());
   const [folderInstructionOptions, setFolderInstructionOptions] = useState<AnalysisInstruction[]>([]);
+  const [folderInstructionsLoading, setFolderInstructionsLoading] = useState(false);
+  const [folderInstructionsError, setFolderInstructionsError] = useState("");
   const [openFolderMenuId, setOpenFolderMenuId] = useState("");
   const [openCallMenuId, setOpenCallMenuId] = useState("");
   const [editingCall, setEditingCall] = useState<CallResponse | null>(null);
@@ -234,14 +236,29 @@ export function CallsPage({
     let cancelled = false;
     const companyUuid = folderForm.scope === "personal" ? undefined : folderForm.company_uuid || undefined;
     const departmentUuid = folderForm.scope === "department" ? folderForm.department_uuid || undefined : undefined;
+
+    if ((folderForm.scope === "company" && !companyUuid) || (folderForm.scope === "department" && (!companyUuid || !departmentUuid))) {
+      setFolderInstructionOptions([]);
+      setFolderInstructionsError("");
+      setFolderInstructionsLoading(false);
+      return;
+    }
+
+    setFolderInstructionsLoading(true);
+    setFolderInstructionsError("");
     api.listInstructions({
       scope: folderForm.scope,
       company_uuid: companyUuid,
       department_uuid: departmentUuid
     }).then((items) => {
       if (!cancelled) setFolderInstructionOptions(items.filter((item) => item.is_active));
-    }).catch(() => {
-      if (!cancelled) setFolderInstructionOptions([]);
+    }).catch((error) => {
+      if (!cancelled) {
+        setFolderInstructionOptions([]);
+        setFolderInstructionsError(error instanceof Error ? error.message : "Не удалось загрузить инструкции.");
+      }
+    }).finally(() => {
+      if (!cancelled) setFolderInstructionsLoading(false);
     });
     return () => {
       cancelled = true;
@@ -479,6 +496,41 @@ export function CallsPage({
     );
   }
 
+  async function deleteCallAndSync(callId: string) {
+    if (!onDeleteCall) return;
+    const affectedFolderIds = new Set(
+      Object.entries(folderCallsById)
+        .filter(([, folderCalls]) => folderCalls.some((item) => item.id === callId))
+        .map(([folderId]) => folderId)
+    );
+    const actionFolderId = callFolderActionByCall[callId];
+    if (actionFolderId) affectedFolderIds.add(actionFolderId);
+    await onDeleteCall(callId);
+    if (affectedFolderIds.size > 0) {
+      setCallFolders((current) => current.map((folder) =>
+        affectedFolderIds.has(folder.id)
+          ? { ...folder, calls_count: Math.max(0, folder.calls_count - 1) }
+          : folder
+      ));
+    }
+    setServerCalls((current) => (current ? current.filter((item) => item.id !== callId) : current));
+    setFolderCallsById((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([folderId, folderCalls]) => [
+          folderId,
+          folderCalls.filter((item) => item.id !== callId)
+        ])
+      )
+    );
+    setCallFolderActionByCall((current) => {
+      if (!current[callId]) return current;
+      const next = { ...current };
+      delete next[callId];
+      return next;
+    });
+    await refreshFolders();
+  }
+
   async function submitCallRename() {
     if (!editingCall || !onUpdateCallTitle) return;
 
@@ -508,16 +560,7 @@ export function CallsPage({
     setCallActionError("");
     setCallBusyId(call.id);
     try {
-      await onDeleteCall(call.id);
-      setServerCalls((current) => (current ? current.filter((item) => item.id !== call.id) : current));
-      setFolderCallsById((current) =>
-        Object.fromEntries(
-          Object.entries(current).map(([folderId, folderCalls]) => [
-            folderId,
-            folderCalls.filter((item) => item.id !== call.id)
-          ])
-        )
-      );
+      await deleteCallAndSync(call.id);
     } catch (error) {
       setCallActionError(friendlyCallActionError(error, "Не удалось удалить звонок."));
     } finally {
@@ -1051,7 +1094,7 @@ export function CallsPage({
           loadingDetails={loadingDetails}
           onNavigate={onNavigate}
           onAnalysisReady={onAnalysisReady}
-          onDeleteCall={onDeleteCall}
+          onDeleteCall={onDeleteCall ? deleteCallAndSync : undefined}
           onOpenTranscriptionEditor={onOpenTranscriptionEditor}
           onOpenRevisionComparison={onOpenRevisionComparison}
           folders={callFolders}
@@ -1207,10 +1250,14 @@ export function CallsPage({
               <fieldset className="call-folder-instructions">
                 <legend>Инструкции папки</legend>
                 <small>Они автоматически применятся к каждому новому звонку в этой папке.</small>
-                {folderInstructionOptions.length === 0 ? (
+                {folderInstructionsLoading ? (
+                  <div className="instruction-empty compact" role="status">Загружаю инструкции...</div>
+                ) : folderInstructionsError ? (
+                  <div className="form-error compact" role="alert">{folderInstructionsError}</div>
+                ) : folderInstructionOptions.length === 0 ? (
                   <div className="instruction-empty compact">Для выбранной области нет активных инструкций.</div>
                 ) : (
-                  <div className="call-folder-instruction-options">
+                  <div className="call-folder-instruction-options" aria-label={`Доступные инструкции: ${folderInstructionOptions.length}`}>
                     {folderInstructionOptions.map((instruction) => (
                       <label key={instruction.id}>
                         <input
@@ -1223,7 +1270,7 @@ export function CallsPage({
                               : [...current.instruction_uuids, instruction.id]
                           }))}
                         />
-                        <span>{instruction.title}</span>
+                        <span title={instruction.original_filename}>{instruction.original_filename}</span>
                       </label>
                     ))}
                   </div>

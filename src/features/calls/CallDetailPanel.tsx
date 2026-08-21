@@ -6,6 +6,7 @@ import {
   CloudUpload,
   FolderMinus,
   FolderPlus,
+  FileText,
   Headphones,
   MessageSquareWarning,
   PhoneCall,
@@ -17,6 +18,7 @@ import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 import type {
   AnalysisResponse,
+  AppliedInstruction,
   AnalysisReviewContext,
   AppPage,
   CallFolderResponse,
@@ -124,6 +126,9 @@ export function CallDetailPanel({
   const [noActionRequired, setNoActionRequired] = useState(false);
   const [noActionConfirmOpen, setNoActionConfirmOpen] = useState(false);
   const [linkedAction, setLinkedAction] = useState<CallAction>();
+  const [appliedInstructions, setAppliedInstructions] = useState<AppliedInstruction[]>([]);
+  const [instructionsLoading, setInstructionsLoading] = useState(false);
+  const [instructionsError, setInstructionsError] = useState("");
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const transcriptCardRef = useRef<HTMLDivElement | null>(null);
   const transcriptIslandRef = useRef<HTMLDivElement | null>(null);
@@ -137,7 +142,25 @@ export function CallDetailPanel({
 
   useEffect(() => {
     let cancelled = false;
-    if (!call?.id || !call.company_uuid) {
+    if (!analysis?.id || !isAnalysisDone(analysis)) {
+      setAppliedInstructions([]);
+      setInstructionsError("");
+      setInstructionsLoading(false);
+      return;
+    }
+    setAppliedInstructions([]);
+    setInstructionsLoading(true);
+    setInstructionsError("");
+    api.listAppliedInstructions(analysis.id)
+      .then((result) => { if (!cancelled) setAppliedInstructions(result.items); })
+      .catch(() => { if (!cancelled) { setAppliedInstructions([]); setInstructionsError("Не удалось загрузить применённые инструкции."); } })
+      .finally(() => { if (!cancelled) setInstructionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [analysis?.id, analysis?.status]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!call?.id) {
       setLinkedAction(undefined);
       return;
     }
@@ -149,7 +172,7 @@ export function CallDetailPanel({
         if (!cancelled) setLinkedAction(undefined);
       });
     return () => { cancelled = true; };
-  }, [call?.id, call?.company_uuid]);
+  }, [call?.id]);
 
   async function createQualityReview() {
     if (!call || !analysis || qualityReviewBusy) return;
@@ -622,10 +645,20 @@ export function CallDetailPanel({
               speakerAssignments={speakerAssignments}
             />
           </InfoCard>
+          {analysis && isAnalysisDone(analysis) && (
+            <section className="applied-instructions-card" aria-labelledby="applied-instructions-title">
+              <div className="applied-instructions-heading">
+                <FileText size={20} aria-hidden="true" />
+                <span><strong id="applied-instructions-title">Применённые инструкции</strong><small>Правила, по которым был сформирован этот анализ</small></span>
+                <b>{instructionsLoading ? "…" : appliedInstructions.length}</b>
+              </div>
+              {instructionsError ? <p className="applied-instructions-error" role="alert">{instructionsError}</p> : instructionsLoading ? <div className="applied-instructions-skeleton" aria-label="Загрузка инструкций" /> : appliedInstructions.length === 0 ? <p className="applied-instructions-empty">Для этого анализа инструкции не применялись.</p> : <div className="applied-instructions-list">{appliedInstructions.map((instruction) => <button type="button" key={instruction.version_id} onClick={() => { window.history.pushState({}, "", `/app/calls/${encodeURIComponent(call.id)}/analyses/${encodeURIComponent(analysis.id)}/instructions/${encodeURIComponent(instruction.version_id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }}><span><strong>{instruction.title}</strong><small>Версия {instruction.version} · {instructionScopeLabel(instruction.scope)}{instruction.instruction_deleted ? " · удалена из настроек" : ""}</small></span><ChevronRight size={17} aria-hidden="true" /></button>)}</div>}
+            </section>
+          )}
           {analysis && isAnalysisDone(analysis) && reviewContext && <AnalysisComments callId={call.id} analysisId={analysis.id} comments={reviewContext.comments ?? []} canComment={reviewContext.capabilities.can_comment_analysis} onChange={(comments)=>setReviewContext((current)=>current?{...current,comments}:current)} />}
         </div>
       </div>
-      <div className="next-step">
+      {analysis && isAnalysisDone(analysis) && <div className="next-step">
         <span className={`step-icon${linkedAction?.status === "completed" || noActionRequired ? " is-complete" : ""}`}>
           {linkedAction?.status === "completed" || noActionRequired ? <CheckCircle2 size={19} /> : <WandSparkles size={19} />}
         </span>
@@ -638,11 +671,11 @@ export function CallDetailPanel({
             <button className="ghost-button" type="button" onClick={() => { window.history.pushState({}, "", `/app/actions/${encodeURIComponent(linkedAction.id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }}>Открыть действие<ChevronRight size={16} /></button>
             {linkedAction.status === "cancelled" && <button className="text-button" type="button" disabled={!analysis || !isAnalysisDone(analysis)} onClick={() => setActionDialogOpen(true)}>Создать новое</button>}
           </> : noActionRequired ? null : <>
-            <button className="ghost-button" type="button" disabled={!call.company_uuid || !analysis || !isAnalysisDone(analysis)} onClick={() => setActionDialogOpen(true)}>Создать действие<ChevronRight size={16} /></button>
-            <button className="text-button no-action-button" type="button" disabled={actionDecisionBusy || !call.company_uuid || !analysis || !isAnalysisDone(analysis)} onClick={() => setNoActionConfirmOpen(true)}>Действий не требуется</button>
+            <button className="ghost-button" type="button" onClick={() => setActionDialogOpen(true)}>Создать действие<ChevronRight size={16} /></button>
+            <button className="text-button no-action-button" type="button" disabled={actionDecisionBusy} onClick={() => setNoActionConfirmOpen(true)}>Действий не требуется</button>
           </>}
         </div>
-      </div>
+      </div>}
       {actionDecisionMessage && <div className="action-decision-message" role="status">{actionDecisionMessage}</div>}
       {actionDialogOpen && analysis && createPortal(
         <CreateActionDialog call={call} analysis={analysis} transcription={localTranscription} speakerAssignments={speakerAssignments} companies={companies} departments={departments} currentUserId={currentUserId} onClose={() => setActionDialogOpen(false)} onCreated={(created) => { setLinkedAction(created); setActionDialogOpen(false); window.history.pushState({}, "", `/app/actions/${encodeURIComponent(created.id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }} />,
@@ -672,6 +705,12 @@ export function CallDetailPanel({
       {challengeOpen && createPortal(<div className="quality-challenge-backdrop" role="presentation" onMouseDown={() => !qualityReviewBusy && setChallengeOpen(false)}><section className="quality-challenge-dialog" role="dialog" aria-modal="true" aria-labelledby="quality-challenge-title" onMouseDown={(event) => event.stopPropagation()}><span className="eyebrow">Пересмотр анализа</span><h2 id="quality-challenge-title">Что вас не устроило?</h2><p>Опишите, с какими выводами, оценками или формулировками ИИ вы не согласны. Сообщение увидит специалист по проверке качества.</p><label><span>Сопроводительное сообщение</span><textarea autoFocus maxLength={5000} value={challengeReason} placeholder="Например: в анализе неверно указано, что я не уточнил следующий шаг…" onChange={(event) => setChallengeReason(event.target.value)} /><small>{challengeReason.trim().length}/5000 · минимум 10 символов</small></label><div className="quality-challenge-dialog-actions"><button className="ghost-button" type="button" disabled={qualityReviewBusy} onClick={() => setChallengeOpen(false)}>Отмена</button><button className="primary-button" type="button" disabled={qualityReviewBusy || challengeReason.trim().length < 10} onClick={() => void challengeAnalysis()}>{qualityReviewBusy ? "Отправляю…" : "Отправить на пересмотр"}</button></div></section></div>, document.body)}
     </>
   );
+}
+
+function instructionScopeLabel(scope: AppliedInstruction["scope"]) {
+  if (scope === "company") return "Компания";
+  if (scope === "department") return "Отдел";
+  return "Личная";
 }
 
 function linkedActionHeading(status: CallAction["status"]) {

@@ -35,6 +35,9 @@ import { CreateCompanyPage } from "./features/companies/CreateCompanyPage";
 import { ActionDetailPage, ActionsPage } from "./features/actions/ActionsPage";
 import { ContactsPage } from "./features/contacts/ContactsPage";
 import { InstructionsPage } from "./features/instructions/InstructionsPage";
+import { InstructionHistoryPage } from "./features/instructions/InstructionHistoryPage";
+import { InstructionComparePage } from "./features/instructions/InstructionComparePage";
+import { NewInstructionPage } from "./features/instructions/NewInstructionPage";
 import { InvitationsPage } from "./features/invitations/InvitationsPage";
 import { Landing } from "./features/landing/Landing";
 import { AuthenticatedShell } from "./features/layout/AuthenticatedShell";
@@ -398,6 +401,13 @@ function App() {
     window.history.pushState({}, "", `/app/calls/transcription-edit?call=${encodeURIComponent(callId)}`);
   }
 
+  function openInstructionComparison(instructionId: string, versionIds: string[]) {
+    setShowPublicLanding(false);
+    setPage("instructionCompare");
+    const query = new URLSearchParams({ versions: versionIds.join(",") });
+    window.history.pushState({}, "", `/app/instructions/${encodeURIComponent(instructionId)}/compare?${query}`);
+  }
+
   function openCompany(companyId: string) {
     setShowPublicLanding(false);
     setPage("settingsCompanies");
@@ -729,6 +739,14 @@ function App() {
 
       {page === "qualityReview" && <QualityReviewPage reviewId={decodeURIComponent(window.location.pathname.split("/").at(-1) ?? "")} onBack={() => navigate("qualityReviews")} />}
 
+      {page === "instructionHistory" && (() => { const parts = window.location.pathname.split("/"); const callId = decodeURIComponent(parts[3] ?? ""); const analysisId = decodeURIComponent(parts[5] ?? ""); const versionId = decodeURIComponent(parts[7] ?? ""); return <InstructionHistoryPage analysisId={analysisId} versionId={versionId} session={session} companies={companies} departmentMembers={departmentMembers} onCompare={openInstructionComparison} onBack={() => { window.history.pushState({}, "", `/app/calls?call=${encodeURIComponent(callId)}`); window.dispatchEvent(new PopStateEvent("popstate")); }} />; })()}
+
+      {page === "instruction" && <InstructionHistoryPage instructionId={decodeURIComponent(window.location.pathname.split("/").at(-1) ?? "")} session={session} companies={companies} departmentMembers={departmentMembers} onCompare={openInstructionComparison} onBack={() => navigate("settingsInstructions")} />}
+
+      {page === "instructionCompare" && (() => { const id = decodeURIComponent(window.location.pathname.split("/")[3] ?? ""); return <InstructionComparePage instructionId={id} onBack={() => { window.history.pushState({}, "", `/app/instructions/${encodeURIComponent(id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }} />; })()}
+
+      {page === "instructionCreate" && <NewInstructionPage session={session} companies={companies} departments={departments} departmentMembers={departmentMembers} onCancel={() => navigate("settingsInstructions")} onCreated={(instruction) => setInstructions((current) => [instruction, ...current])} />}
+
       {page === "monitoring" && !adminCapabilities && <AccessDeniedPage />}
       {page === "monitoring" && adminCapabilities && <MonitoringPage calls={calls} onBack={() => {
         const from = new URLSearchParams(window.location.search).get("from");
@@ -751,9 +769,6 @@ function App() {
           departmentMembers={departmentMembers}
           loading={loadingWorkspace}
           onBackToSettings={() => navigate("settings")}
-          onInstructionCreated={(instruction) =>
-            setInstructions((current) => [instruction, ...current])
-          }
         />
       )}
 

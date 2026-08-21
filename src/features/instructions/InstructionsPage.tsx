@@ -2,25 +2,24 @@ import {
   ArrowLeft,
   Download,
   FileText,
+  Plus,
   Trash2,
   Upload
 } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import type {
   AnalysisInstruction,
   CompanyResponse,
   DepartmentMemberResponse,
   DepartmentResponse,
-  InstructionScope,
   SessionState
 } from "../../types";
 
 import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/access";
-import { instructionScopeLabel } from "../../shared/lib/formatters";
 import { InstructionListSkeleton } from "../../shared/ui/loading";
-import { FileDropZone, SelectControl } from "../../shared/ui/primitives";
 import { instructionContextLabel } from "./instruction-components";
+import { InstructionExample } from "./InstructionExample";
 
 export function InstructionsPage({
   session,
@@ -29,8 +28,7 @@ export function InstructionsPage({
   departments,
   departmentMembers,
   loading,
-  onBackToSettings,
-  onInstructionCreated
+  onBackToSettings
 }: {
   session: SessionState;
   instructions: AnalysisInstruction[];
@@ -39,9 +37,7 @@ export function InstructionsPage({
   departmentMembers: DepartmentMemberResponse[];
   loading: boolean;
   onBackToSettings: () => void;
-  onInstructionCreated: (instruction: AnalysisInstruction) => void;
 }) {
-  const [title, setTitle] = useState("Инструкция анализа продаж");
   const [localInstructions, setLocalInstructions] = useState(instructions);
   const managedCompanies = useMemo(
     () => companies.filter((company) => isCompanyManager(company, session.user.id)),
@@ -67,29 +63,6 @@ export function InstructionsPage({
     () => new Set(editableDepartments.map((department) => department.id)),
     [editableDepartments]
   );
-  const companiesWithDepartments = useMemo(
-    () =>
-      companies.filter((company) =>
-        editableDepartments.some((department) => department.company_uuid === company.id)
-      ),
-    [companies, editableDepartments]
-  );
-  const [scope, setScope] = useState<InstructionScope>("personal");
-  const [companyId, setCompanyId] = useState(managedCompanies[0]?.id ?? "");
-  const [departmentId, setDepartmentId] = useState(editableDepartments[0]?.id ?? "");
-  const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const availableInstructionScopes = useMemo<InstructionScope[]>(
-    () => [
-      "personal",
-      ...(managedCompanies.length > 0 ? (["company"] as InstructionScope[]) : []),
-      ...(editableDepartments.length > 0 ? (["department"] as InstructionScope[]) : [])
-    ],
-    [editableDepartments.length, managedCompanies.length]
-  );
-  const selectableCompanies = scope === "department" ? companiesWithDepartments : managedCompanies;
-  const availableDepartments = editableDepartments.filter((department) => department.company_uuid === companyId);
   const personalInstructions = localInstructions.filter((instruction) => instruction.scope === "personal");
   const companyInstructions = localInstructions.filter(
     (instruction) =>
@@ -115,48 +88,6 @@ export function InstructionsPage({
       instructions: departmentInstructions
     }
   ].filter((section) => section.instructions.length > 0);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-
-    if (!title.trim()) {
-      setError("Введите название инструкции.");
-      return;
-    }
-
-    if (!file) {
-      setError("Выберите markdown-файл.");
-      return;
-    }
-
-    if (scope !== "personal" && !companyId) {
-      setError("Выберите компанию.");
-      return;
-    }
-
-    if (scope === "department" && !departmentId) {
-      setError("Выберите отдел.");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const created = await api.createInstruction({
-        title,
-        file,
-        scope,
-        companyUuid: scope !== "personal" ? companyId : undefined,
-        departmentUuid: scope === "department" ? departmentId : undefined
-      });
-      setLocalInstructions((current) => [created, ...current]);
-      onInstructionCreated(created);
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Не удалось загрузить инструкцию");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   useEffect(() => {
     setLocalInstructions(instructions);
@@ -194,28 +125,6 @@ export function InstructionsPage({
     };
   }, [managedCompanies, editableDepartments]);
 
-  useEffect(() => {
-    if (!availableInstructionScopes.includes(scope)) {
-      setScope("personal");
-    }
-  }, [availableInstructionScopes, scope]);
-
-  useEffect(() => {
-    if (scope === "personal") return;
-
-    if (!selectableCompanies.some((company) => company.id === companyId)) {
-      setCompanyId(selectableCompanies[0]?.id ?? "");
-    }
-  }, [companyId, scope, selectableCompanies]);
-
-  useEffect(() => {
-    if (scope !== "department") return;
-
-    if (!availableDepartments.some((department) => department.id === departmentId)) {
-      setDepartmentId(availableDepartments[0]?.id ?? "");
-    }
-  }, [availableDepartments, departmentId, scope]);
-
   return (
     <section className="instructions-layout app-page settings-subpage-layout">
       <div className="settings-back-row">
@@ -224,7 +133,7 @@ export function InstructionsPage({
           Назад
         </button>
       </div>
-      <form className="instructions-form glass" onSubmit={submit}>
+      <div className="instructions-form glass instructions-list-header">
         <div className="app-page-heading settings-heading compact-heading">
           <span className="settings-heading-icon" aria-hidden="true">
             <FileText size={26} />
@@ -234,82 +143,16 @@ export function InstructionsPage({
             <p>Инструкция определяет, как AI будет оценивать звонок в выбранном контексте.</p>
           </div>
         </div>
-        <label>
-          Название инструкции
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <div className="segmented scope">
-          {availableInstructionScopes.map((item) => (
-            <button
-              type="button"
-              key={item}
-              className={scope === item ? "active" : ""}
-              onClick={() => setScope(item)}
-            >
-              {instructionScopeLabel(item)}
-            </button>
-          ))}
+        <div className="instructions-list-header-actions">
+          <button className="ghost-button" type="button" onClick={() => { window.history.pushState({}, "", "/app/instructions/new?mode=upload"); window.dispatchEvent(new PopStateEvent("popstate")); }}>
+            <Upload size={17} /> Загрузить файл
+          </button>
+          <button className="primary-button" type="button" onClick={() => { window.history.pushState({}, "", "/app/instructions/new"); window.dispatchEvent(new PopStateEvent("popstate")); }}>
+            <Plus size={17} /> Новая инструкция
+          </button>
         </div>
-        {scope !== "personal" && (
-          <div className="form-grid two">
-            <label>
-              Компания
-              <SelectControl value={companyId} onChange={(event) => setCompanyId(event.target.value)}>
-                {selectableCompanies.map((company) => (
-                  <option key={company.id} value={company.id}>
-                    {company.name}
-                  </option>
-                ))}
-              </SelectControl>
-            </label>
-            {scope === "department" && (
-              <label>
-                Отдел
-                <SelectControl value={departmentId} onChange={(event) => setDepartmentId(event.target.value)}>
-                  {availableDepartments.map((department) => (
-                    <option key={department.id} value={department.id}>
-                      {department.name}
-                    </option>
-                  ))}
-                </SelectControl>
-              </label>
-            )}
-          </div>
-        )}
-        <div>
-          <span className="field-title">Markdown-файл</span>
-          <FileDropZone
-            file={file}
-            icon={<FileText size={22} />}
-            accept=".md,text/markdown,text/plain"
-            buttonLabel="Выбрать файл"
-            emptyLabel="Перетащите markdown-файл сюда"
-            onFile={setFile}
-          />
-        </div>
-        <details className="instruction-template-example">
-          <summary>Пример эффективной инструкции</summary>
-          <pre>{`# Контроль следующего шага
-
-## Цель
-Проверить, договорились ли участники о конкретном продолжении.
-
-## Критерии
-- Названо следующее действие.
-- Указан ответственный.
-- Указан срок.
-
-## Доказательства
-Используй только точные цитаты из разговора.
-
-## Рекомендация
-Если договорённость неполная, укажи, чего именно не хватает.`}</pre>
-        </details>
-        {error && <div className="form-error">{error}</div>}
-        <button className="primary-button" disabled={busy}>
-          {busy ? "Загружаю..." : "Сохранить инструкцию"}
-        </button>
-      </form>
+        <InstructionExample />
+      </div>
       <div className="instructions-list glass">
         <h2>Активные инструкции</h2>
         {loading ? (
@@ -399,17 +242,18 @@ export function InstructionRow({
 
   return (
     <div className="instruction-row">
-      <FileText size={20} />
-      <div>
-        <strong>{instruction.title}</strong>
+      <button className="instruction-row-link" type="button" onClick={() => { window.history.pushState({}, "", `/app/instructions/${encodeURIComponent(instruction.id)}`); window.dispatchEvent(new PopStateEvent("popstate")); }}>
+        <FileText size={20} />
+        <strong>{instruction.original_filename}</strong>
+      </button>
+      <div className="instruction-row-footer">
         <small>
-          {instructionContextLabel(instruction, companies, departments)} · {instruction.original_filename}
+          {instructionContextLabel(instruction, companies, departments)}
         </small>
-      </div>
-      <span className={`status-chip ${instruction.is_active ? "ok" : "warn"}`}>
-        {instruction.is_active ? "Активна" : "Отключена"}
-      </span>
-      <div className="panel-actions">
+        <span className={`status-chip ${instruction.is_active ? "ok" : "warn"}`}>
+          {instruction.is_active ? "Активна" : "Отключена"}
+        </span>
+        <div className="panel-actions">
         <button
           className="text-button"
           type="button"
@@ -427,7 +271,7 @@ export function InstructionRow({
           <Upload size={16} />
           <input
             type="file"
-            accept=".md,text/markdown,text/plain"
+            accept=".md,.pdf,.docx,.xlsx,text/markdown,text/plain,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             hidden
             onChange={async (event) => {
               const file = event.target.files?.[0];
@@ -448,6 +292,7 @@ export function InstructionRow({
         >
           <Trash2 size={16} />
         </button>
+        </div>
       </div>
     </div>
   );
