@@ -48,6 +48,7 @@ import { DevicesPage, ProfileEditPage, ProfilePage } from "./features/profile/Pr
 import { AiReportsPage } from "./features/reports/AiReportsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { TariffsPage } from "./features/tariffs/TariffsPage";
+import { IntegrationsPage } from "./features/integrations/IntegrationsPage";
 import { UploadPage } from "./features/upload/UploadPage";
 import { AdminPage } from "./features/admin/AdminPage";
 import { QualityReviewsPage } from "./features/quality-reviews/QualityReviewsPage";
@@ -877,6 +878,7 @@ function App() {
           onBackToSettings={() => navigate("settings")}
         />
       )}
+      {page === "settingsIntegrations" && <IntegrationsPage session={session} companies={companies} onBack={() => navigate("settings")} />}
     </AuthenticatedShell>
   );
 }

@@ -885,6 +885,12 @@
   .compare-add-version > button { width: 100%; }
   .compare-version-menu { right: auto; left: 0; width: 100%; }
   .compare-version-board { grid-template-columns: repeat(2, minmax(86vw, 1fr)); height: 70vh; min-height: 520px; overflow-x: auto; scroll-snap-type: x proximity; }
+  .compare-version-board.is-single { grid-template-columns: minmax(0, 1fr); height:auto; min-height:0; overflow:visible; scroll-snap-type:none; }
+  .transcription-compare-page .compare-version-board,
+  .transcription-compare-page .compare-version-board.is-pair,
+  .transcription-compare-page .compare-version-board.is-single { grid-template-columns:minmax(0,1fr); height:auto; min-height:0; overflow:visible; scroll-snap-type:none; }
+  .transcription-compare-page .compare-version-lane { width:100%; }
+  .transcription-compare-page .compare-version-card { width:100%; max-width:100%; }
   .compare-version-lane { scroll-snap-align: start; }
   .compare-version-card { min-height: 190px; }
   .compare-version-card > header { align-items: flex-start; }

@@ -26,6 +26,9 @@ import type {
   CallStatus,
   CallsListResponse,
   CompanyResponse,
+  CreditDashboardResponse,
+  CreatedIntegrationKey,
+  DeveloperApplication,
   CompanyMemberListItemResponse,
   CompanyMembersResponse,
   DepartmentMemberResponse,
@@ -77,12 +80,13 @@ import type {
   UserPreferencesResponse,
   UserResponse,
   UserSessionsResponse,
-  VisibilityScope
+  VisibilityScope,
 } from "./types";
 import { AuthorizedEventStream } from "./shared/lib/authorized-event-stream";
 import { coordinateRefresh } from "./features/auth/refresh-coordinator";
 
-const configuredBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
+const configuredBase =
+  import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 const apiRoot = `${configuredBase}/api/v1`;
 const authRefreshPath = "/auth/refresh";
 const sessionExpiredEvent = "verbatrace:session-expired";
@@ -98,7 +102,12 @@ export class ApiError extends Error {
   code?: string;
   details?: Record<string, unknown>;
 
-  constructor(status: number, message: string, code?: string, details?: Record<string, unknown>) {
+  constructor(
+    status: number,
+    message: string,
+    code?: string,
+    details?: Record<string, unknown>,
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -148,11 +157,13 @@ const apiErrorMessages: Record<string, string> = {
   failed_to_convert_invitation: "Не удалось обработать данные приглашения",
   call_not_found: "Звонок не найден",
   analysis_not_found: "Для этого звонка еще нет анализа.",
-  invalid_analysis_status: "Анализ еще не готов. Экспорт станет доступен после завершения анализа.",
+  invalid_analysis_status:
+    "Анализ еще не готов. Экспорт станет доступен после завершения анализа.",
   export_access_denied: "Экспорт отчетов недоступен на текущем тарифе.",
   unsupported_report_format: "Этот формат экспорта не поддерживается.",
   report_not_found: "Отчет не найден.",
-  report_already_exists: "Отчет этого формата уже создан или формируется. Используйте запись в списке ниже.",
+  report_already_exists:
+    "Отчет этого формата уже создан или формируется. Используйте запись в списке ниже.",
   report_file_not_found: "Файл отчета недоступен",
   report_not_ready: "Отчет еще формируется.",
   report_expired: "Срок хранения отчета истек",
@@ -160,7 +171,8 @@ const apiErrorMessages: Record<string, string> = {
   failed_to_list_reports: "Не удалось загрузить отчеты",
   failed_to_download_report: "Не удалось скачать отчет",
   failed_to_delete_report: "Не удалось удалить отчет",
-  team_analytics_access_denied: "Командная аналитика недоступна на текущем тарифе",
+  team_analytics_access_denied:
+    "Командная аналитика недоступна на текущем тарифе",
   api_access_denied: "API-доступ недоступен на текущем тарифе",
   invalid_search_input: "Введите минимум 2 символа для поиска",
   notification_not_found: "Уведомление не найдено",
@@ -176,7 +188,8 @@ const apiErrorMessages: Record<string, string> = {
   instruction_file_not_found: "Файл инструкции недоступен",
   invalid_call_folder_input: "Некорректные данные папки звонков",
   call_folder_not_found: "Папка звонков не найдена",
-  call_folder_scope_mismatch: "Звонок не подходит для выбранной папки по области доступа.",
+  call_folder_scope_mismatch:
+    "Звонок не подходит для выбранной папки по области доступа.",
   failed_to_create_call_folder: "Не удалось создать папку звонков",
   failed_to_list_call_folders: "Не удалось загрузить папки звонков",
   failed_to_update_call_folder: "Не удалось обновить папку звонков",
@@ -185,30 +198,47 @@ const apiErrorMessages: Record<string, string> = {
   failed_to_remove_call_folder: "Не удалось убрать звонок из папки",
   invalid_deep_analysis_input: "Некорректные параметры глубокого анализа",
   aggregate_analysis_not_found: "Глубокий анализ не найден",
-  no_analyzed_calls_for_deep_analysis: "За выбранный период нет звонков с готовым анализом.",
-  deep_analysis_limit_exceeded: "Лимит глубокого анализа на эту неделю исчерпан.",
+  no_analyzed_calls_for_deep_analysis:
+    "За выбранный период нет звонков с готовым анализом.",
+  deep_analysis_limit_exceeded:
+    "Лимит глубокого анализа на эту неделю исчерпан.",
   failed_to_create_deep_analysis: "Не удалось создать глубокий анализ",
   failed_to_list_deep_analyses: "Не удалось загрузить глубокие анализы",
   failed_to_get_deep_analysis: "Не удалось получить глубокий анализ",
   aggregate_report_not_found: "Отчет глубокого анализа не найден",
-  invalid_aggregate_report_input: "Некорректные параметры отчета глубокого анализа",
-  invalid_aggregate_analysis_status: "Отчет можно создать только после готового глубокого анализа.",
-  aggregate_report_file_not_found: "Файл отчета глубокого анализа недоступен или срок хранения истек.",
-  failed_to_create_aggregate_report: "Не удалось создать отчет глубокого анализа",
-  failed_to_list_aggregate_reports: "Не удалось загрузить отчеты глубокого анализа",
-  failed_to_download_aggregate_report: "Не удалось скачать отчет глубокого анализа",
-  failed_to_delete_aggregate_report: "Не удалось удалить отчет глубокого анализа",
+  invalid_aggregate_report_input:
+    "Некорректные параметры отчета глубокого анализа",
+  invalid_aggregate_analysis_status:
+    "Отчет можно создать только после готового глубокого анализа.",
+  aggregate_report_file_not_found:
+    "Файл отчета глубокого анализа недоступен или срок хранения истек.",
+  failed_to_create_aggregate_report:
+    "Не удалось создать отчет глубокого анализа",
+  failed_to_list_aggregate_reports:
+    "Не удалось загрузить отчеты глубокого анализа",
+  failed_to_download_aggregate_report:
+    "Не удалось скачать отчет глубокого анализа",
+  failed_to_delete_aggregate_report:
+    "Не удалось удалить отчет глубокого анализа",
   quality_review_invalid_input: "Проверьте заполненные поля анализа",
-  quality_review_forbidden: "Оспорить можно только анализ собственного корпоративного звонка",
+  quality_review_forbidden:
+    "Оспорить можно только анализ собственного корпоративного звонка",
   quality_review_not_found: "Анализ или заявка на проверку не найдены",
-  quality_review_publication_blocked: "Для публикации завершите выбранные изменения",
-  quality_review_version_conflict: "Черновик изменился в другом окне. Страница будет обновлена",
-  quality_review_source_outdated: "Исходный анализ изменился — начните проверку заново",
-  quality_review_conflict_of_interest: "Нельзя переоценивать собственный корпоративный звонок или собственную опубликованную версию",
-  quality_review_limit_reached: "Две независимые человеческие оценки уже опубликованы. Дальнейшая переоценка недоступна",
-  quality_review_reviewer_must_differ: "Повторную оценку должен выполнить другой проверяющий",
-  quality_review_active_appeal_exists: "Этот анализ уже находится на пересмотре",
-  quality_review_failed: "Не удалось сохранить изменения анализа"
+  quality_review_publication_blocked:
+    "Для публикации завершите выбранные изменения",
+  quality_review_version_conflict:
+    "Черновик изменился в другом окне. Страница будет обновлена",
+  quality_review_source_outdated:
+    "Исходный анализ изменился — начните проверку заново",
+  quality_review_conflict_of_interest:
+    "Нельзя переоценивать собственный корпоративный звонок или собственную опубликованную версию",
+  quality_review_limit_reached:
+    "Две независимые человеческие оценки уже опубликованы. Дальнейшая переоценка недоступна",
+  quality_review_reviewer_must_differ:
+    "Повторную оценку должен выполнить другой проверяющий",
+  quality_review_active_appeal_exists:
+    "Этот анализ уже находится на пересмотре",
+  quality_review_failed: "Не удалось сохранить изменения анализа",
 };
 
 type ApiPayload = Record<string, unknown>;
@@ -225,7 +255,10 @@ type RawSubscription = Omit<Partial<Subscription>, "plan"> & {
   plan?: RawPlan;
 };
 
-type RawSubscriptionUsageResponse = Omit<Partial<SubscriptionUsageResponse>, "subscription"> & {
+type RawSubscriptionUsageResponse = Omit<
+  Partial<SubscriptionUsageResponse>,
+  "subscription"
+> & {
   subscription?: RawSubscription;
 };
 
@@ -235,20 +268,36 @@ function isRecord(value: unknown): value is ApiPayload {
 
 function getApiErrorCode(payload: unknown) {
   if (!isRecord(payload) || !isRecord(payload.error)) return undefined;
-  return typeof payload.error.code === "string" ? payload.error.code : undefined;
+  return typeof payload.error.code === "string"
+    ? payload.error.code
+    : undefined;
 }
 
 function getApiErrorDetails(payload: unknown) {
-  if (!isRecord(payload) || !isRecord(payload.error) || !isRecord(payload.error.details)) return undefined;
+  if (
+    !isRecord(payload) ||
+    !isRecord(payload.error) ||
+    !isRecord(payload.error.details)
+  )
+    return undefined;
   return payload.error.details;
 }
 
-function getApiErrorMessage(payload: unknown, status: number, path: string, init: RequestInit) {
+function getApiErrorMessage(
+  payload: unknown,
+  status: number,
+  path: string,
+  init: RequestInit,
+) {
   const code = getApiErrorCode(payload);
 
   if (code && apiErrorMessages[code]) return apiErrorMessages[code];
 
-  if (isRecord(payload) && isRecord(payload.error) && typeof payload.error.message === "string") {
+  if (
+    isRecord(payload) &&
+    isRecord(payload.error) &&
+    typeof payload.error.message === "string"
+  ) {
     return payload.error.message;
   }
 
@@ -268,7 +317,10 @@ function booleanOrFallback(value: unknown, fallback = false) {
 }
 
 function analysisLevelOrFallback(value: unknown) {
-  return value === "basic" || value === "plus" || value === "pro" || value === "priority"
+  return value === "basic" ||
+    value === "plus" ||
+    value === "pro" ||
+    value === "priority"
     ? value
     : "basic";
 }
@@ -276,24 +328,42 @@ function analysisLevelOrFallback(value: unknown) {
 function normalizePlan(plan: RawPlan): Plan {
   return {
     id: typeof plan.id === "string" ? plan.id : "",
-    code: (typeof plan.code === "string" ? plan.code : "personal_start") as PlanCode,
+    code: (typeof plan.code === "string"
+      ? plan.code
+      : "personal_start") as PlanCode,
     type: (plan.type === "business" ? "business" : "personal") as PlanType,
     name: typeof plan.name === "string" ? plan.name : "Тариф",
-    monthly_minutes_limit: numberOrFallback(plan.monthly_minutes_limit),
+		monthly_price_minor: numberOrFallback(plan.monthly_price_minor),
+		currency: typeof plan.currency === "string" ? plan.currency : "RUB",
+		marketing_hours_hint: numberOrFallback(plan.marketing_hours_hint),
+		monthly_minutes_limit: numberOrFallback(plan.monthly_minutes_limit),
+		monthly_credit_allowance: numberOrFallback(
+			plan.monthly_credit_allowance,
+			numberOrFallback(plan.monthly_minutes_limit) * 875,
+		),
     active_instruction_limit: numberOrFallback(
-      plan.active_instruction_limit ?? plan.active_instructions_limit
+      plan.active_instruction_limit ?? plan.active_instructions_limit,
     ),
     company_limit: nullableNumber(plan.company_limit ?? plan.companies_limit),
     departments_per_company_limit: nullableNumber(
-      plan.departments_per_company_limit ?? plan.departments_limit
+      plan.departments_per_company_limit ?? plan.departments_limit,
     ),
-    members_per_company_limit: nullableNumber(plan.members_per_company_limit ?? plan.members_limit),
-    instructions_per_department_limit: nullableNumber(plan.instructions_per_department_limit),
+    members_per_company_limit: nullableNumber(
+      plan.members_per_company_limit ?? plan.members_limit,
+    ),
+    instructions_per_department_limit: nullableNumber(
+      plan.instructions_per_department_limit,
+    ),
     analysis_level: analysisLevelOrFallback(plan.analysis_level),
-    history_retention_days: numberOrFallback(plan.history_retention_days ?? plan.call_history_days),
-    export_enabled: booleanOrFallback(plan.export_enabled ?? plan.export_reports_enabled),
+    history_retention_days: numberOrFallback(
+      plan.history_retention_days ?? plan.call_history_days,
+    ),
+    export_enabled: booleanOrFallback(
+      plan.export_enabled ?? plan.export_reports_enabled,
+    ),
     team_analytics_enabled: booleanOrFallback(plan.team_analytics_enabled),
-    api_access_enabled: booleanOrFallback(plan.api_access_enabled)
+    api_access_enabled: booleanOrFallback(plan.api_access_enabled),
+		webhooks_enabled: booleanOrFallback(plan.webhooks_enabled),
   };
 }
 
@@ -301,65 +371,115 @@ function normalizeSubscription(subscription: RawSubscription): Subscription {
   return {
     id: typeof subscription.id === "string" ? subscription.id : "",
     plan: normalizePlan(subscription.plan ?? {}),
-    user_uuid: typeof subscription.user_uuid === "string" ? subscription.user_uuid : null,
-    company_uuid: typeof subscription.company_uuid === "string" ? subscription.company_uuid : null,
-    status: subscription.status === "canceled" ? "canceled" : subscription.status === "active" ? "active" : "expired",
-    starts_at: typeof subscription.starts_at === "string" ? subscription.starts_at : "",
-    ends_at: typeof subscription.ends_at === "string" ? subscription.ends_at : null,
-    created_at: typeof subscription.created_at === "string" ? subscription.created_at : "",
-    updated_at: typeof subscription.updated_at === "string" ? subscription.updated_at : ""
+    user_uuid:
+      typeof subscription.user_uuid === "string"
+        ? subscription.user_uuid
+        : null,
+    company_uuid:
+      typeof subscription.company_uuid === "string"
+        ? subscription.company_uuid
+        : null,
+    status:
+      subscription.status === "canceled"
+        ? "canceled"
+        : subscription.status === "active"
+          ? "active"
+          : "expired",
+    starts_at:
+      typeof subscription.starts_at === "string" ? subscription.starts_at : "",
+    ends_at:
+      typeof subscription.ends_at === "string" ? subscription.ends_at : null,
+    created_at:
+      typeof subscription.created_at === "string"
+        ? subscription.created_at
+        : "",
+    updated_at:
+      typeof subscription.updated_at === "string"
+        ? subscription.updated_at
+        : "",
   };
 }
 
-function normalizeSubscriptionUsage(usage: RawSubscriptionUsageResponse): SubscriptionUsageResponse {
+function normalizeSubscriptionUsage(
+  usage: RawSubscriptionUsageResponse,
+): SubscriptionUsageResponse {
   return {
     subscription: normalizeSubscription(usage.subscription ?? {}),
-    period_start: typeof usage.period_start === "string" ? usage.period_start : "",
+    period_start:
+      typeof usage.period_start === "string" ? usage.period_start : "",
     period_end: typeof usage.period_end === "string" ? usage.period_end : "",
     used_minutes: numberOrFallback(usage.used_minutes),
     limit_minutes: numberOrFallback(usage.limit_minutes),
     remaining_minutes: numberOrFallback(usage.remaining_minutes),
     percent: numberOrFallback(usage.percent),
-    members_limit: typeof usage.members_limit === "number" ? usage.members_limit : undefined,
-    members_used: typeof usage.members_used === "number" ? usage.members_used : undefined,
-    departments_limit: typeof usage.departments_limit === "number" ? usage.departments_limit : undefined,
-    departments_used: typeof usage.departments_used === "number" ? usage.departments_used : undefined,
+    members_limit:
+      typeof usage.members_limit === "number" ? usage.members_limit : undefined,
+    members_used:
+      typeof usage.members_used === "number" ? usage.members_used : undefined,
+    departments_limit:
+      typeof usage.departments_limit === "number"
+        ? usage.departments_limit
+        : undefined,
+    departments_used:
+      typeof usage.departments_used === "number"
+        ? usage.departments_used
+        : undefined,
     active_instructions_limit:
-      typeof usage.active_instructions_limit === "number" ? usage.active_instructions_limit : undefined,
+      typeof usage.active_instructions_limit === "number"
+        ? usage.active_instructions_limit
+        : undefined,
     active_instructions_used:
-      typeof usage.active_instructions_used === "number" ? usage.active_instructions_used : undefined
+      typeof usage.active_instructions_used === "number"
+        ? usage.active_instructions_used
+        : undefined,
   };
 }
 
 function refreshSessionRequest() {
   return coordinateRefresh({
-    refresh: () => request<AuthResponse>(authRefreshPath, { method: "POST" }, { retryOnUnauthorized: false }),
+    refresh: () =>
+      request<AuthResponse>(
+        authRefreshPath,
+        { method: "POST" },
+        { retryOnUnauthorized: false },
+      ),
     probe: async () => {
       try {
-        return await request<UserResponse>("/auth/me", {}, { retryOnUnauthorized: false });
+        return await request<UserResponse>(
+          "/auth/me",
+          {},
+          { retryOnUnauthorized: false },
+        );
       } catch {
         return null;
       }
     },
-    isConflict: (error) => error instanceof ApiError && error.status === 409 && error.code === "refresh_rotation_conflict"
+    isConflict: (error) =>
+      error instanceof ApiError &&
+      error.status === 409 &&
+      error.code === "refresh_rotation_conflict",
   });
 }
 
 async function request<T>(
   path: string,
   init: RequestInit = {},
-  options: { retryOnUnauthorized?: boolean } = {}
+  options: { retryOnUnauthorized?: boolean } = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
 
-  if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
+  if (
+    init.body &&
+    !(init.body instanceof FormData) &&
+    !headers.has("Content-Type")
+  ) {
     headers.set("Content-Type", "application/json");
   }
 
   const response = await fetch(`${apiRoot}${path}`, {
     ...init,
     headers,
-    credentials: "include"
+    credentials: "include",
   });
 
   if (response.status === 204) {
@@ -367,10 +487,16 @@ async function request<T>(
   }
 
   const contentType = response.headers.get("Content-Type") ?? "";
-  const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+  const payload = contentType.includes("application/json")
+    ? await response.json()
+    : await response.text();
 
   if (!response.ok) {
-    if (response.status === 401 && options.retryOnUnauthorized !== false && !path.startsWith("/auth/")) {
+    if (
+      response.status === 401 &&
+      options.retryOnUnauthorized !== false &&
+      !path.startsWith("/auth/")
+    ) {
       try {
         await refreshSessionRequest();
         return request<T>(path, init, { retryOnUnauthorized: false });
@@ -379,25 +505,36 @@ async function request<T>(
       }
     }
 
-    if (response.status === 401 && !path.startsWith("/auth/")) notifySessionExpired();
+    if (response.status === 401 && !path.startsWith("/auth/"))
+      notifySessionExpired();
 
     const code = getApiErrorCode(payload);
     const message = getApiErrorMessage(payload, response.status, path, init);
 
-    throw new ApiError(response.status, message, code, getApiErrorDetails(payload));
+    throw new ApiError(
+      response.status,
+      message,
+      code,
+      getApiErrorDetails(payload),
+    );
   }
 
   return payload as T;
 }
 
-async function requestBlob(path: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
+async function requestBlob(
+  path: string,
+  options: { retryOnUnauthorized?: boolean } = {},
+): Promise<Blob> {
   const response = await fetch(`${apiRoot}${path}`, {
-    credentials: "include"
+    credentials: "include",
   });
 
   if (!response.ok) {
     const contentType = response.headers.get("Content-Type") ?? "";
-    const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+    const payload = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
     const code = getApiErrorCode(payload);
     const message = getApiErrorMessage(payload, response.status, path, {});
 
@@ -412,20 +549,30 @@ async function requestBlob(path: string, options: { retryOnUnauthorized?: boolea
 
     if (response.status === 401) notifySessionExpired();
 
-    throw new ApiError(response.status, message, code, getApiErrorDetails(payload));
+    throw new ApiError(
+      response.status,
+      message,
+      code,
+      getApiErrorDetails(payload),
+    );
   }
 
   return response.blob();
 }
 
-async function requestAssetBlob(url: string, options: { retryOnUnauthorized?: boolean } = {}): Promise<Blob> {
+async function requestAssetBlob(
+  url: string,
+  options: { retryOnUnauthorized?: boolean } = {},
+): Promise<Blob> {
   const response = await fetch(url, {
-    credentials: "include"
+    credentials: "include",
   });
 
   if (!response.ok) {
     const contentType = response.headers.get("Content-Type") ?? "";
-    const payload = contentType.includes("application/json") ? await response.json() : await response.text();
+    const payload = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
     const code = getApiErrorCode(payload);
     const message = getApiErrorMessage(payload, response.status, url, {});
 
@@ -440,7 +587,12 @@ async function requestAssetBlob(url: string, options: { retryOnUnauthorized?: bo
 
     if (response.status === 401) notifySessionExpired();
 
-    throw new ApiError(response.status, message, code, getApiErrorDetails(payload));
+    throw new ApiError(
+      response.status,
+      message,
+      code,
+      getApiErrorDetails(payload),
+    );
   }
 
   return response.blob();
@@ -469,7 +621,8 @@ function queryString(input: object = {}) {
 }
 
 function apiPathFromUrl(pathOrUrl: string) {
-  if (pathOrUrl.startsWith("/api/v1/")) return pathOrUrl.slice("/api/v1".length);
+  if (pathOrUrl.startsWith("/api/v1/"))
+    return pathOrUrl.slice("/api/v1".length);
   if (!pathOrUrl.startsWith("/")) return `/${pathOrUrl}`;
   return pathOrUrl;
 }
@@ -489,8 +642,11 @@ export function getCallMediaUrl(call: CallResponse) {
     callWithAudioLinks.audio_download_url,
     callWithAudioLinks.file_url,
     callWithAudioLinks.recording_url,
-    callWithAudioLinks.download_url
-  ].find((value): value is string => typeof value === "string" && value.trim().length > 0);
+    callWithAudioLinks.download_url,
+  ].find(
+    (value): value is string =>
+      typeof value === "string" && value.trim().length > 0,
+  );
 
   if (directUrl) return absoluteApiAssetUrl(directUrl);
 
@@ -513,67 +669,174 @@ export function openAuthorizedEventStream(url: string) {
 }
 
 export const api = {
-
-  listQualityReviews(input: { company_uuid?: string; department_uuid?: string; status?: string; limit?: number; offset?: number } = {}) {
-    return request<QualityReviewsResponse>(`/quality-reviews${queryString(input)}`);
+  listQualityReviews(
+    input: {
+      company_uuid?: string;
+      department_uuid?: string;
+      status?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) {
+    return request<QualityReviewsResponse>(
+      `/quality-reviews${queryString(input)}`,
+    );
   },
 
   getQualityReview(reviewId: string) {
-    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}`);
+    return request<QualityReviewResponse>(
+      `/quality-reviews/${encodeURIComponent(reviewId)}`,
+    );
   },
 
   listQualityReviewEvents(reviewId: string) {
-    return request<{ events: QualityReviewEvent[] }>(`/quality-reviews/${encodeURIComponent(reviewId)}/events`);
+    return request<{ events: QualityReviewEvent[] }>(
+      `/quality-reviews/${encodeURIComponent(reviewId)}/events`,
+    );
   },
 
-  createQualityReview(callId: string, input: { analysis_uuid: string; reviewed_subject_user_uuid?: string; assignee_user_uuid?: string; due_at?: string }) {
-    return request<QualityReviewResponse>(`/calls/${encodeURIComponent(callId)}/quality-reviews`, { method: "POST", body: JSON.stringify(input) });
+  createQualityReview(
+    callId: string,
+    input: {
+      analysis_uuid: string;
+      reviewed_subject_user_uuid?: string;
+      assignee_user_uuid?: string;
+      due_at?: string;
+    },
+  ) {
+    return request<QualityReviewResponse>(
+      `/calls/${encodeURIComponent(callId)}/quality-reviews`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
   },
 
   getAnalysisReviewContext(callId: string, analysisId: string) {
-    return request<AnalysisReviewContext>(`/calls/${encodeURIComponent(callId)}/quality-review-context${queryString({ analysis_uuid: analysisId })}`);
+    return request<AnalysisReviewContext>(
+      `/calls/${encodeURIComponent(callId)}/quality-review-context${queryString({ analysis_uuid: analysisId })}`,
+    );
   },
 
-  createAnalysisComment(callId: string, analysisId: string, body: string, criterionKey?: string) {
-    return request<import("./types").AnalysisComment>(`/calls/${encodeURIComponent(callId)}/analysis-comments${queryString({ analysis_uuid: analysisId })}`, { method: "POST", body: JSON.stringify({ body, criterion_key: criterionKey }) });
+  createAnalysisComment(
+    callId: string,
+    analysisId: string,
+    body: string,
+    criterionKey?: string,
+  ) {
+    return request<import("./types").AnalysisComment>(
+      `/calls/${encodeURIComponent(callId)}/analysis-comments${queryString({ analysis_uuid: analysisId })}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ body, criterion_key: criterionKey }),
+      },
+    );
   },
 
   updateAnalysisComment(commentId: string, lockVersion: number, body: string) {
-    return request<import("./types").AnalysisComment>(`/analysis-comments/${encodeURIComponent(commentId)}`, { method: "PATCH", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify({ body }) });
+    return request<import("./types").AnalysisComment>(
+      `/analysis-comments/${encodeURIComponent(commentId)}`,
+      {
+        method: "PATCH",
+        headers: { "If-Match": String(lockVersion) },
+        body: JSON.stringify({ body }),
+      },
+    );
   },
 
   challengeCallAnalysis(callId: string, analysisId: string, reason: string) {
-    return request<QualityReviewResponse>(`/calls/${encodeURIComponent(callId)}/quality-review-challenge`, { method: "POST", body: JSON.stringify({ analysis_uuid: analysisId, reason }) });
+    return request<QualityReviewResponse>(
+      `/calls/${encodeURIComponent(callId)}/quality-review-challenge`,
+      {
+        method: "POST",
+        body: JSON.stringify({ analysis_uuid: analysisId, reason }),
+      },
+    );
   },
 
   claimQualityReview(reviewId: string, expectedVersion: number) {
-    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/claim`, { method: "POST", body: JSON.stringify({ expected_version: expectedVersion }) });
+    return request<QualityReviewResponse>(
+      `/quality-reviews/${encodeURIComponent(reviewId)}/claim`,
+      {
+        method: "POST",
+        body: JSON.stringify({ expected_version: expectedVersion }),
+      },
+    );
   },
 
-  saveQualityReviewDraft(reviewId: string, lockVersion: number, input: { overall_comment: string; payload: Record<string, unknown>; criteria: Array<{ criterion_key: string; title?: string; custom?: boolean; human_score?: number; not_applicable?: boolean; comment: string }> }) {
-    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/draft`, { method: "PUT", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify(input) });
+  saveQualityReviewDraft(
+    reviewId: string,
+    lockVersion: number,
+    input: {
+      overall_comment: string;
+      payload: Record<string, unknown>;
+      criteria: Array<{
+        criterion_key: string;
+        title?: string;
+        custom?: boolean;
+        human_score?: number;
+        not_applicable?: boolean;
+        comment: string;
+      }>;
+    },
+  ) {
+    return request<QualityReviewResponse>(
+      `/quality-reviews/${encodeURIComponent(reviewId)}/draft`,
+      {
+        method: "PUT",
+        headers: { "If-Match": String(lockVersion) },
+        body: JSON.stringify(input),
+      },
+    );
   },
 
   discardQualityReviewDraft(reviewId: string, lockVersion: number) {
-    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/draft`, { method: "DELETE", headers: { "If-Match": String(lockVersion) } });
+    return request<QualityReviewResponse>(
+      `/quality-reviews/${encodeURIComponent(reviewId)}/draft`,
+      { method: "DELETE", headers: { "If-Match": String(lockVersion) } },
+    );
   },
 
-  publishQualityReview(reviewId: string, lockVersion: number, draftRevisionId: string) {
-    return request<QualityReviewResponse>(`/quality-reviews/${encodeURIComponent(reviewId)}/publish`, { method: "POST", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify({ draft_revision_uuid: draftRevisionId }) });
+  publishQualityReview(
+    reviewId: string,
+    lockVersion: number,
+    draftRevisionId: string,
+  ) {
+    return request<QualityReviewResponse>(
+      `/quality-reviews/${encodeURIComponent(reviewId)}/publish`,
+      {
+        method: "POST",
+        headers: { "If-Match": String(lockVersion) },
+        body: JSON.stringify({ draft_revision_uuid: draftRevisionId }),
+      },
+    );
   },
 
   createQualityReviewAppeal(reviewId: string, reason: string) {
-    return request<QualityReviewAppeal>(`/quality-reviews/${encodeURIComponent(reviewId)}/appeals`, { method: "POST", body: JSON.stringify({ reason }) });
+    return request<QualityReviewAppeal>(
+      `/quality-reviews/${encodeURIComponent(reviewId)}/appeals`,
+      { method: "POST", body: JSON.stringify({ reason }) },
+    );
   },
 
-  resolveQualityReviewAppeal(appealId: string, input: { status: "accepted" | "partially_accepted" | "rejected"; comment: string; replacement_revision_uuid?: string }) {
-    return request<QualityReviewAppeal>(`/quality-review-appeals/${encodeURIComponent(appealId)}/resolve`, { method: "POST", body: JSON.stringify(input) });
+  resolveQualityReviewAppeal(
+    appealId: string,
+    input: {
+      status: "accepted" | "partially_accepted" | "rejected";
+      comment: string;
+      replacement_revision_uuid?: string;
+    },
+  ) {
+    return request<QualityReviewAppeal>(
+      `/quality-review-appeals/${encodeURIComponent(appealId)}/resolve`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
   },
   getAdminCapabilities() {
     return request<AdminCapabilitiesResponse>("/admin/capabilities");
   },
 
-  listAdminUsers(input: { q?: string; role?: string; limit?: number; offset?: number } = {}) {
+  listAdminUsers(
+    input: { q?: string; role?: string; limit?: number; offset?: number } = {},
+  ) {
     return request<AdminUsersResponse>(`/admin/users${queryString(input)}`);
   },
 
@@ -581,104 +844,167 @@ export const api = {
     return request<UserResponse>(`/admin/users/${encodeURIComponent(userId)}`);
   },
 
-  updateAdminUserProfile(userId: string, input: import("./types").UpdateAdminUserProfileRequest) {
-    return request<UserResponse>(`/admin/users/${encodeURIComponent(userId)}/profile`, {
-      method: "PATCH",
-      body: JSON.stringify(input)
-    });
+  updateAdminUserProfile(
+    userId: string,
+    input: import("./types").UpdateAdminUserProfileRequest,
+  ) {
+    return request<UserResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/profile`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+    );
   },
 
-  changeAdminUserRole(userId: string, input: { role: string; expected_role: string; reason: string }) {
-    return request<UserResponse>(`/admin/users/${encodeURIComponent(userId)}/role`, {
-      method: "PATCH",
-      body: JSON.stringify(input)
-    });
+  changeAdminUserRole(
+    userId: string,
+    input: { role: string; expected_role: string; reason: string },
+  ) {
+    return request<UserResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/role`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+    );
   },
 
   listAdminUserSessions(userId: string) {
-    return request<UserSessionsResponse>(`/admin/users/${encodeURIComponent(userId)}/sessions`);
+    return request<UserSessionsResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/sessions`,
+    );
   },
 
   revokeAllAdminUserSessions(userId: string, reason: string) {
-    return request<void>(`/admin/users/${encodeURIComponent(userId)}/sessions`, {
-      method: "DELETE",
-      body: JSON.stringify({ reason })
-    });
+    return request<void>(
+      `/admin/users/${encodeURIComponent(userId)}/sessions`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({ reason }),
+      },
+    );
   },
 
   revokeAdminUserSession(userId: string, sessionId: string, reason: string) {
-    return request<void>(`/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`, {
-      method: "DELETE",
-      body: JSON.stringify({ reason })
-    });
+    return request<void>(
+      `/admin/users/${encodeURIComponent(userId)}/sessions/${encodeURIComponent(sessionId)}`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({ reason }),
+      },
+    );
   },
 
-  listAdminCompanies(input: { q?: string; limit?: number; offset?: number } = {}) {
-    return request<AdminCompaniesResponse>(`/admin/companies${queryString(input)}`);
+  listAdminCompanies(
+    input: { q?: string; limit?: number; offset?: number } = {},
+  ) {
+    return request<AdminCompaniesResponse>(
+      `/admin/companies${queryString(input)}`,
+    );
   },
 
   getAdminCompany(companyId: string) {
-    return request<CompanyResponse>(`/admin/companies/${encodeURIComponent(companyId)}`);
+    return request<CompanyResponse>(
+      `/admin/companies/${encodeURIComponent(companyId)}`,
+    );
   },
 
   updateCompanyTag(companyId: string, tag: string) {
-    return request<CompanyResponse>(`/companies/${encodeURIComponent(companyId)}/tag`, {
-      method: "PATCH",
-      body: JSON.stringify({ tag })
-    });
+    return request<CompanyResponse>(
+      `/companies/${encodeURIComponent(companyId)}/tag`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ tag }),
+      },
+    );
   },
   updateAdminCompanyTag(companyId: string, tag: string) {
-    return request<CompanyResponse>(`/admin/companies/${encodeURIComponent(companyId)}/tag`, {
-      method: "PATCH",
-      body: JSON.stringify({ tag })
-    });
+    return request<CompanyResponse>(
+      `/admin/companies/${encodeURIComponent(companyId)}/tag`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ tag }),
+      },
+    );
   },
 
   getAdminSubscription(kind: "users" | "companies", id: string) {
-    return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription`);
+    return request<AdminSubscriptionResponse>(
+      `/admin/${kind}/${encodeURIComponent(id)}/subscription`,
+    );
   },
 
-  grantAdminSubscription(kind: "users" | "companies", id: string, input: { plan_code: PlanCode; starts_at?: string; ends_at: string; reason: string }) {
-    return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription/grant`, {
-      method: "POST", body: JSON.stringify(input)
-    });
+  grantAdminSubscription(
+    kind: "users" | "companies",
+    id: string,
+    input: {
+      plan_code: PlanCode;
+      starts_at?: string;
+      ends_at: string;
+      reason: string;
+    },
+  ) {
+    return request<AdminSubscriptionResponse>(
+      `/admin/${kind}/${encodeURIComponent(id)}/subscription/grant`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
   },
 
-  cancelAdminSubscription(kind: "users" | "companies", id: string, reason: string) {
-    return request<AdminSubscriptionResponse>(`/admin/${kind}/${encodeURIComponent(id)}/subscription/cancel`, {
-      method: "POST", body: JSON.stringify({ reason })
-    });
+  cancelAdminSubscription(
+    kind: "users" | "companies",
+    id: string,
+    reason: string,
+  ) {
+    return request<AdminSubscriptionResponse>(
+      `/admin/${kind}/${encodeURIComponent(id)}/subscription/cancel`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      },
+    );
   },
   resetAdminUsage(kind: "users" | "companies", id: string, reason: string) {
-    return request<void>(`/admin/${kind}/${encodeURIComponent(id)}/usage/reset`, {
-      method: "POST",
-      body: JSON.stringify({ reason })
-    });
+    return request<void>(
+      `/admin/${kind}/${encodeURIComponent(id)}/usage/reset`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      },
+    );
   },
 
   getAdminCall(callId: string) {
     return request<CallResponse>(`/admin/calls/${encodeURIComponent(callId)}`);
   },
 
-  listAdminUserCalls(userId: string, input: { limit?: number; offset?: number } = {}) {
-    return request<CallsListResponse>(`/admin/users/${encodeURIComponent(userId)}/calls${queryString(input)}`);
+  listAdminUserCalls(
+    userId: string,
+    input: { limit?: number; offset?: number } = {},
+  ) {
+    return request<CallsListResponse>(
+      `/admin/users/${encodeURIComponent(userId)}/calls${queryString(input)}`,
+    );
   },
   login(input: LoginRequest) {
     return request<AuthResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
   async register(input: RegisterRequest) {
     await request<{ user: UserResponse }>("/auth/register", {
       method: "POST",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
 
     return api.login({
       email: input.email,
-      password: input.password
+      password: input.password,
     });
   },
 
@@ -697,14 +1023,14 @@ export const api = {
   updateUsername(username: string) {
     return request<UserResponse>("/auth/me/username", {
       method: "PATCH",
-      body: JSON.stringify({ username })
+      body: JSON.stringify({ username }),
     });
   },
 
   updateProfile(input: UpdateProfileRequest) {
     return request<UserResponse>("/auth/me/profile", {
       method: "PATCH",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
@@ -725,14 +1051,14 @@ export const api = {
   updatePreferences(input: UpdatePreferencesRequest) {
     return request<UserPreferencesResponse>("/auth/me/preferences", {
       method: "PATCH",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
   updatePassword(input: UpdatePasswordRequest) {
     return request<UpdatePasswordResponse>("/auth/me/password", {
       method: "PATCH",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
@@ -741,7 +1067,9 @@ export const api = {
   },
 
   deleteSession(sessionId: string) {
-    return request<void>(`/auth/me/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE" });
+    return request<void>(`/auth/me/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "DELETE",
+    });
   },
 
   lookupUserByUsername(username: string) {
@@ -749,13 +1077,37 @@ export const api = {
     return request<UserResponse>(`/users/lookup?${query}`);
   },
 
-  listContacts() { return request<UserResponse[]>("/contacts"); },
-  searchContacts(query: string) { return request<UserResponse[]>(`/contacts/search?${new URLSearchParams({ q: query })}`); },
-  addContact(userId: string) { return request<void>(`/contacts/${encodeURIComponent(userId)}`, { method: "PUT" }); },
-  removeContact(userId: string) { return request<void>(`/contacts/${encodeURIComponent(userId)}`, { method: "DELETE" }); },
-  listFavoriteCalls() { return request<CallResponse[]>("/favorite-calls"); },
-  addFavoriteCall(callId: string) { return request<void>(`/favorite-calls/${encodeURIComponent(callId)}`, { method: "PUT" }); },
-  removeFavoriteCall(callId: string) { return request<void>(`/favorite-calls/${encodeURIComponent(callId)}`, { method: "DELETE" }); },
+  listContacts() {
+    return request<UserResponse[]>("/contacts");
+  },
+  searchContacts(query: string) {
+    return request<UserResponse[]>(
+      `/contacts/search?${new URLSearchParams({ q: query })}`,
+    );
+  },
+  addContact(userId: string) {
+    return request<void>(`/contacts/${encodeURIComponent(userId)}`, {
+      method: "PUT",
+    });
+  },
+  removeContact(userId: string) {
+    return request<void>(`/contacts/${encodeURIComponent(userId)}`, {
+      method: "DELETE",
+    });
+  },
+  listFavoriteCalls() {
+    return request<CallResponse[]>("/favorite-calls");
+  },
+  addFavoriteCall(callId: string) {
+    return request<void>(`/favorite-calls/${encodeURIComponent(callId)}`, {
+      method: "PUT",
+    });
+  },
+  removeFavoriteCall(callId: string) {
+    return request<void>(`/favorite-calls/${encodeURIComponent(callId)}`, {
+      method: "DELETE",
+    });
+  },
 
   listCalls(filters?: {
     q?: string;
@@ -770,76 +1122,110 @@ export const api = {
     limit?: number;
     offset?: number;
   }) {
-    return request<CallResponse[] | CallsListResponse>(`/calls${queryString(filters)}`);
+    return request<CallResponse[] | CallsListResponse>(
+      `/calls${queryString(filters)}`,
+    );
   },
 
   getCallFilterOptions(input?: {
     company_uuid?: string;
     department_uuid?: string;
   }) {
-    return request<CallFilterOptionsResponse>(`/calls/filters${queryString(input)}`);
+    return request<CallFilterOptionsResponse>(
+      `/calls/filters${queryString(input)}`,
+    );
   },
 
-  createCall(
-    input: {
-      title?: string;
-      media: File;
-      companyUuid?: string;
-      departmentUuid?: string;
-      useCustomInstructions?: boolean;
-      folderUuid?: string;
-      speakerHints?: Array<{ userId: string; name: string; username?: string; role: "self" | "other"; note?: string }>;
-      diarizationRoles?: Array<{ name: string; description?: string }>;
-    }
-  ) {
+  createCall(input: {
+    title?: string;
+    media: File;
+    companyUuid?: string;
+    departmentUuid?: string;
+    useCustomInstructions?: boolean;
+    folderUuid?: string;
+    speakerHints?: Array<{
+      userId: string;
+      name: string;
+      username?: string;
+      role: "self" | "other";
+      note?: string;
+    }>;
+    diarizationRoles?: Array<{ name: string; description?: string }>;
+  }) {
     const body = new FormData();
     if (input.title?.trim()) body.append("title", input.title.trim());
     body.append("media", input.media);
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
-    if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
+    if (input.departmentUuid)
+      body.append("department_uuid", input.departmentUuid);
     if (input.folderUuid) body.append("folder_uuid", input.folderUuid);
     if (typeof input.useCustomInstructions === "boolean") {
-      body.append("use_custom_instructions", String(input.useCustomInstructions));
+      body.append(
+        "use_custom_instructions",
+        String(input.useCustomInstructions),
+      );
     }
-    if (input.speakerHints?.length) body.append("speaker_hints", JSON.stringify(input.speakerHints));
-    if (input.diarizationRoles?.length) body.append("diarization_roles", JSON.stringify(input.diarizationRoles));
+    if (input.speakerHints?.length)
+      body.append("speaker_hints", JSON.stringify(input.speakerHints));
+    if (input.diarizationRoles?.length)
+      body.append("diarization_roles", JSON.stringify(input.diarizationRoles));
 
     return request<CallResponse>("/calls", { method: "POST", body });
   },
 
-  getAnalysisPersonalization(scope: AnalysisPersonalizationScope, ownerUuid: string, companyUuid?: string) {
-    return request<AnalysisPersonalization>(`/analysis-personalization${queryString({
-      scope,
-      owner_uuid: ownerUuid,
-      company_uuid: companyUuid
-    })}`);
+  getAnalysisPersonalization(
+    scope: AnalysisPersonalizationScope,
+    ownerUuid: string,
+    companyUuid?: string,
+  ) {
+    return request<AnalysisPersonalization>(
+      `/analysis-personalization${queryString({
+        scope,
+        owner_uuid: ownerUuid,
+        company_uuid: companyUuid,
+      })}`,
+    );
   },
 
-  saveAnalysisPersonalization(scope: AnalysisPersonalizationScope, ownerUuid: string, content: string, companyUuid?: string) {
-    return request<AnalysisPersonalization>(`/analysis-personalization${queryString({
-      scope,
-      owner_uuid: ownerUuid,
-      company_uuid: companyUuid
-    })}`, { method: "PUT", body: JSON.stringify({ content }) });
+  saveAnalysisPersonalization(
+    scope: AnalysisPersonalizationScope,
+    ownerUuid: string,
+    content: string,
+    companyUuid?: string,
+  ) {
+    return request<AnalysisPersonalization>(
+      `/analysis-personalization${queryString({
+        scope,
+        owner_uuid: ownerUuid,
+        company_uuid: companyUuid,
+      })}`,
+      { method: "PUT", body: JSON.stringify({ content }) },
+    );
   },
 
   updateCallTitle(callId: string, title: string) {
     return request<CallResponse>(`/calls/${encodeURIComponent(callId)}`, {
       method: "PATCH",
-      body: JSON.stringify({ title })
+      body: JSON.stringify({ title }),
     });
   },
 
   deleteCall(callId: string) {
-    return request<void>(`/calls/${encodeURIComponent(callId)}`, { method: "DELETE" });
+    return request<void>(`/calls/${encodeURIComponent(callId)}`, {
+      method: "DELETE",
+    });
   },
 
   listAppliedInstructions(analysisId: string) {
-    return request<{ items: AppliedInstruction[] }>(`/analyses/${encodeURIComponent(analysisId)}/instructions`);
+    return request<{ items: AppliedInstruction[] }>(
+      `/analyses/${encodeURIComponent(analysisId)}/instructions`,
+    );
   },
 
   getAppliedInstruction(analysisId: string, versionId: string) {
-    return request<AppliedInstruction>(`/analyses/${encodeURIComponent(analysisId)}/instructions/${encodeURIComponent(versionId)}`);
+    return request<AppliedInstruction>(
+      `/analyses/${encodeURIComponent(analysisId)}/instructions/${encodeURIComponent(versionId)}`,
+    );
   },
 
   listCallFolders(input?: {
@@ -850,53 +1236,73 @@ export const api = {
     limit?: number;
     offset?: number;
   }) {
-    return request<CallFoldersListResponse>(`/call-folders${queryString(input)}`);
+    return request<CallFoldersListResponse>(
+      `/call-folders${queryString(input)}`,
+    );
   },
 
   createCallFolder(input: CreateCallFolderRequest) {
     return request<CallFolderResponse>("/call-folders", {
       method: "POST",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
   getCallFolder(folderId: string) {
-    return request<CallFolderResponse>(`/call-folders/${encodeURIComponent(folderId)}`);
+    return request<CallFolderResponse>(
+      `/call-folders/${encodeURIComponent(folderId)}`,
+    );
   },
 
   updateCallFolder(folderId: string, input: UpdateCallFolderRequest) {
-    return request<CallFolderResponse>(`/call-folders/${encodeURIComponent(folderId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(input)
-    });
+    return request<CallFolderResponse>(
+      `/call-folders/${encodeURIComponent(folderId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+    );
   },
 
   replaceCallFolderInstructions(folderId: string, instructionUuids: string[]) {
-    return request<CallFolderResponse>(`/call-folders/${encodeURIComponent(folderId)}/instructions`, {
-      method: "PUT",
-      body: JSON.stringify({ instruction_uuids: instructionUuids })
-    });
+    return request<CallFolderResponse>(
+      `/call-folders/${encodeURIComponent(folderId)}/instructions`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ instruction_uuids: instructionUuids }),
+      },
+    );
   },
 
   deleteCallFolder(folderId: string) {
-    return request<void>(`/call-folders/${encodeURIComponent(folderId)}`, { method: "DELETE" });
+    return request<void>(`/call-folders/${encodeURIComponent(folderId)}`, {
+      method: "DELETE",
+    });
   },
 
-  listCallFolderCalls(folderId: string, input?: { limit?: number; offset?: number }) {
-    return request<CallsListResponse>(`/call-folders/${encodeURIComponent(folderId)}/calls${queryString(input)}`);
+  listCallFolderCalls(
+    folderId: string,
+    input?: { limit?: number; offset?: number },
+  ) {
+    return request<CallsListResponse>(
+      `/call-folders/${encodeURIComponent(folderId)}/calls${queryString(input)}`,
+    );
   },
 
   assignCallToFolder(folderId: string, callId: string) {
-    return request<void>(`/call-folders/${encodeURIComponent(folderId)}/calls`, {
-      method: "POST",
-      body: JSON.stringify({ call_uuid: callId })
-    });
+    return request<void>(
+      `/call-folders/${encodeURIComponent(folderId)}/calls`,
+      {
+        method: "POST",
+        body: JSON.stringify({ call_uuid: callId }),
+      },
+    );
   },
 
   removeCallFromFolder(folderId: string, callId: string) {
     return request<void>(
       `/call-folders/${encodeURIComponent(folderId)}/calls/${encodeURIComponent(callId)}`,
-      { method: "DELETE" }
+      { method: "DELETE" },
     );
   },
 
@@ -907,11 +1313,23 @@ export const api = {
   createCompany(name: string) {
     return request<CompanyResponse>("/companies", {
       method: "POST",
-      body: JSON.stringify({ name })
+      body: JSON.stringify({ name }),
     });
   },
 
-  listActions(input: { company_uuid?: string; call_uuid?: string; department_uuid?: string; assignee_uuid?: string; status?: string; q?: string; mine?: boolean; limit?: number; offset?: number } = {}) {
+  listActions(
+    input: {
+      company_uuid?: string;
+      call_uuid?: string;
+      department_uuid?: string;
+      assignee_uuid?: string;
+      status?: string;
+      q?: string;
+      mine?: boolean;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) {
     return request<CallActionsResponse>(`/actions${queryString(input)}`);
   },
 
@@ -919,59 +1337,121 @@ export const api = {
     return request<CallAction>(`/actions/${encodeURIComponent(actionId)}`);
   },
 
-  listAdminActions(input: { status?: string; q?: string; company_tag?: string; department?: string; limit?: number; offset?: number } = {}) {
+  listAdminActions(
+    input: {
+      status?: string;
+      q?: string;
+      company_tag?: string;
+      department?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
+  ) {
     return request<CallActionsResponse>(`/admin/actions${queryString(input)}`);
   },
 
   getAdminAction(actionId: string) {
-    return request<CallAction>(`/admin/actions/${encodeURIComponent(actionId)}`);
+    return request<CallAction>(
+      `/admin/actions/${encodeURIComponent(actionId)}`,
+    );
   },
 
   listAdminActionAssignees(companyId: string) {
-    return request<CallActionAssigneesResponse>(`/admin/companies/${encodeURIComponent(companyId)}/action-assignees`);
+    return request<CallActionAssigneesResponse>(
+      `/admin/companies/${encodeURIComponent(companyId)}/action-assignees`,
+    );
   },
 
-  mutateAdminAction(actionId: string, operation: "complete" | "cancel" | "reschedule" | "reassign" | "reopen", input: Record<string, unknown>) {
-    return request<CallAction>(`/admin/actions/${encodeURIComponent(actionId)}/${operation}`, { method: "POST", body: JSON.stringify(input) });
+  mutateAdminAction(
+    actionId: string,
+    operation: "complete" | "cancel" | "reschedule" | "reassign" | "reopen",
+    input: Record<string, unknown>,
+  ) {
+    return request<CallAction>(
+      `/admin/actions/${encodeURIComponent(actionId)}/${operation}`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
   },
 
   createAction(callId: string, input: CreateCallActionRequest) {
-    return request<CallAction>(`/calls/${encodeURIComponent(callId)}/actions`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(input) });
-  },
-
-  setNoActionRequired(callId: string, analysisId: string, reason = "") {
-    return request<void>(`/calls/${encodeURIComponent(callId)}/analyses/${encodeURIComponent(analysisId)}/action-disposition`, { method: "PUT", body: JSON.stringify({ kind: "no_action_required", reason }) });
-  },
-
-  listActionAssignees(companyId: string, input: { q?: string; department_uuid?: string } = {}) {
-    return request<CallActionAssigneesResponse>(`/companies/${encodeURIComponent(companyId)}/action-assignees${queryString(input)}`);
-  },
-
-  mutateAction(actionId: string, operation: "start" | "complete" | "cancel" | "reschedule" | "reassign" | "reopen", input: Record<string, unknown>) {
-    return request<CallAction>(`/actions/${encodeURIComponent(actionId)}/${operation}`, { method: "POST", body: JSON.stringify(input) });
-  },
-
-  createActionTransfer(actionId: string, input: { reason: string; proposed_assignee_user_uuid?: string; proposed_department_uuid?: string }) {
-    return request(`/actions/${encodeURIComponent(actionId)}/transfer-requests`, { method: "POST", body: JSON.stringify(input) });
-  },
-
-  getCompany(companyId: string) {
-    return request<CompanyResponse>(`/companies/${encodeURIComponent(companyId)}`);
-  },
-
-  updateCompany(companyId: string, name: string) {
-    return request<CompanyResponse>(`/companies/${encodeURIComponent(companyId)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ name })
+    return request<CallAction>(`/calls/${encodeURIComponent(callId)}/actions`, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify(input),
     });
   },
 
+  setNoActionRequired(callId: string, analysisId: string, reason = "") {
+    return request<void>(
+      `/calls/${encodeURIComponent(callId)}/analyses/${encodeURIComponent(analysisId)}/action-disposition`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ kind: "no_action_required", reason }),
+      },
+    );
+  },
+
+  listActionAssignees(
+    companyId: string,
+    input: { q?: string; department_uuid?: string } = {},
+  ) {
+    return request<CallActionAssigneesResponse>(
+      `/companies/${encodeURIComponent(companyId)}/action-assignees${queryString(input)}`,
+    );
+  },
+
+  mutateAction(
+    actionId: string,
+    operation:
+      "start" | "complete" | "cancel" | "reschedule" | "reassign" | "reopen",
+    input: Record<string, unknown>,
+  ) {
+    return request<CallAction>(
+      `/actions/${encodeURIComponent(actionId)}/${operation}`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  },
+
+  createActionTransfer(
+    actionId: string,
+    input: {
+      reason: string;
+      proposed_assignee_user_uuid?: string;
+      proposed_department_uuid?: string;
+    },
+  ) {
+    return request(
+      `/actions/${encodeURIComponent(actionId)}/transfer-requests`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  },
+
+  getCompany(companyId: string) {
+    return request<CompanyResponse>(
+      `/companies/${encodeURIComponent(companyId)}`,
+    );
+  },
+
+  updateCompany(companyId: string, name: string) {
+    return request<CompanyResponse>(
+      `/companies/${encodeURIComponent(companyId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ name }),
+      },
+    );
+  },
+
   deleteCompany(companyId: string) {
-    return request<void>(`/companies/${encodeURIComponent(companyId)}`, { method: "DELETE" });
+    return request<void>(`/companies/${encodeURIComponent(companyId)}`, {
+      method: "DELETE",
+    });
   },
 
   async getCompanySubscription(companyId: string) {
-    const subscription = await request<RawSubscription>(`/companies/${encodeURIComponent(companyId)}/subscription`);
+    const subscription = await request<RawSubscription>(
+      `/companies/${encodeURIComponent(companyId)}/subscription`,
+    );
     return normalizeSubscription(subscription);
   },
 
@@ -981,26 +1461,327 @@ export const api = {
   },
 
   async getSubscriptionUsage(period?: string) {
-    const usage = await request<RawSubscriptionUsageResponse>(`/subscription/usage${queryString({ period })}`);
+    const usage = await request<RawSubscriptionUsageResponse>(
+      `/subscription/usage${queryString({ period })}`,
+    );
     return normalizeSubscriptionUsage(usage);
   },
 
   async getCompanySubscriptionUsage(companyId: string, period?: string) {
     const usage = await request<RawSubscriptionUsageResponse>(
-      `/companies/${encodeURIComponent(companyId)}/subscription/usage${queryString({ period })}`
+      `/companies/${encodeURIComponent(companyId)}/subscription/usage${queryString({ period })}`,
     );
     return normalizeSubscriptionUsage(usage);
   },
 
+  getCreditDashboard(from?: string, to?: string) {
+    return request<CreditDashboardResponse>(
+      `/credits/dashboard${queryString({ from, to })}`,
+    );
+  },
+
+  getCompanyCreditDashboard(companyId: string, from?: string, to?: string) {
+    return request<CreditDashboardResponse>(
+      `/companies/${encodeURIComponent(companyId)}/credits/dashboard${queryString({ from, to })}`,
+    );
+  },
+
+  updateCompanyCreditVisibility(companyId: string, visible: boolean) {
+    return request<{ visible_to_members: boolean; can_manage_visibility: boolean }>(
+      `/companies/${encodeURIComponent(companyId)}/credits/visibility`,
+      { method: "PATCH", body: JSON.stringify({ visible }) },
+    );
+  },
+
+  listDeveloperApplications(
+    ownerType: "user" | "company" = "user",
+    ownerId?: string,
+  ) {
+    return request<{ applications: DeveloperApplication[] }>(
+      `/developer/applications${queryString({ owner_type: ownerType, owner_uuid: ownerId })}`,
+    );
+  },
+
+  createDeveloperApplication(input: {
+    owner_type: "user" | "company";
+    owner_uuid?: string;
+    name: string;
+    environment: "sandbox" | "production";
+    capabilities: string[];
+    daily_credit_limit?: number;
+    monthly_credit_limit?: number;
+    max_credits_per_operation?: number;
+  }) {
+    return request<DeveloperApplication>("/developer/applications", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  createIntegrationKey(
+    applicationId: string,
+    input: { name: string; scopes: string[]; expires_at?: string },
+  ) {
+    return request<CreatedIntegrationKey>(
+      `/developer/applications/${encodeURIComponent(applicationId)}/keys`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  },
+
+  listIntegrationConnections(applicationId: string) {
+    return request<{ connections: import("./types").IntegrationConnection[] }>(
+      `/developer/applications/${encodeURIComponent(applicationId)}/connections`,
+    );
+  },
+
+  createIntegrationConnection(
+    applicationId: string,
+    input: {
+      name: string;
+      provider: "generic_api";
+      company_uuid?: string;
+			department_uuid?: string;
+			folder_uuid?: string;
+			allow_folder_override?: boolean;
+      disable_policy: "continue" | "pause" | "cancel";
+      settings: { schema_version: number; inherit_scope_instructions?: boolean };
+    },
+  ) {
+    return request<import("./types").IntegrationConnection>(
+      `/developer/applications/${encodeURIComponent(applicationId)}/connections`,
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify(input),
+      },
+    );
+  },
+
+  updateIntegrationConnection(
+    connectionId: string,
+    input: {
+      name: string;
+      disable_policy: "continue" | "pause" | "cancel";
+      settings: { schema_version: number; inherit_scope_instructions?: boolean; [key: string]: unknown };
+    },
+    lockVersion: number,
+  ) {
+    return request<import("./types").IntegrationConnection>(
+      `/integrations/${encodeURIComponent(connectionId)}`,
+      {
+        method: "PATCH",
+        headers: { "If-Match": String(lockVersion) },
+        body: JSON.stringify(input),
+      },
+    );
+  },
+
+  changeIntegrationConnectionStatus(
+    connectionId: string,
+    status: "active" | "disabled" | "revoked",
+    lockVersion: number,
+  ) {
+    const path =
+      status === "active" ? "enable" : status === "disabled" ? "disable" : "";
+    return request<import("./types").IntegrationConnection>(
+      `/integrations/${encodeURIComponent(connectionId)}${path ? `/${path}` : ""}`,
+      {
+        method: status === "revoked" ? "DELETE" : "POST",
+        headers: { "If-Match": String(lockVersion) },
+      },
+    );
+  },
+
+  listIntegrationWebhooks(connectionId: string) {
+    return request<{ webhooks: import("./types").IntegrationWebhook[] }>(
+      `/integrations/${encodeURIComponent(connectionId)}/webhooks`,
+    );
+  },
+
+  createIntegrationWebhook(
+    connectionId: string,
+    input: {
+      application_uuid: string;
+      name: string;
+      url: string;
+      event_types: string[];
+    },
+  ) {
+    return request<{
+      webhook: import("./types").IntegrationWebhook;
+      signing_secret: string;
+      secret_visible_once: true;
+    }>(`/integrations/${encodeURIComponent(connectionId)}/webhooks`, {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+  },
+
+  listIntegrationWebhookDeliveries(connectionId: string) {
+    return request<{
+      deliveries: import("./types").IntegrationWebhookDelivery[];
+    }>(`/integrations/${encodeURIComponent(connectionId)}/webhook-deliveries`);
+  },
+
+  testIntegrationWebhook(connectionId: string) {
+    return request<{ event_uuid: string; status: "queued" }>(
+      `/integrations/${encodeURIComponent(connectionId)}/webhook/test`,
+      { method: "POST" },
+    );
+  },
+
+  listIntegrationIngestItems(connectionId: string, input: { limit?: number; offset?: number } = {}) {
+    return request<{ ingest_items: import("./types").IntegrationIngestItem[]; total: number; limit: number; offset: number }>(
+      `/integrations/${encodeURIComponent(connectionId)}/ingest-items${queryString(input)}`,
+    );
+  },
+
+  listIntegrationServiceAccounts(connectionId: string) {
+    return request<{
+      service_accounts: import("./types").IntegrationServiceAccount[];
+    }>(`/integrations/${encodeURIComponent(connectionId)}/service-accounts`);
+  },
+
+  createIntegrationServiceAccount(
+    connectionId: string,
+    input: { name: string; scopes: string[] },
+  ) {
+    return request<import("./types").IntegrationServiceAccount>(
+      `/integrations/${encodeURIComponent(connectionId)}/service-accounts`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  },
+
+  createServiceAccountKey(
+    serviceAccountId: string,
+    input: { name: string; scopes: string[]; expires_at?: string },
+  ) {
+    return request<CreatedIntegrationKey>(
+      `/service-accounts/${encodeURIComponent(serviceAccountId)}/keys`,
+      { method: "POST", body: JSON.stringify(input) },
+    );
+  },
+
+  listServiceAccountKeys(serviceAccountId: string) {
+    return request<{ keys: import("./types").IntegrationAPIKey[] }>(
+      `/service-accounts/${encodeURIComponent(serviceAccountId)}/keys`,
+    );
+  },
+
+  revokeIntegrationKey(keyId: string) {
+    return request<void>(`/developer/keys/${encodeURIComponent(keyId)}`, {
+      method: "DELETE",
+    });
+  },
+
+  revokeIntegrationServiceAccount(serviceAccountId: string) {
+    return request<void>(
+      `/service-accounts/${encodeURIComponent(serviceAccountId)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  rotateIntegrationKey(keyId: string, overlapSeconds = 300) {
+    return request<CreatedIntegrationKey>(
+      `/developer/keys/${encodeURIComponent(keyId)}/rotate`,
+      {
+        method: "POST",
+        body: JSON.stringify({ overlap_seconds: overlapSeconds }),
+      },
+    );
+  },
+
+  revokeIntegrationWebhook(webhookId: string) {
+    return request<void>(
+      `/integration-webhooks/${encodeURIComponent(webhookId)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  changeDeveloperApplicationStatus(
+    applicationId: string,
+    status: "active" | "disabled" | "revoked",
+  ) {
+    return request<DeveloperApplication>(
+      `/developer/applications/${encodeURIComponent(applicationId)}/${status === "active" ? "enable" : status}`,
+      { method: "POST" },
+    );
+  },
+
+  adjustSandboxWallet(
+    applicationId: string,
+    mode: "add" | "set" | "reset",
+    credits = 0,
+  ) {
+    return request<{
+      application_uuid: string;
+      environment: "sandbox";
+      balance_credits: number;
+    }>(
+      `/developer/applications/${encodeURIComponent(applicationId)}/sandbox-wallet`,
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify({ mode, credits }),
+      },
+    );
+  },
+
+  getSandboxWallet(applicationId: string) {
+    return request<import("./types").SandboxWalletDashboard>(
+      `/developer/applications/${encodeURIComponent(applicationId)}/sandbox-wallet`,
+    );
+  },
+
+  retryIntegrationIngestItem(itemId: string) {
+    return request<import("./types").IntegrationIngestItem>(
+      `/ingest-items/${encodeURIComponent(itemId)}/retry`,
+      { method: "POST" },
+    );
+  },
+
+  cancelIntegrationIngestItem(itemId: string) {
+    return request<import("./types").IntegrationIngestItem>(
+      `/ingest-items/${encodeURIComponent(itemId)}/cancel`,
+      { method: "POST" },
+    );
+  },
+
+  listIntegrationAuditEvents(connectionId: string, input: { limit?: number; offset?: number } = {}) {
+    return request<{ audit_events: import("./types").IntegrationAuditEvent[]; total: number; limit: number; offset: number }>(
+      `/integrations/${encodeURIComponent(connectionId)}/audit-events${queryString(input)}`,
+    );
+  },
+
+  mockPurchaseCredits(input: {
+    owner_type: "user" | "company";
+    owner_uuid?: string;
+    credits: number;
+  }) {
+    return request<{ credited: number; payment_mode: "mock" }>(
+      "/credits/purchases/mock",
+      {
+        method: "POST",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: JSON.stringify(input),
+      },
+    );
+  },
+
   listDepartments(companyId: string) {
-    return request<DepartmentResponse[]>(`/companies/${encodeURIComponent(companyId)}/departments`);
+    return request<DepartmentResponse[]>(
+      `/companies/${encodeURIComponent(companyId)}/departments`,
+    );
   },
 
   createDepartment(companyId: string, name: string) {
-    return request<DepartmentResponse>(`/companies/${encodeURIComponent(companyId)}/departments`, {
-      method: "POST",
-      body: JSON.stringify({ name })
-    });
+    return request<DepartmentResponse>(
+      `/companies/${encodeURIComponent(companyId)}/departments`,
+      {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      },
+    );
   },
 
   updateDepartment(companyId: string, departmentId: string, name: string) {
@@ -1008,60 +1789,70 @@ export const api = {
       `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`,
       {
         method: "PATCH",
-        body: JSON.stringify({ name })
-      }
+        body: JSON.stringify({ name }),
+      },
     );
   },
 
   deleteDepartment(companyId: string, departmentId: string) {
     return request<void>(
       `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}`,
-      { method: "DELETE" }
+      { method: "DELETE" },
     );
   },
 
-  listCompanyMembers(companyId: string, filters?: {
-    status?: "active" | "suspended" | "left";
-    role?: "employee" | "company_manager" | "department_leader";
-    department_uuid?: string;
-    q?: string;
-    limit?: number;
-    offset?: number;
-  }) {
+  listCompanyMembers(
+    companyId: string,
+    filters?: {
+      status?: "active" | "suspended" | "left";
+      role?: "employee" | "company_manager" | "department_leader";
+      department_uuid?: string;
+      q?: string;
+      limit?: number;
+      offset?: number;
+    },
+  ) {
     return request<CompanyMembersResponse>(
-      `/companies/${encodeURIComponent(companyId)}/members${queryString(filters)}`
+      `/companies/${encodeURIComponent(companyId)}/members${queryString(filters)}`,
     );
   },
 
   updateCompanyMemberStatus(
     companyId: string,
     userId: string,
-    status: "active" | "suspended" | "left"
+    status: "active" | "suspended" | "left",
   ) {
     return request<CompanyMemberListItemResponse>(
       `/companies/${encodeURIComponent(companyId)}/members/${encodeURIComponent(userId)}/status`,
       {
         method: "PATCH",
-        body: JSON.stringify({ status })
-      }
+        body: JSON.stringify({ status }),
+      },
     );
   },
-  updateCompanyMemberJobTitle(companyId: string, userId: string, jobTitle: string | null) {
+  updateCompanyMemberJobTitle(
+    companyId: string,
+    userId: string,
+    jobTitle: string | null,
+  ) {
     return request<CompanyMemberListItemResponse>(
       `/companies/${encodeURIComponent(companyId)}/members/${encodeURIComponent(userId)}/job-title`,
       {
         method: "PATCH",
-        body: JSON.stringify({ job_title: jobTitle })
-      }
+        body: JSON.stringify({ job_title: jobTitle }),
+      },
     );
   },
   leaveCompany(companyId: string) {
-    return request<CompanyMemberListItemResponse>(`/companies/${encodeURIComponent(companyId)}/leave`, { method: "POST" });
+    return request<CompanyMemberListItemResponse>(
+      `/companies/${encodeURIComponent(companyId)}/leave`,
+      { method: "POST" },
+    );
   },
 
   listDepartmentMembers(companyId: string, departmentId: string) {
     return request<DepartmentMemberResponse[]>(
-      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/members`
+      `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/members`,
     );
   },
 
@@ -1069,14 +1860,14 @@ export const api = {
     companyId: string,
     departmentId: string,
     userId: string,
-    role: InvitationDepartmentRole
+    role: InvitationDepartmentRole,
   ) {
     return request<DepartmentMemberResponse>(
       `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/members/${encodeURIComponent(userId)}/role`,
       {
         method: "PATCH",
-        body: JSON.stringify({ role })
-      }
+        body: JSON.stringify({ role }),
+      },
     );
   },
 
@@ -1084,67 +1875,82 @@ export const api = {
     companyId: string,
     departmentId: string,
     userId: string,
-    status: "active" | "suspended" | "left"
+    status: "active" | "suspended" | "left",
   ) {
     return request<DepartmentMemberResponse>(
       `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/members/${encodeURIComponent(userId)}/status`,
       {
         method: "PATCH",
-        body: JSON.stringify({ status })
-      }
+        body: JSON.stringify({ status }),
+      },
     );
   },
 
   createCompanyInvitation(companyId: string, username: string) {
-    return request<Invitation>(`/companies/${encodeURIComponent(companyId)}/invitations`, {
-      method: "POST",
-      body: JSON.stringify({ username, role: "employee" })
-    });
+    return request<Invitation>(
+      `/companies/${encodeURIComponent(companyId)}/invitations`,
+      {
+        method: "POST",
+        body: JSON.stringify({ username, role: "employee" }),
+      },
+    );
   },
 
   createDepartmentInvitation(
     companyId: string,
     departmentId: string,
     username: string,
-    role: InvitationDepartmentRole
+    role: InvitationDepartmentRole,
   ) {
     return request<Invitation>(
       `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/invitations`,
       {
         method: "POST",
-        body: JSON.stringify({ username, role })
-      }
+        body: JSON.stringify({ username, role }),
+      },
     );
   },
 
   listMyInvitations(status?: InvitationStatus) {
-    const query = status ? `?${new URLSearchParams({ status }).toString()}` : "";
+    const query = status
+      ? `?${new URLSearchParams({ status }).toString()}`
+      : "";
     return request<Invitation[]>(`/invitations${query}`);
   },
 
   acceptInvitation(invitationId: string) {
-    return request<Invitation>(`/invitations/${encodeURIComponent(invitationId)}/accept`, {
-      method: "POST"
-    });
+    return request<Invitation>(
+      `/invitations/${encodeURIComponent(invitationId)}/accept`,
+      {
+        method: "POST",
+      },
+    );
   },
 
   declineInvitation(invitationId: string) {
-    return request<Invitation>(`/invitations/${encodeURIComponent(invitationId)}/decline`, {
-      method: "POST"
-    });
+    return request<Invitation>(
+      `/invitations/${encodeURIComponent(invitationId)}/decline`,
+      {
+        method: "POST",
+      },
+    );
   },
 
   cancelCompanyInvitation(companyId: string, invitationId: string) {
     return request<Invitation>(
       `/companies/${encodeURIComponent(companyId)}/invitations/${encodeURIComponent(invitationId)}/cancel`,
-      { method: "POST" }
+      { method: "POST" },
     );
   },
 
-  cancelDepartmentInvitation(companyId: string, departmentId: string, invitationId: string) {
+  cancelDepartmentInvitation(
+    companyId: string,
+    departmentId: string,
+    invitationId: string,
+  ) {
     return request<Invitation>(
       `/companies/${encodeURIComponent(companyId)}/departments/${encodeURIComponent(departmentId)}/invitations/${encodeURIComponent(invitationId)}/cancel`,
-      { method: "POST" }
+      { method: "POST" },
     );
   },
 
@@ -1153,39 +1959,57 @@ export const api = {
   },
 
   updateTranscription(callId: string, input: UpdateTranscriptionRequest) {
-    return request<TranscriptionUpdateResponse>(`/calls/${encodeURIComponent(callId)}/transcription`, {
-      method: "PATCH",
-      body: JSON.stringify(input)
-    });
+    return request<TranscriptionUpdateResponse>(
+      `/calls/${encodeURIComponent(callId)}/transcription`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+    );
   },
 
   listTranscriptionSpeakerAssignments(callId: string) {
-    return request<TranscriptionSpeakerAssignment[]>(`/calls/${encodeURIComponent(callId)}/transcription/speakers`);
+    return request<TranscriptionSpeakerAssignment[]>(
+      `/calls/${encodeURIComponent(callId)}/transcription/speakers`,
+    );
   },
 
-  replaceTranscriptionSpeakerAssignments(callId: string, assignments: TranscriptionSpeakerAssignment[]) {
-    return request<TranscriptionSpeakerAssignment[]>(`/calls/${encodeURIComponent(callId)}/transcription/speakers`, {
-      method: "PUT",
-      body: JSON.stringify(assignments)
-    });
+  replaceTranscriptionSpeakerAssignments(
+    callId: string,
+    assignments: TranscriptionSpeakerAssignment[],
+  ) {
+    return request<TranscriptionSpeakerAssignment[]>(
+      `/calls/${encodeURIComponent(callId)}/transcription/speakers`,
+      {
+        method: "PUT",
+        body: JSON.stringify(assignments),
+      },
+    );
   },
 
   listTranscriptionRevisions(callId: string, limit = 20, offset = 0) {
     return request<TranscriptionRevisionListResponse>(
-      `/calls/${encodeURIComponent(callId)}/transcription/revisions?limit=${limit}&offset=${offset}`
+      `/calls/${encodeURIComponent(callId)}/transcription/revisions?limit=${limit}&offset=${offset}`,
     );
   },
 
   getTranscriptionRevision(callId: string, revision: number) {
     return request<TranscriptionRevisionContent>(
-      `/calls/${encodeURIComponent(callId)}/transcription/revisions/${revision}`
+      `/calls/${encodeURIComponent(callId)}/transcription/revisions/${revision}`,
     );
   },
 
-  restoreTranscriptionRevision(callId: string, revision: number, expectedRevision: number) {
+  restoreTranscriptionRevision(
+    callId: string,
+    revision: number,
+    expectedRevision: number,
+  ) {
     return request<TranscriptionUpdateResponse>(
       `/calls/${encodeURIComponent(callId)}/transcription/revisions/${revision}/restore`,
-      { method: "POST", body: JSON.stringify({ expected_revision: expectedRevision }) }
+      {
+        method: "POST",
+        body: JSON.stringify({ expected_revision: expectedRevision }),
+      },
     );
   },
 
@@ -1194,14 +2018,19 @@ export const api = {
   },
 
   analyzeCall(callId: string) {
-    return request<AnalysisResponse>(`/calls/${callId}/analysis`, { method: "POST" });
+    return request<AnalysisResponse>(`/calls/${callId}/analysis`, {
+      method: "POST",
+    });
   },
 
   createReport(callId: string, input: CreateReportRequest) {
-    return request<ReportResponse>(`/calls/${encodeURIComponent(callId)}/reports`, {
-      method: "POST",
-      body: JSON.stringify(input)
-    });
+    return request<ReportResponse>(
+      `/calls/${encodeURIComponent(callId)}/reports`,
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
   },
 
   listGlobalReports(filters?: {
@@ -1223,21 +2052,29 @@ export const api = {
   createGlobalReport(input: CreateGlobalReportRequest) {
     return request<ReportResponse>("/reports", {
       method: "POST",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
   listReports(callId: string) {
-    return request<ReportsResponse>(`/calls/${encodeURIComponent(callId)}/reports`);
+    return request<ReportsResponse>(
+      `/calls/${encodeURIComponent(callId)}/reports`,
+    );
   },
 
   downloadReport(report: ReportResponse) {
-    const path = report.download_url ?? `/reports/${encodeURIComponent(report.id)}/download`;
-    return requestBlob(path.startsWith("/api/v1/") ? path.slice("/api/v1".length) : path);
+    const path =
+      report.download_url ??
+      `/reports/${encodeURIComponent(report.id)}/download`;
+    return requestBlob(
+      path.startsWith("/api/v1/") ? path.slice("/api/v1".length) : path,
+    );
   },
 
   deleteReport(reportId: string) {
-    return request<void>(`/reports/${encodeURIComponent(reportId)}`, { method: "DELETE" });
+    return request<void>(`/reports/${encodeURIComponent(reportId)}`, {
+      method: "DELETE",
+    });
   },
 
   getAnalyticsOverview(filters?: {
@@ -1248,22 +2085,28 @@ export const api = {
     department_uuid?: string;
     folder_uuid?: string;
   }) {
-    return request<AnalyticsOverviewResponse>(`/analytics/overview${queryString(filters)}`);
+    return request<AnalyticsOverviewResponse>(
+      `/analytics/overview${queryString(filters)}`,
+    );
   },
 
   createDeepAnalysis(input: CreateDeepAnalysisRequest) {
     return request<AggregateAnalysisResponse>("/analytics/deep-analyses", {
       method: "POST",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
   listDeepAnalyses(input?: ListDeepAnalysesQuery) {
-    return request<ListAggregateAnalysesResponse>(`/analytics/deep-analyses${queryString(input)}`);
+    return request<ListAggregateAnalysesResponse>(
+      `/analytics/deep-analyses${queryString(input)}`,
+    );
   },
 
   getDeepAnalysis(id: string) {
-    return request<AggregateAnalysisResponse>(`/analytics/deep-analyses/${encodeURIComponent(id)}`);
+    return request<AggregateAnalysisResponse>(
+      `/analytics/deep-analyses/${encodeURIComponent(id)}`,
+    );
   },
 
   getDeepAnalysisEventsUrl(analysisId: string) {
@@ -1276,20 +2119,24 @@ export const api = {
       `/analytics/deep-analyses/${encodeURIComponent(analysisId)}/reports`,
       {
         method: "POST",
-        body: JSON.stringify(input)
-      }
+        body: JSON.stringify(input),
+      },
     );
   },
 
   listAggregateReports(analysisId: string) {
     return request<ListAggregateReportsResponse>(
-      `/analytics/deep-analyses/${encodeURIComponent(analysisId)}/reports`
+      `/analytics/deep-analyses/${encodeURIComponent(analysisId)}/reports`,
     );
   },
 
   downloadAggregateReport(report: AggregateReportResponse) {
     if (report.status !== "ready") {
-      throw new ApiError(409, "Отчет глубокого анализа еще формируется", "report_not_ready");
+      throw new ApiError(
+        409,
+        "Отчет глубокого анализа еще формируется",
+        "report_not_ready",
+      );
     }
 
     if (report.download_url) {
@@ -1301,13 +2148,15 @@ export const api = {
       return requestBlob(apiPathFromUrl(downloadUrl));
     }
 
-    return requestBlob(`/analytics/deep-analysis-reports/${encodeURIComponent(report.id)}/download`);
+    return requestBlob(
+      `/analytics/deep-analysis-reports/${encodeURIComponent(report.id)}/download`,
+    );
   },
 
   deleteAggregateReport(reportId: string) {
     return request<void>(
       `/analytics/deep-analysis-reports/${encodeURIComponent(reportId)}`,
-      { method: "DELETE" }
+      { method: "DELETE" },
     );
   },
 
@@ -1316,7 +2165,9 @@ export const api = {
     from?: string;
     to?: string;
   }) {
-    return request<ProcessingMonitoringResponse>(`/monitoring/processing${queryString(filters)}`);
+    return request<ProcessingMonitoringResponse>(
+      `/monitoring/processing${queryString(filters)}`,
+    );
   },
 
   search(input: {
@@ -1332,7 +2183,9 @@ export const api = {
     limit?: number;
     offset?: number;
   }) {
-    return request<NotificationsResponse>(`/notifications${queryString(input)}`);
+    return request<NotificationsResponse>(
+      `/notifications${queryString(input)}`,
+    );
   },
 
   notificationEventsUrl() {
@@ -1340,11 +2193,17 @@ export const api = {
   },
 
   markNotificationRead(notificationId: string) {
-    return request<void>(`/notifications/${encodeURIComponent(notificationId)}/read`, { method: "POST" });
+    return request<void>(
+      `/notifications/${encodeURIComponent(notificationId)}/read`,
+      { method: "POST" },
+    );
   },
 
   markNotificationUnread(notificationId: string) {
-    return request<void>(`/notifications/${encodeURIComponent(notificationId)}/unread`, { method: "POST" });
+    return request<void>(
+      `/notifications/${encodeURIComponent(notificationId)}/unread`,
+      { method: "POST" },
+    );
   },
 
   markAllNotificationsRead() {
@@ -1356,62 +2215,84 @@ export const api = {
   },
 
   listInstructions(
-    inputOrScope: InstructionScope | {
-      scope: InstructionScope;
-      company_uuid?: string;
-      department_uuid?: string;
-      include_inactive?: boolean;
-      q?: string;
-      limit?: number;
-      offset?: number;
-    },
+    inputOrScope:
+      | InstructionScope
+      | {
+          scope: InstructionScope;
+          company_uuid?: string;
+          department_uuid?: string;
+          include_inactive?: boolean;
+          q?: string;
+          limit?: number;
+          offset?: number;
+        },
     companyUuid?: string,
-    departmentUuid?: string
+    departmentUuid?: string,
   ) {
     const input =
       typeof inputOrScope === "string"
-        ? { scope: inputOrScope, company_uuid: companyUuid, department_uuid: departmentUuid }
+        ? {
+            scope: inputOrScope,
+            company_uuid: companyUuid,
+            department_uuid: departmentUuid,
+          }
         : inputOrScope;
     return request<AnalysisInstruction[]>(`/instructions${queryString(input)}`);
   },
 
   getInstruction(id: string) {
-    return request<AnalysisInstruction>(`/instructions/${encodeURIComponent(id)}`);
+    return request<AnalysisInstruction>(
+      `/instructions/${encodeURIComponent(id)}`,
+    );
   },
 
-  updateInstruction(id: string, input: {
-    title?: string;
-    is_active?: boolean;
-    sort_order?: number;
-  }) {
-    return request<AnalysisInstruction>(`/instructions/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify(input)
-    });
+  updateInstruction(
+    id: string,
+    input: {
+      title?: string;
+      is_active?: boolean;
+      sort_order?: number;
+    },
+  ) {
+    return request<AnalysisInstruction>(
+      `/instructions/${encodeURIComponent(id)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      },
+    );
   },
 
   replaceInstructionFile(id: string, file: File) {
     const body = new FormData();
     body.append("file", file);
-    return request<AnalysisInstruction>(`/instructions/${encodeURIComponent(id)}/file`, {
-      method: "PUT",
-      body
-    });
+    return request<AnalysisInstruction>(
+      `/instructions/${encodeURIComponent(id)}/file`,
+      {
+        method: "PUT",
+        body,
+      },
+    );
   },
 
   downloadInstruction(idOrDownloadUrl: string) {
-    const path = idOrDownloadUrl.startsWith("/") || idOrDownloadUrl.startsWith("/api/v1/")
-      ? apiPathFromUrl(idOrDownloadUrl)
-      : `/instructions/${encodeURIComponent(idOrDownloadUrl)}/download`;
+    const path =
+      idOrDownloadUrl.startsWith("/") || idOrDownloadUrl.startsWith("/api/v1/")
+        ? apiPathFromUrl(idOrDownloadUrl)
+        : `/instructions/${encodeURIComponent(idOrDownloadUrl)}/download`;
     return requestBlob(path);
   },
 
   listInstructionVersions(id: string) {
-    return request<{ items: AnalysisInstructionVersion[] }>(`/instructions/${encodeURIComponent(id)}/versions`);
+    return request<{ items: AnalysisInstructionVersion[] }>(
+      `/instructions/${encodeURIComponent(id)}/versions`,
+    );
   },
 
   getInstructionVersionFile(id: string, versionId: string) {
-    return requestBlob(`/instructions/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/file`);
+    return requestBlob(
+      `/instructions/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/file`,
+    );
   },
 
   reorderInstructions(input: {
@@ -1422,58 +2303,70 @@ export const api = {
   }) {
     return request<AnalysisInstruction[] | void>("/instructions/reorder", {
       method: "PATCH",
-      body: JSON.stringify(input)
+      body: JSON.stringify(input),
     });
   },
 
   deleteInstruction(id: string) {
-    return request<void>(`/instructions/${encodeURIComponent(id)}`, { method: "DELETE" });
+    return request<void>(`/instructions/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   },
 
   async listPlans() {
     const response = await request<{ plans?: RawPlan[] }>("/plans");
     return {
-      plans: Array.isArray(response.plans) ? response.plans.map(normalizePlan) : []
+      plans: Array.isArray(response.plans)
+        ? response.plans.map(normalizePlan)
+        : [],
     } satisfies PlansResponse;
   },
 
   activateCompanySubscription(companyId: string, planCode?: PlanCode) {
     const body = planCode ? { plan_code: planCode } : {};
-    return request<Subscription>(`/companies/${encodeURIComponent(companyId)}/subscription/activate`, {
-      method: "POST",
-      body: JSON.stringify(body)
-    });
+    return request<Subscription>(
+      `/companies/${encodeURIComponent(companyId)}/subscription/activate`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
   },
 
   activateSubscription(planCode?: PlanCode) {
     const body = planCode ? { plan_code: planCode } : {};
     return request<Subscription>("/subscription/activate", {
       method: "POST",
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
   },
 
   cancelCompanySubscription(companyId: string) {
-    return request<Subscription>(`/companies/${encodeURIComponent(companyId)}/subscription/cancel`, {
-      method: "POST"
-    });
+    return request<Subscription>(
+      `/companies/${encodeURIComponent(companyId)}/subscription/cancel`,
+      {
+        method: "POST",
+      },
+    );
   },
 
-  createInstruction(
-    input: {
-      title: string;
-      file: File;
-      scope: InstructionScope;
-      companyUuid?: string;
-      departmentUuid?: string;
-    }
-  ) {
+  createInstruction(input: {
+    title: string;
+    file: File;
+    scope: InstructionScope;
+    companyUuid?: string;
+    departmentUuid?: string;
+  }) {
     const body = new FormData();
     body.append("title", input.title);
     body.append("file", input.file);
     body.append("scope", input.scope);
     if (input.companyUuid) body.append("company_uuid", input.companyUuid);
-    if (input.departmentUuid) body.append("department_uuid", input.departmentUuid);
-    return request<AnalysisInstruction>("/instructions", { method: "POST", body });
-  }
+    if (input.departmentUuid)
+      body.append("department_uuid", input.departmentUuid);
+    return request<AnalysisInstruction>("/instructions", {
+      method: "POST",
+      body,
+    });
+  },
 };

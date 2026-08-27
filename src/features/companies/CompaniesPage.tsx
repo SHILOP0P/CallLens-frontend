@@ -29,6 +29,7 @@ import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { InvitationCreatePanel } from "../invitations/InvitationsPage";
 import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
 import { AnalysisPersonalizationCard } from "../analysis-context/AnalysisPersonalizationCard";
+import { CreditUsagePanel } from "../tariffs/CreditUsagePanel";
 
 export function CompaniesPage({
   session,
@@ -464,6 +465,8 @@ export function CompanyWorkspace({
         <CompanySubscriptionStatus company={company} isManager={isManager} onNavigate={onNavigate} />
         {!isManager && <div className="company-workspace-leave"><button className="ghost-button danger" type="button" onClick={() => setLeaveOpen(true)}>Покинуть компанию</button>{leaveError && <p className="form-error">{leaveError}</p>}</div>}
       </div>
+
+      <CreditUsagePanel session={session} companies={[company]} companyId={company.id} />
 
       <div className="company-workspace-grid">
         {isManager && <AnalysisPersonalizationCard

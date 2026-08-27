@@ -6,7 +6,7 @@ import {
   X
 } from "lucide-react";
 import type { CSSProperties } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { api, ApiError } from "../../api";
 import type {
   CompanyResponse,
@@ -19,6 +19,11 @@ import type {
 import { analysisLevelLabel, comparePlans, formatHistoryDays, formatInstructionLimit, formatMinutesLimit, planGradients } from "../../shared/lib/plans";
 import { SkeletonLine, TextBlockSkeleton } from "../../shared/ui/loading";
 import { SelectControl } from "../../shared/ui/primitives";
+import { CreditUsagePanel } from "./CreditUsagePanel";
+
+if (typeof window !== "undefined" && window.location.pathname === "/app/settings/tariffs" && "scrollRestoration" in window.history) {
+  window.history.scrollRestoration = "manual";
+}
 
 export function TariffsPage({
   session,
@@ -40,6 +45,8 @@ export function TariffsPage({
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  useTariffsScrollRestoration(loading);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +108,7 @@ export function TariffsPage({
       )}
       {!loading && !error && plans.length > 0 && (
         <>
+          <CreditUsagePanel session={session} companies={companies} />
           <PersonalSubscriptionPanel
             personalPlans={personalPlans}
             initialSubscription={personalSubscription}
@@ -428,20 +436,20 @@ export function TariffCard({ plan, business }: { plan: Plan; business?: boolean;
   const activeInstructionLimit =
     business ? plan.instructions_per_department_limit ?? plan.active_instruction_limit : plan.active_instruction_limit;
   const features = [
-    `Минут в месяц: ${formatMinutesLimit(plan.monthly_minutes_limit)}`,
+		`Около ${plan.marketing_hours_hint.toLocaleString("ru-RU")} ч обработки в месяц`,
+		`Кредитов: ${plan.monthly_credit_allowance.toLocaleString("ru-RU")}`,
     `Активных инструкций: ${formatInstructionLimit(activeInstructionLimit)}`,
     business && plan.company_limit !== null ? `Компаний: ${plan.company_limit}` : "",
     business && plan.departments_per_company_limit !== null
       ? `Отделов на компанию: ${plan.departments_per_company_limit}`
       : "",
-    business && plan.members_per_company_limit !== null
-      ? `Сотрудников на компанию: ${plan.members_per_company_limit}`
-      : "",
+		business ? "Без ограничений по сотрудникам и пользователям" : "",
     `Уровень анализа: ${analysisLevelLabel(plan.analysis_level)}`,
     `Хранение истории: ${formatHistoryDays(plan.history_retention_days)}`,
     plan.export_enabled ? "Экспорт отчетов" : "",
     business && plan.team_analytics_enabled ? "Командная аналитика" : "",
-    business && plan.api_access_enabled ? "Доступ к API" : ""
+		plan.api_access_enabled ? "API" : "",
+		plan.webhooks_enabled ? "Webhooks" : ""
   ].filter(Boolean);
 
   return (
@@ -449,6 +457,10 @@ export function TariffCard({ plan, business }: { plan: Plan; business?: boolean;
       <div className="tariff-card-head">
         <span className="status-chip warn">{plan.type === "personal" ? "Персональный" : "Бизнес"}</span>
         <h3>{plan.name}</h3>
+				<div className="tariff-price">
+					<strong>{(plan.monthly_price_minor / 100).toLocaleString("ru-RU")} ₽</strong>
+					<span>/ месяц</span>
+				</div>
       </div>
       <ul className="tariff-feature-list">
         {features.map((feature) => (
@@ -468,6 +480,14 @@ export function TariffCard({ plan, business }: { plan: Plan; business?: boolean;
 export function TariffSkeleton() {
   return (
     <>
+      <section className="credit-usage-panel credit-usage-skeleton glass" aria-label="Загрузка использования кредитов">
+        <div className="credit-skeleton-heading"><SkeletonLine className="button"/><div><SkeletonLine className="title"/><SkeletonLine/></div></div>
+        <div className="credit-skeleton-summary"><div className="credit-skeleton-ring"/><div className="credit-skeleton-copy"><SkeletonLine className="title"/><SkeletonLine/><SkeletonLine className="button"/></div><div className="credit-skeleton-card"><SkeletonLine className="title"/><TextBlockSkeleton rows={3}/></div></div>
+        <div className="credit-skeleton-toolbar"><SkeletonLine className="title"/><SkeletonLine className="button"/></div>
+        <div className="credit-skeleton-heatmap">{Array.from({ length: 126 }).map((_, index)=><span key={index}/>)}</div>
+        <div className="credit-skeleton-history"><SkeletonLine className="title"/><SkeletonLine className="title"/></div>
+      </section>
+      <section className="subscription-panel glass skeleton-card tariff-subscription-skeleton"><SkeletonLine className="title"/><TextBlockSkeleton rows={3}/></section>
       <section className="tariff-section">
         <h2>Персональные тарифы</h2>
         <div className="tariff-grid">
@@ -496,4 +516,38 @@ export function TariffSkeleton() {
       </section>
     </>
   );
+}
+
+const tariffsScrollKey = "verbatrace:tariffs-scroll-y";
+
+function useTariffsScrollRestoration(loading: boolean) {
+  const [restoreY] = useState(() => {
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    if (navigation?.type !== "reload") return null;
+    const saved = Number(sessionStorage.getItem(tariffsScrollKey));
+    return Number.isFinite(saved) && saved > 0 ? saved : null;
+  });
+
+  useEffect(() => {
+    const save = () => sessionStorage.setItem(tariffsScrollKey, String(Math.max(0, window.scrollY)));
+    window.addEventListener("scroll", save, { passive: true });
+    window.addEventListener("pagehide", save);
+    return () => {
+      save();
+      window.removeEventListener("scroll", save);
+      window.removeEventListener("pagehide", save);
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (loading || restoreY === null) return;
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => window.scrollTo({ top: restoreY, behavior: "auto" }));
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [loading, restoreY]);
 }

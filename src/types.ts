@@ -19,6 +19,7 @@ export type AppPage =
   | "monitoring"
   | "settings"
   | "settingsTariffs"
+  | "settingsIntegrations"
   | "settingsCompanies"
   | "settingsInstructions"
   | "settingsInvitations"
@@ -27,17 +28,20 @@ export type AppPage =
   | "profileDevices"
   | "admin"
   | "upload";
-export type CallStatus = "new" | "processing" | "transcribed" | "analyzed" | "failed";
+export type CallStatus =
+  "new" | "processing" | "transcribed" | "analyzed" | "failed";
 export type VisibilityScope = "personal" | "company" | "department";
 export type InstructionScope = "personal" | "company" | "department";
-export type AnalysisPersonalizationScope = "personal" | "company" | "department";
+export type AnalysisPersonalizationScope =
+  "personal" | "company" | "department";
 export interface AnalysisPersonalization {
   scope: AnalysisPersonalizationScope;
   owner_uuid: string;
   content: string;
   updated_at?: string;
 }
-export type InvitationStatus = "pending" | "accepted" | "declined" | "canceled" | "expired";
+export type InvitationStatus =
+  "pending" | "accepted" | "declined" | "canceled" | "expired";
 export type CompanyRole = "employee";
 export type DepartmentRole = "employee" | "department_leader";
 export type MembershipStatus = "active" | "suspended" | "left";
@@ -55,7 +59,8 @@ export type AnalysisLevel = "basic" | "plus" | "pro" | "priority";
 export type SubscriptionStatus = "active" | "canceled" | "expired";
 export type ReportFormat = "pdf" | "docx" | "md" | "xlsx";
 export type ReportStatus = "pending" | "ready" | "failed";
-export type CriteriaStatus = "met" | "partially_met" | "missed" | "not_applicable" | "unclear";
+export type CriteriaStatus =
+  "met" | "partially_met" | "missed" | "not_applicable" | "unclear";
 export type BusinessOutcomeStatus =
   | "success"
   | "follow_up_needed"
@@ -77,7 +82,8 @@ export type LostReason =
 export type SignalLevel = "high" | "medium" | "low" | "unclear";
 export type AnalysisConfidence = "low" | "medium" | "high";
 export type DeepAnalysisScope = VisibilityScope | "folder";
-export type AggregateAnalysisStatus = "pending" | "processing" | "done" | "failed";
+export type AggregateAnalysisStatus =
+  "pending" | "processing" | "done" | "failed";
 
 export interface UserResponse {
   id: string;
@@ -226,7 +232,14 @@ export interface CallResponse {
   department_uuid?: string | null;
   visibility_scope: VisibilityScope;
   use_custom_instructions?: boolean;
-  speaker_hints?: Array<{ user_id: string; name: string; username?: string; role: "self" | "manager" | "client" | "other"; note?: string }>;
+  is_test?: boolean;
+  speaker_hints?: Array<{
+    user_id: string;
+    name: string;
+    username?: string;
+    role: "self" | "manager" | "client" | "other";
+    note?: string;
+  }>;
   diarization_roles?: Array<{ name: string; description?: string }>;
   is_favorite?: boolean;
   created_at: string;
@@ -281,7 +294,8 @@ export interface TranscriptionWordEdit {
   speaker?: string;
 }
 
-export type TranscriptionSpeakerRole = "unknown" | "client" | "manager" | "operator" | "partner" | "other";
+export type TranscriptionSpeakerRole =
+  "unknown" | "client" | "manager" | "operator" | "partner" | "other";
 
 export interface TranscriptionSpeakerAssignment {
   speaker_key: string;
@@ -335,7 +349,8 @@ export interface TranscriptionWordResponse {
   speaker?: string;
 }
 
-export type AnalysisEvidenceMatchStatus = "matched" | "ambiguous" | "not_found" | "legacy";
+export type AnalysisEvidenceMatchStatus =
+  "matched" | "ambiguous" | "not_found" | "legacy";
 
 export interface AnalysisEvidence {
   quote: string;
@@ -383,7 +398,8 @@ export interface AppliedInstruction {
   position: number;
   title: string;
   scope: InstructionScope;
-  selection_source: "explicit" | "personal" | "company" | "department" | "folder";
+  selection_source:
+    "explicit" | "personal" | "company" | "department" | "folder";
   content_sha256: string;
   content?: string;
   original_filename?: string;
@@ -394,7 +410,8 @@ export interface AppliedInstruction {
 export interface AnalysisV2Question {
   question: string;
   manager_answer: string;
-  answer_status: "answered" | "partially_answered" | "not_answered" | "unclear" | string;
+  answer_status:
+    "answered" | "partially_answered" | "not_answered" | "unclear" | string;
   evidence_quotes: string[];
   evidence: AnalysisEvidence[];
 }
@@ -441,7 +458,13 @@ export interface AnalysisV2Result {
   };
   client_questions: AnalysisV2Question[];
   question_coverage: {
-    status: "answered" | "partially_answered" | "not_answered" | "no_questions" | "unclear" | string;
+    status:
+      | "answered"
+      | "partially_answered"
+      | "not_answered"
+      | "no_questions"
+      | "unclear"
+      | string;
     summary: string;
     unanswered_questions: string[];
   };
@@ -634,6 +657,178 @@ export interface SubscriptionUsageResponse {
   departments_used?: number;
   active_instructions_limit?: number;
   active_instructions_used?: number;
+}
+
+export interface CreditActivityDay {
+  date: string;
+  credits: number;
+  transcription: number;
+  analysis: number;
+  deep_analysis: number;
+  calls: number;
+}
+
+export interface CreditWalletEntry {
+  transaction_uuid: string;
+  type: string;
+  credits: number;
+  reason: string;
+  created_at: string;
+}
+
+export interface CreditDashboardResponse {
+	allowance_credits: number;
+	allowance_remaining: number;
+  allowance_remaining_percent: number;
+  days_until_reset: number;
+  resets_at: string;
+  allowance_exhausted: boolean;
+  wallet_credits: number | null;
+  activity: CreditActivityDay[];
+  wallet_entries: CreditWalletEntry[];
+  visible_to_members?: boolean;
+  can_manage_visibility?: boolean;
+}
+
+export interface DeveloperApplication {
+  application_uuid: string;
+  owner_type: "user" | "company";
+  owner_uuid: string;
+  name: string;
+  environment: "sandbox" | "production";
+  status: "active" | "disabled" | "revoked";
+  capabilities: string[];
+  daily_credit_limit: number | null;
+  monthly_credit_limit: number | null;
+  max_credits_per_operation: number | null;
+  lock_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SandboxWalletDashboard {
+  application_uuid: string;
+  application_name: string;
+  environment: "sandbox";
+  balance_credits: number;
+  entries: CreditWalletEntry[];
+}
+
+export interface CreatedIntegrationKey {
+  key_uuid: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  expires_at: string | null;
+  created_at: string;
+  secret: string;
+  secret_visible_once: true;
+}
+
+export interface IntegrationAPIKey {
+  key_uuid: string;
+  service_account_uuid: string;
+  name: string;
+  prefix: string;
+  scopes: string[];
+  expires_at?: string | null;
+  last_used_at?: string | null;
+  revoked_at?: string | null;
+  created_at: string;
+}
+
+export interface IntegrationConnection {
+  connection_uuid: string;
+  application_uuid: string;
+  company_uuid: string | null;
+  department_uuid: string | null;
+  folder_uuid: string | null;
+  name: string;
+  provider: "generic_api" | "bitrix24" | "amocrm" | "telephony";
+  status: "draft" | "active" | "degraded" | "disabled" | "revoked";
+	disable_policy: "continue" | "pause" | "cancel";
+	allow_folder_override: boolean;
+  settings: {
+    schema_version: number;
+    inherit_scope_instructions?: boolean;
+    [key: string]: unknown;
+  };
+  settings_version: number;
+  lock_version: number;
+  last_event_at: string | null;
+  last_success_at: string | null;
+  last_error_code: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntegrationServiceAccount {
+  service_account_uuid: string;
+  application_uuid: string;
+  connection_uuid: string;
+  created_by_user_uuid: string;
+  name: string;
+  status: string;
+  scopes: string[];
+  created_at: string;
+  last_used_at?: string | null;
+}
+
+export interface IntegrationWebhook {
+  webhook_endpoint_uuid: string;
+  application_uuid: string;
+  connection_uuid: string | null;
+  name: string;
+  status: string;
+  event_types: string[];
+  lock_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IntegrationWebhookDelivery {
+  delivery_uuid: string;
+  outbox_uuid: string;
+  webhook_endpoint_uuid: string;
+  attempt: number;
+  status: string;
+  http_status: number | null;
+  latency_ms: number | null;
+  response_size_bytes: number | null;
+  error_code: string | null;
+  created_at: string;
+}
+
+export interface IntegrationIngestItem {
+  ingest_item_uuid: string;
+  connection_uuid: string;
+  external_call_id: string;
+  source_kind: "url" | "upload";
+  title: string;
+  status: string;
+  stage: string;
+  attempts: number;
+  max_attempts: number;
+  call_uuid: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+	destination_scope?: "personal" | "company" | "department";
+	destination_folder_uuid?: string | null;
+	placement_source?: "connection_default" | "request_override" | "system_external";
+}
+
+export interface IntegrationAuditEvent {
+  audit_event_uuid: string;
+  event_type: string;
+  entity_type: string;
+  entity_uuid: string;
+  actor_type: string;
+  actor_uuid: string | null;
+  metadata: Record<string, unknown> | null;
+  request_id?: string | null;
+  created_at: string;
 }
 
 export interface AnalyticsOverviewResponse {
@@ -925,7 +1120,8 @@ export interface AggregateAnalysisResponse {
   provider: string;
   model: string | null;
   source_calls_count: number;
-  result_json: AggregateAnalysisResult | Record<string, unknown> | unknown[] | null;
+  result_json:
+    AggregateAnalysisResult | Record<string, unknown> | unknown[] | null;
   result_text: string | null;
   error_message: string | null;
   created_by_user_uuid: string;
@@ -1022,15 +1218,30 @@ export interface CompanyMembersResponse {
 }
 
 export interface SearchResponse {
-  calls: Array<{ id: string; title: string; status: string; created_at: string }>;
+  calls: Array<{
+    id: string;
+    title: string;
+    status: string;
+    created_at: string;
+  }>;
   companies: Array<{ id: string; name: string }>;
-  reports: Array<{ id: string; call_uuid: string; file_name: string; status: string }>;
+  reports: Array<{
+    id: string;
+    call_uuid: string;
+    file_name: string;
+    status: string;
+  }>;
   instructions: Array<{ id: string; title: string; scope: string }>;
 }
 
 export interface NotificationResponse {
   id: string;
-  type: "invitation" | "report_ready" | "subscription" | "processing_failed" | string;
+  type:
+    | "invitation"
+    | "report_ready"
+    | "subscription"
+    | "processing_failed"
+    | string;
   title: string;
   body: string;
   entity_type: string | null;
@@ -1039,7 +1250,8 @@ export interface NotificationResponse {
   created_at: string;
 }
 
-export type CallActionStatus = "open" | "in_progress" | "completed" | "cancelled" | "overdue";
+export type CallActionStatus =
+  "open" | "in_progress" | "completed" | "cancelled" | "overdue";
 export interface CallActionEvidence {
   id: string;
   kind: "word_range" | "legacy_text";
@@ -1093,8 +1305,16 @@ export interface CallAction {
   evidence: CallActionEvidence[];
   capabilities: CallActionCapabilities;
 }
-export interface CallActionsResponse { items: CallAction[]; total: number; limit: number; offset: number; }
-export interface CallActionAssigneeDepartment { id: string; name: string; }
+export interface CallActionsResponse {
+  items: CallAction[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+export interface CallActionAssigneeDepartment {
+  id: string;
+  name: string;
+}
 export interface CallActionAssignee {
   user_uuid: string;
   username: string;
@@ -1103,7 +1323,9 @@ export interface CallActionAssignee {
   job_title?: string;
   departments: CallActionAssigneeDepartment[];
 }
-export interface CallActionAssigneesResponse { items: CallActionAssignee[]; }
+export interface CallActionAssigneesResponse {
+  items: CallActionAssignee[];
+}
 export interface CreateCallActionRequest {
   analysis_uuid: string;
   source_department_uuid?: string;
@@ -1112,7 +1334,11 @@ export interface CreateCallActionRequest {
   title: string;
   description: string;
   due_at: string;
-  evidence: Array<{ word_start_index?: number; word_end_index?: number; legacy_quote?: string }>;
+  evidence: Array<{
+    word_start_index?: number;
+    word_end_index?: number;
+    legacy_quote?: string;
+  }>;
 }
 
 export interface NotificationsResponse {
@@ -1125,7 +1351,11 @@ export interface Plan {
   code: PlanCode;
   type: PlanType;
   name: string;
-  monthly_minutes_limit: number;
+	monthly_price_minor: number;
+	currency: string;
+	marketing_hours_hint: number;
+	monthly_minutes_limit: number;
+	monthly_credit_allowance: number;
   active_instruction_limit: number;
   company_limit: number | null;
   departments_per_company_limit: number | null;
@@ -1136,6 +1366,7 @@ export interface Plan {
   export_enabled: boolean;
   team_analytics_enabled: boolean;
   api_access_enabled: boolean;
+	webhooks_enabled: boolean;
 }
 
 export interface PlansResponse {
@@ -1158,8 +1389,16 @@ export interface SessionState {
   user: UserResponse;
 }
 
-export type QualityReviewStatus = "unassigned" | "assigned" | "in_review" | "published" | "appealed" | "resolved" | "canceled";
-export type QualityReviewDecision = "confirmed" | "overridden" | "not_applicable" | "unscored";
+export type QualityReviewStatus =
+  | "unassigned"
+  | "assigned"
+  | "in_review"
+  | "published"
+  | "appealed"
+  | "resolved"
+  | "canceled";
+export type QualityReviewDecision =
+  "confirmed" | "overridden" | "not_applicable" | "unscored";
 
 export interface QualityReviewCriterion {
   criterion_uuid: string;
@@ -1311,7 +1550,13 @@ export interface QualityReviewAppeal {
   review_uuid: string;
   revision_uuid: string;
   author_user_uuid: string;
-  status: "open" | "in_review" | "accepted" | "partially_accepted" | "rejected" | "withdrawn";
+  status:
+    | "open"
+    | "in_review"
+    | "accepted"
+    | "partially_accepted"
+    | "rejected"
+    | "withdrawn";
   reason: string;
   resolution_comment?: string;
   resolved_by_user_uuid?: string;

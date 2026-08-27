@@ -70,17 +70,22 @@ export const demoBusinessPlans: Plan[] = [
     code: "business_start",
     type: "business",
     name: "Business Start",
-    monthly_minutes_limit: 1000,
+		monthly_price_minor: 1_490_000,
+		currency: "RUB",
+		marketing_hours_hint: 100,
+    monthly_minutes_limit: 6000,
+    monthly_credit_allowance: 7_000_000,
     active_instruction_limit: 0,
     company_limit: 1,
     departments_per_company_limit: 5,
-    members_per_company_limit: 25,
+    members_per_company_limit: null,
     instructions_per_department_limit: 5,
     analysis_level: "plus",
     history_retention_days: 180,
-    export_enabled: false,
+    export_enabled: true,
     team_analytics_enabled: false,
-    api_access_enabled: false
+		api_access_enabled: true,
+		webhooks_enabled: true
   }
 ];
 

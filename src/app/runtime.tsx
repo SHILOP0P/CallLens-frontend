@@ -71,6 +71,7 @@ export const pageRoutes: Record<AppPage, string> = {
   monitoring: "/app/admin/monitoring",
   settings: "/app/settings",
   settingsTariffs: "/app/settings/tariffs",
+  settingsIntegrations: "/app/settings/integrations",
   settingsCompanies: "/app/settings/companies",
   settingsInstructions: "/app/instructions",
   settingsInvitations: "/app/settings/invitations",
@@ -110,7 +111,12 @@ export const settingsRoutes: Array<{ page: AppPage; label: string; description: 
   {
     page: "settingsTariffs",
     label: "Тарифы",
-    description: "План, лимиты расшифровки и условия команды."
+    description: "План, кредиты и условия команды."
+  },
+  {
+    page: "settingsIntegrations",
+    label: "Интеграции и API",
+    description: "Тестовые и рабочие приложения, API-ключи внешних систем."
   },
   {
     page: "settingsCompanies",

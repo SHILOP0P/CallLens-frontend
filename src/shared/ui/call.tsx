@@ -14,7 +14,7 @@ import type {
   TranscriptionSpeakerAssignment,
   TranscriptionWordResponse
 } from "../../types";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Ref } from "react";
 import { wordNeedsLeadingSpace } from "../lib/transcript";
 
@@ -33,12 +33,14 @@ type StatusTone = "ok" | "warn" | "bad";
 
 export function StatusChip({
   status,
-  analysisStatus
+  analysisStatus,
+  label
 }: {
   status: CallStatus;
   analysisStatus?: AnalysisResponse["status"];
+  label?: string;
 }) {
-  return <span className={`status-chip ${callStatusTone(status, analysisStatus)}`}>{callStatusChip(status, analysisStatus)}</span>;
+  return <span className={`status-chip ${callStatusTone(status, analysisStatus)}`}>{label ?? callStatusChip(status, analysisStatus)}</span>;
 }
 
 export function StatusTimeline({
@@ -164,7 +166,7 @@ export function InfoCard({
   status: string;
   statusTone?: StatusTone;
   statusThinking?: boolean;
-  action: string;
+  action?: string;
   children: React.ReactNode;
   onAction?: () => void;
   actionVariant?: "link" | "analysis";
@@ -180,7 +182,7 @@ export function InfoCard({
         <span className={`status-chip ${statusTone} ${statusThinking ? "thinking-status" : ""}`}>{status}</span>
       </div>
       {children}
-      {actionVariant === "analysis" ? (
+      {action && (actionVariant === "analysis" ? (
         <button
           className={`analysis-toggle-button ${expanded ? "expanded" : ""}`}
           type="button"
@@ -197,7 +199,7 @@ export function InfoCard({
           {action}
           <ChevronRight size={16} />
         </button>
-      )}
+      ))}
     </div>
   );
 }
@@ -208,7 +210,8 @@ export function TranscriptPreview({
   loading,
   activeWordIndex = -1,
   selectedEvidence,
-  speakerAssignments = []
+  speakerAssignments = [],
+  onOverflowChange
 }: {
   transcription?: TranscriptionResponse;
   expanded: boolean;
@@ -216,12 +219,30 @@ export function TranscriptPreview({
   activeWordIndex?: number;
   selectedEvidence?: MediaSeekTarget | null;
   speakerAssignments?: TranscriptionSpeakerAssignment[];
+  onOverflowChange?: (overflowing: boolean) => void;
 }) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const wordRefs = useRef(new Map<number, HTMLSpanElement>());
   const pendingEvidenceScrollRef = useRef(false);
   const words = useMemo(() => validTranscriptWords(transcription?.words), [transcription?.words]);
   const wordGroups = useMemo(() => groupTranscriptWords(words), [words]);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    if (!container || loading) {
+      onOverflowChange?.(false);
+      return;
+    }
+    const measure = () => onOverflowChange?.(container.scrollHeight > 169);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    window.addEventListener("resize", measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [loading, onOverflowChange, transcription, wordGroups]);
 
   function scrollToWord(index: number) {
     if (index < 0) return;
@@ -304,7 +325,7 @@ export function TranscriptPreview({
 
   if (segments.length > 0) {
     return (
-      <div className={`transcript-preview segmented expandable-content ${expanded ? "expanded" : "collapsed"}`}>
+      <div ref={containerRef} className={`transcript-preview segmented expandable-content ${expanded ? "expanded" : "collapsed"}`}>
         {segments.map((segment, index) => (
           <div className="transcript-segment" key={`${segment.start_seconds ?? index}-${segment.text}`}>
             <div className="segment-meta">
@@ -323,7 +344,7 @@ export function TranscriptPreview({
   }
 
   return (
-    <div className={`transcript-preview fallback expandable-content ${expanded ? "expanded" : "collapsed"}`}>
+    <div ref={containerRef} className={`transcript-preview fallback expandable-content ${expanded ? "expanded" : "collapsed"}`}>
       {transcription.text
         .split("\n")
         .filter((line) => line.trim().length > 0)

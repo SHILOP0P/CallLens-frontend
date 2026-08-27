@@ -21,7 +21,8 @@ import { api, openAuthorizedEventStream } from "../../api";
 import type {
   AppPage,
   CallResponse,
-  CompanyResponse,
+	CompanyResponse,
+	CreditDashboardResponse,
   NotificationResponse,
   SessionState,
   SearchResponse,
@@ -93,7 +94,9 @@ export function AuthenticatedShell({
   const [notificationsBootstrapped, setNotificationsBootstrapped] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(invitationCount);
   const [personalUsage, setPersonalUsage] = useState<SubscriptionUsageResponse | null>(null);
-  const [companyUsage, setCompanyUsage] = useState<Record<string, SubscriptionUsageResponse | null>>({});
+	const [companyUsage, setCompanyUsage] = useState<Record<string, SubscriptionUsageResponse | null>>({});
+	const [personalCredits, setPersonalCredits] = useState<CreditDashboardResponse | null>(null);
+	const [companyCredits, setCompanyCredits] = useState<Record<string, CreditDashboardResponse | null>>({});
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [mobileTransitionDirection, setMobileTransitionDirection] = useState<"forward" | "backward" | null>(null);
   const teamPopoverRef = useRef<HTMLDivElement>(null);
@@ -142,20 +145,17 @@ export function AuthenticatedShell({
       ? personalSubscription
       : null;
   const subscription = usageSubscription ?? fallbackSubscription;
-  const usageLoading =
-    Boolean(subscription) &&
-    (selectedCompany ? selectedCompanyUsage === undefined : personalUsage === null);
-  const usedMinutes = activeUsage?.used_minutes ?? 0;
-  const limitMinutes = activeUsage?.limit_minutes ?? 0;
-  const remainingMinutes = activeUsage?.remaining_minutes ?? 0;
-  const progress = Math.min(
+	const usageLoading = Boolean(subscription) &&
+		(selectedCompany ? companyCredits[selectedCompany.id] === undefined : personalCredits === null);
+	const activeCredits = selectedCompany ? companyCredits[selectedCompany.id] ?? null : personalCredits;
+	const creditLimit = activeCredits?.allowance_credits ?? 0;
+	const creditRemainingPercent = Math.min(100, Math.max(0, Math.round(activeCredits?.allowance_remaining_percent ?? 0)));
+	const progress = Math.min(
     100,
     Math.max(
       0,
       Math.round(
-        activeUsage
-          ? activeUsage.percent
-          : 0
+			activeCredits ? 100 - activeCredits.allowance_remaining_percent : 0
       )
     )
   );
@@ -201,25 +201,33 @@ export function AuthenticatedShell({
     let cancelled = false;
 
     async function loadUsage() {
-      const [loadedPersonalUsage, loadedCompanyUsage] = await Promise.all([
-        api.getSubscriptionUsage().catch(() => null),
+		const [loadedPersonalUsage, loadedCompanyUsage, loadedPersonalCredits, loadedCompanyCredits] = await Promise.all([
+			api.getSubscriptionUsage().catch(() => null),
         Promise.all(
           companies.map(async (company) => [
             company.id,
             await api.getCompanySubscriptionUsage(company.id).catch(() => null)
           ] as const)
-        )
-      ]);
+			),
+			api.getCreditDashboard().catch(() => null),
+			Promise.all(companies.map(async (company) => [company.id, await api.getCompanyCreditDashboard(company.id).catch(() => null)] as const))
+		]);
 
       if (cancelled) return;
-      setPersonalUsage((current) => loadedPersonalUsage ?? current);
+		setPersonalUsage((current) => loadedPersonalUsage ?? current);
+		setPersonalCredits((current) => loadedPersonalCredits ?? current);
       setCompanyUsage((current) => {
         const next = { ...current };
         for (const [companyId, usage] of loadedCompanyUsage) {
           if (usage) next[companyId] = usage;
         }
         return next;
-      });
+		});
+		setCompanyCredits((current) => {
+			const next = { ...current };
+			for (const [companyId, credits] of loadedCompanyCredits) next[companyId] = credits;
+			return next;
+		});
     }
 
     loadUsage();
@@ -715,15 +723,15 @@ export function AuthenticatedShell({
               <small className="sidebar-plan-badge">{subscription?.plan.name ?? "Подключите тариф"}</small>
             </button>
             <div className="sidebar-limit-card">
-              <span>Лимит расшифровки</span>
-              <strong>
-                {usageLoading
-                  ? "Загрузка лимита"
-                  : limitMinutes > 0
-                    ? `${formatMinutes(usedMinutes)} / ${formatMinutes(limitMinutes)}`
-                    : "Нет активного лимита"}
-              </strong>
-              {limitMinutes > 0 && !usageLoading && <small>Осталось {formatMinutes(remainingMinutes)}</small>}
+				<span>Кредиты</span>
+				<strong>
+					{usageLoading
+						? "Загрузка баланса"
+						: creditLimit > 0
+							? `${creditRemainingPercent}%`
+							: "Нет активных кредитов"}
+				</strong>
+				{creditLimit > 0 && !usageLoading && <small>осталось</small>}
               <div className="sidebar-progress" aria-hidden="true">
                 <span style={{ width: `${progress}%` }} />
               </div>

@@ -1,6 +1,6 @@
 import { ArrowLeft, Check, ChevronDown, GitCompareArrows, Plus, X } from "lucide-react";
 import { Fragment, useEffect, useRef, useState } from "react";
-import type { CSSProperties, DragEvent } from "react";
+import type { CSSProperties, DragEvent, PointerEvent as ReactPointerEvent } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api";
 import type {
@@ -17,6 +17,9 @@ const MAX_COMPARED_VERSIONS = VERSION_COLORS.length;
 
 type LoadedVersions = Record<number, TranscriptionRevisionContent>;
 type CompareLane = number;
+type DropTarget =
+  | { kind: "lane"; lane: CompareLane; index: number }
+  | { kind: "column"; index: number; lane: CompareLane; placement: "before" | "after" };
 type WordChange = {
   kind: "speaker" | "replace" | "add" | "remove" | "speaker-and-replace";
   startIndex: number;
@@ -44,7 +47,7 @@ export function TranscriptionComparePage({
   const [versionColors, setVersionColors] = useState<Record<number, string>>({});
   const [versionLanes, setVersionLanes] = useState<Record<number, CompareLane>>({});
   const [draggingRevision, setDraggingRevision] = useState<number | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ lane: CompareLane; index: number; columnPlacement?: "before" | "after"; newColumnIndex?: number } | null>(null);
+  const [dropTarget, setDropTargetState] = useState<DropTarget | null>(null);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState("");
@@ -54,6 +57,9 @@ export function TranscriptionComparePage({
   const addVersionRef = useRef<HTMLDivElement | null>(null);
   const chipRefs = useRef(new Map<number, HTMLElement>());
   const cardRefs = useRef(new Map<number, HTMLElement>());
+  const boardRef = useRef<HTMLElement>(null);
+  const draggingRevisionRef = useRef<number | null>(null);
+  const dropTargetRef = useRef<DropTarget | null>(null);
 
   useEffect(() => {
     if (!call) return;
@@ -74,8 +80,9 @@ export function TranscriptionComparePage({
       setVersionColors(Object.fromEntries(initial.map((revision, index) => [revision, VERSION_COLORS[index]])));
       const savedLayout = new Map((new URLSearchParams(window.location.search).get("layout") ?? "").split(",").map((item) => item.split(":").map(Number)).filter(([revision, lane]) => initial.includes(revision) && Number.isInteger(lane) && lane >= 0 && lane < MAX_COMPARED_VERSIONS) as Array<[number, CompareLane]>);
       const savedLaneIds = Array.from(new Set(savedLayout.values())).sort((a, b) => a - b);
+      const hasCompleteSavedLayout = initial.every((revision) => savedLayout.has(revision));
       setVersionLanes(Object.fromEntries(initial.map((revision, index) => {
-        const savedLane = savedLayout.get(revision);
+        const savedLane = hasCompleteSavedLayout ? savedLayout.get(revision) : undefined;
         return [revision, savedLane === undefined ? defaultLane(index, initial.length) : savedLaneIds.indexOf(savedLane)];
       })));
       const loaded = await Promise.all(initial.map((revision) => api.getTranscriptionRevision(call.id, revision)));
@@ -124,6 +131,29 @@ export function TranscriptionComparePage({
     };
   }, [adding]);
 
+  useEffect(() => {
+    if (draggingRevision === null) return;
+    const move = (event: PointerEvent) => {
+      const target = targetAtPoint(event.clientX, event.clientY);
+      if (target) setDropTarget(target);
+    };
+    const end = (event: PointerEvent) => {
+      const revision = draggingRevisionRef.current;
+      if (revision === null) return;
+      const target = targetAtPoint(event.clientX, event.clientY) ?? dropTargetRef.current;
+      if (target) finishDrop(revision, target);
+      else cancelDrag();
+    };
+    document.addEventListener("pointermove", move, true);
+    document.addEventListener("pointerup", end, true);
+    document.addEventListener("pointercancel", end, true);
+    return () => {
+      document.removeEventListener("pointermove", move, true);
+      document.removeEventListener("pointerup", end, true);
+      document.removeEventListener("pointercancel", end, true);
+    };
+  }, [draggingRevision, selectedKey, laneKey]);
+
   async function addVersion(revision: number) {
     if (!call || selected.includes(revision) || selected.length >= MAX_COMPARED_VERSIONS) return;
     setError("");
@@ -150,86 +180,126 @@ export function TranscriptionComparePage({
   }
 
   function updateSelectedWithAnimation(next: number[], nextLanes = versionLanes) {
+    const laneIds = Array.from(new Set(next.map((revision) => nextLanes[revision] ?? 0))).sort((a, b) => a - b);
+    const normalizedLanes = Object.fromEntries(next.map((revision) => [revision, Math.max(0, laneIds.indexOf(nextLanes[revision] ?? 0))]));
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reducedMotion) {
-      flushSync(() => { setSelected(next); setVersionLanes(nextLanes); });
+      flushSync(() => { setSelected(next); setVersionLanes(normalizedLanes); });
       return;
     }
     const chipRects = new Map([...chipRefs.current].map(([revision, element]) => [revision, element.getBoundingClientRect()]));
     const cardRects = new Map([...cardRefs.current].map(([revision, element]) => [revision, element.getBoundingClientRect()]));
-    flushSync(() => { setSelected(next); setVersionLanes(nextLanes); });
+    flushSync(() => { setSelected(next); setVersionLanes(normalizedLanes); });
     animateMovedVersions(chipRefs.current, chipRects);
     animateMovedVersions(cardRefs.current, cardRects);
+  }
+
+  function setDropTarget(target: DropTarget | null) {
+    const current = dropTargetRef.current;
+    const unchanged = current === target || (current !== null && target !== null && current.kind === target.kind && (current.kind === "lane"
+      ? target.kind === "lane" && current.lane === target.lane && current.index === target.index
+      : target.kind === "column" && current.index === target.index && current.lane === target.lane && current.placement === target.placement));
+    if (unchanged) return;
+    dropTargetRef.current = target;
+    setDropTargetState(target);
+  }
+
+  function targetFromCoordinates(clientX: number, clientY: number, laneElement: HTMLElement, lane: CompareLane): DropTarget {
+    const dragged = draggingRevisionRef.current;
+    const source = dragged === null ? lane : versionLanes[dragged] ?? 0;
+    const rect = laneElement.getBoundingClientRect();
+    const horizontal = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(rect.width, 1)));
+    const boardLaneCount = laneElement.parentElement?.querySelectorAll(":scope > .compare-version-lane").length ?? 1;
+    if (boardLaneCount === 1 && selected.length === 2 && (horizontal < .18 || horizontal > .82)) {
+      const before = horizontal < .18;
+      return { kind: "column", index: before ? 0 : 1, lane, placement: before ? "before" : "after" };
+    }
+    if (lane !== source && (horizontal < .22 || horizontal > .78)) {
+      const before = horizontal < .22;
+      return { kind: "column", index: lane + (before ? 0 : 1), lane, placement: before ? "before" : "after" };
+    }
+    const cards = [...laneElement.querySelectorAll<HTMLElement>(".compare-version-card:not(.is-dragging)")];
+    const found = cards.findIndex((card) => clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
+    return { kind: "lane", lane, index: found < 0 ? cards.length : found };
+  }
+
+  function targetFromPointer(event: DragEvent<HTMLDivElement>, lane: CompareLane) {
+    return targetFromCoordinates(event.clientX, event.clientY, event.currentTarget, lane);
   }
 
   function updateDropTarget(event: DragEvent<HTMLDivElement>, lane: CompareLane) {
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    const laneRect = event.currentTarget.getBoundingClientRect();
-    const horizontalPosition = (event.clientX - laneRect.left) / laneRect.width;
-    const sourceLane = draggingRevision === null ? lane : (versionLanes[draggingRevision] ?? 0);
-    const columnPlacement: "before" | "after" | undefined = lane !== sourceLane && horizontalPosition < .22 ? "before" : lane !== sourceLane && horizontalPosition > .78 ? "after" : undefined;
-    const cards = [...event.currentTarget.querySelectorAll<HTMLElement>(".compare-version-card:not(.is-dragging)")];
-    const index = cards.findIndex((card) => event.clientY < card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2);
-    const next = { lane, index: index < 0 ? cards.length : index, columnPlacement };
-    if (!dropTarget || dropTarget.lane !== next.lane || dropTarget.index !== next.index || dropTarget.columnPlacement !== next.columnPlacement) setDropTarget(next);
+    setDropTarget(targetFromPointer(event, lane));
+  }
+
+  function cancelDrag() {
+    draggingRevisionRef.current = null;
+    setDraggingRevision(null);
+    setDropTarget(null);
+  }
+
+  function finishDrop(revision: number, target: DropTarget) {
+    const layout = moveVersion(selected, versionLanes, revision, target);
+    if (layout.order.join("\0") !== selected.join("\0") || layout.order.some((item) => (layout.lanes[item] ?? 0) !== (versionLanes[item] ?? 0))) {
+      updateSelectedWithAnimation(layout.order, layout.lanes);
+    }
+    cancelDrag();
   }
 
   function dropVersion(event: DragEvent<HTMLDivElement>, lane: CompareLane) {
     event.preventDefault();
-    if (draggingRevision === null) return;
-    if (dropTarget?.lane === lane && dropTarget.columnPlacement) {
-      const sourceLane = versionLanes[draggingRevision] ?? 0;
-      const groups = activeLaneIds(selected, versionLanes).map((laneId) => ({
-        laneId,
-        revisions: selected.filter((revision) => (versionLanes[revision] ?? 0) === laneId)
-      }));
-      const sourceGroupIndex = groups.findIndex((group) => group.laneId === sourceLane);
-      const [sourceGroup] = groups.splice(sourceGroupIndex, 1);
-      const targetRevision = selected.find((revision) => revision !== draggingRevision && (versionLanes[revision] ?? 0) === lane);
-      const targetIndex = targetRevision === undefined ? groups.length : groups.findIndex((group) => group.revisions.includes(targetRevision));
-      const insertionIndex = targetIndex < 0 ? groups.length : targetIndex + (dropTarget.columnPlacement === "after" ? 1 : 0);
-      groups.splice(insertionIndex, 0, sourceGroup);
-      const normalizedLanes = { ...versionLanes };
-      groups.forEach((group, laneIndex) => group.revisions.forEach((revision) => { normalizedLanes[revision] = laneIndex; }));
-      updateSelectedWithAnimation(groups.flatMap((group) => group.revisions), normalizedLanes);
-      setDraggingRevision(null); setDropTarget(null);
-      return;
-    }
-    const nextLanes = { ...versionLanes, [draggingRevision]: lane };
-    const remaining = selected.filter((revision) => revision !== draggingRevision);
-    const laneIds = Array.from(new Set([...remaining.map((revision) => nextLanes[revision] ?? 0), lane])).sort((a, b) => a - b);
-    const laneVersions = new Map(laneIds.map((laneId) => [laneId, remaining.filter((revision) => (nextLanes[revision] ?? 0) === laneId)]));
-    const target = laneVersions.get(lane) ?? [];
-    target.splice(Math.min(dropTarget?.lane === lane ? dropTarget.index : target.length, target.length), 0, draggingRevision);
-    laneVersions.set(lane, target);
-    const populated = laneIds.filter((laneId) => (laneVersions.get(laneId)?.length ?? 0) > 0);
-    const normalizedLanes = { ...nextLanes };
-    populated.forEach((laneId, index) => laneVersions.get(laneId)?.forEach((revision) => { normalizedLanes[revision] = index; }));
-    updateSelectedWithAnimation(populated.flatMap((laneId) => laneVersions.get(laneId) ?? []), normalizedLanes);
-    setDraggingRevision(null); setDropTarget(null);
+    event.stopPropagation();
+    const revision = draggingRevisionRef.current;
+    if (revision === null) return;
+    finishDrop(revision, targetFromPointer(event, lane));
   }
 
   function dropAsNewColumn(event: DragEvent<HTMLDivElement>, requestedIndex: number) {
     event.preventDefault();
     event.stopPropagation();
-    if (draggingRevision === null) return;
-    const sourceLane = versionLanes[draggingRevision] ?? 0;
-    const groups = activeLaneIds(selected, versionLanes).map((laneId) =>
-      selected.filter((revision) => (versionLanes[revision] ?? 0) === laneId)
-    );
-    const sourceIndex = activeLaneIds(selected, versionLanes).indexOf(sourceLane);
-    groups[sourceIndex] = groups[sourceIndex].filter((revision) => revision !== draggingRevision);
-    let insertionIndex = requestedIndex;
-    if (groups[sourceIndex].length === 0) {
-      groups.splice(sourceIndex, 1);
-      if (sourceIndex < insertionIndex) insertionIndex -= 1;
-    }
-    groups.splice(Math.max(0, Math.min(insertionIndex, groups.length)), 0, [draggingRevision]);
-    const normalizedLanes = { ...versionLanes };
-    groups.forEach((group, laneIndex) => group.forEach((revision) => { normalizedLanes[revision] = laneIndex; }));
-    updateSelectedWithAnimation(groups.flat(), normalizedLanes);
-    setDraggingRevision(null); setDropTarget(null);
+    const revision = draggingRevisionRef.current;
+    if (revision === null) return;
+    const lane = Math.max(0, Math.min(requestedIndex, activeLaneIds(selected, versionLanes).length - 1));
+    finishDrop(revision, { kind: "column", index: requestedIndex, lane, placement: requestedIndex <= lane ? "before" : "after" });
+  }
+
+  function targetAtPoint(clientX: number, clientY: number) {
+    const board = boardRef.current;
+    if (!board) return null;
+    const laneElements = [...board.querySelectorAll<HTMLElement>(":scope > .compare-version-lane")];
+    const hit = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>(".compare-version-lane");
+    let lane = hit ? laneElements.indexOf(hit) : -1;
+    if (lane < 0) lane = laneElements.reduce((best, element, index) => {
+      const rect = element.getBoundingClientRect();
+      const distance = Math.max(rect.left - clientX, 0, clientX - rect.right) + Math.max(rect.top - clientY, 0, clientY - rect.bottom);
+      return distance < best.distance ? { index, distance } : best;
+    }, { index: 0, distance: Number.POSITIVE_INFINITY }).index;
+    return laneElements[lane] ? targetFromCoordinates(clientX, clientY, laneElements[lane], lane) : null;
+  }
+
+  function startPointerDrag(event: ReactPointerEvent<HTMLElement>, revision: number) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    draggingRevisionRef.current = revision;
+    setDraggingRevision(revision);
+    setDropTarget(null);
+  }
+
+  function movePointerDrag(event: ReactPointerEvent<HTMLElement>) {
+    if (draggingRevisionRef.current === null) return;
+    event.preventDefault();
+    setDropTarget(targetAtPoint(event.clientX, event.clientY));
+  }
+
+  function endPointerDrag(event: ReactPointerEvent<HTMLElement>) {
+    const revision = draggingRevisionRef.current;
+    if (revision === null) return;
+    event.preventDefault();
+    const target = targetAtPoint(event.clientX, event.clientY) ?? dropTargetRef.current;
+    if (target) finishDrop(revision, target);
+    else cancelDrag();
   }
 
   function versionColor(revision: number) {
@@ -281,21 +351,21 @@ export function TranscriptionComparePage({
         </div>
       </section>
 
-      <section className="compare-version-board" style={{ "--compare-column-count": lanes.length } as CSSProperties}>
-        {lanes.map((versions, laneIndex) => <div className={`compare-version-lane${dropTarget?.lane === laneIndex ? " is-drop-target" : ""}${dropTarget?.lane === laneIndex && dropTarget.columnPlacement ? ` is-column-${dropTarget.columnPlacement}` : ""}`} key={laneIndex} onDragOver={(event) => updateDropTarget(event, laneIndex as CompareLane)} onDrop={(event) => dropVersion(event, laneIndex as CompareLane)}>
-          {draggingRevision !== null && lanes.length < selected.length && <div
-            className={`compare-column-drop-zone is-before${dropTarget?.newColumnIndex === laneIndex ? " is-active" : ""}`}
+      <section ref={boardRef} className={`compare-version-board${lanes.length === 1 ? " is-single" : lanes.length === 2 ? " is-pair" : ""}`} style={{ "--compare-column-count": lanes.length } as CSSProperties}>
+        {lanes.map((versions, laneIndex) => <div className={`compare-version-lane${dropTarget?.lane === laneIndex ? " is-drop-target" : ""}${dropTarget?.kind === "column" && dropTarget.lane === laneIndex ? ` is-column-${dropTarget.placement}` : ""}`} key={laneIndex} onDragOver={(event) => updateDropTarget(event, laneIndex as CompareLane)} onDrop={(event) => dropVersion(event, laneIndex as CompareLane)}>
+          {draggingRevision !== null && selected.length > 2 && lanes.length < selected.length && <div
+            className={`compare-column-drop-zone is-before${dropTarget?.kind === "column" && dropTarget.index === laneIndex ? " is-active" : ""}`}
             onDragOver={(event) => {
               event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move";
-              setDropTarget({ lane: -1, index: 0, newColumnIndex: laneIndex });
+              setDropTarget({ kind: "column", index: laneIndex, lane: laneIndex, placement: "before" });
             }}
             onDrop={(event) => dropAsNewColumn(event, laneIndex)}
           />}
-          {draggingRevision !== null && lanes.length < selected.length && laneIndex === lanes.length - 1 && <div
-            className={`compare-column-drop-zone is-after${dropTarget?.newColumnIndex === lanes.length ? " is-active" : ""}`}
+          {draggingRevision !== null && selected.length > 2 && lanes.length < selected.length && laneIndex === lanes.length - 1 && <div
+            className={`compare-column-drop-zone is-after${dropTarget?.kind === "column" && dropTarget.index === lanes.length ? " is-active" : ""}`}
             onDragOver={(event) => {
               event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move";
-              setDropTarget({ lane: -1, index: 0, newColumnIndex: lanes.length });
+              setDropTarget({ kind: "column", index: lanes.length, lane: laneIndex, placement: "after" });
             }}
             onDrop={(event) => dropAsNewColumn(event, lanes.length)}
           />}
@@ -305,14 +375,14 @@ export function TranscriptionComparePage({
               ? selectedVersions[globalIndex - 1].content.words
               : selectedVersions[globalIndex + 1]?.content.words ?? [];
             return <Fragment key={version.content.revision}>
-              {dropTarget?.lane === laneIndex && !dropTarget.columnPlacement && dropTarget.index === lanePosition && <div className="compare-drop-marker" />}
+              {dropTarget?.kind === "lane" && dropTarget.lane === laneIndex && dropTarget.index === lanePosition && <div className="compare-drop-marker" />}
               <article data-revision={version.content.revision} ref={(element) => { if (element) cardRefs.current.set(version.content.revision, element); else cardRefs.current.delete(version.content.revision); }} className={`compare-version-card${draggingRevision === version.content.revision ? " is-dragging" : ""}`} style={{ "--version-color": versionColor(version.content.revision) } as CSSProperties}>
-                <header draggable onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", String(version.content.revision)); setDraggingRevision(version.content.revision); }} onDragEnd={() => { setDraggingRevision(null); setDropTarget(null); }}><div><span className="version-dot" /><strong>Версия {version.content.revision}</strong>{version.summary.is_current && <em>Текущая</em>}</div><time>{formatDate(version.summary.created_at)}</time></header>
+                <header onPointerDown={(event) => startPointerDrag(event, version.content.revision)} onPointerMove={movePointerDrag} onPointerUp={endPointerDrag} onPointerCancel={endPointerDrag}><div><span className="version-dot" /><strong>Версия {version.content.revision}</strong>{version.summary.is_current && <em>Текущая</em>}</div><time>{formatDate(version.summary.created_at)}</time></header>
                 <VersionTranscript words={version.content.words} referenceWords={referenceWords} speakerAssignments={speakerAssignments} />
               </article>
             </Fragment>;
           })}
-          {dropTarget?.lane === laneIndex && !dropTarget.columnPlacement && dropTarget.index === versions.length && <div className="compare-drop-marker" />}
+          {dropTarget?.kind === "lane" && dropTarget.lane === laneIndex && dropTarget.index === versions.length && <div className="compare-drop-marker" />}
           {versions.length === 0 && <div className="compare-empty-lane">Перетащите версию сюда</div>}
         </div>)}
       </section>
@@ -409,22 +479,45 @@ function formatRange(start?: number, end?: number) {
 }
 
 function defaultLane(index: number, total: number): CompareLane {
-  return index < Math.ceil(total / 2) ? 0 : 1;
+  return total <= 2 ? index : index % 2;
 }
 
 function activeLaneIds(selected: number[], lanes: Record<number, CompareLane>) {
   const populated = Array.from(new Set(selected.map((revision) => lanes[revision] ?? 0))).sort((a, b) => a - b);
-  return populated.length >= 2 ? populated : [0, 1];
+  return populated.length ? populated : [0];
 }
 
 function countLane(selected: number[], lanes: Record<number, CompareLane>, lane: CompareLane) {
   return selected.filter((revision) => (lanes[revision] ?? 0) === lane).length;
 }
 
+function moveVersion(selected: number[], lanes: Record<number, CompareLane>, dragged: number, target: DropTarget) {
+  const groups = activeLaneIds(selected, lanes).map((lane) => selected.filter((revision) => (lanes[revision] ?? 0) === lane));
+  const sourceIndex = groups.findIndex((group) => group.includes(dragged));
+  if (sourceIndex < 0) return { order: selected, lanes };
+  groups[sourceIndex] = groups[sourceIndex].filter((revision) => revision !== dragged);
+  if (target.kind === "column") {
+    let insertion = Math.max(0, Math.min(target.index, groups.length));
+    if (groups[sourceIndex].length === 0) {
+      groups.splice(sourceIndex, 1);
+      if (sourceIndex < insertion) insertion -= 1;
+    }
+    groups.splice(Math.max(0, Math.min(insertion, groups.length)), 0, [dragged]);
+  } else {
+    const destination = Math.max(0, Math.min(target.lane, groups.length - 1));
+    groups[destination].splice(Math.max(0, Math.min(target.index, groups[destination].length)), 0, dragged);
+  }
+  const populated = groups.filter((group) => group.length > 0);
+  const normalized: Record<number, CompareLane> = {};
+  populated.forEach((group, lane) => group.forEach((revision) => { normalized[revision] = lane; }));
+  return { order: populated.flat(), lanes: normalized };
+}
+
 function animateMovedVersions<Key>(elements: Map<Key, HTMLElement>, before: Map<Key, DOMRect>) {
   elements.forEach((element, key) => {
     const first = before.get(key);
     if (!first || !element.isConnected) return;
+    element.getAnimations().forEach((animation) => animation.cancel());
     const last = element.getBoundingClientRect();
     const deltaX = first.left - last.left;
     const deltaY = first.top - last.top;
@@ -436,7 +529,7 @@ function animateMovedVersions<Key>(elements: Map<Key, HTMLElement>, before: Map<
         { transformOrigin: "top left", transform: `translate(${deltaX}px, ${deltaY}px) scale(${scaleX}, ${scaleY})` },
         { transformOrigin: "top left", transform: "translate(0, 0) scale(1, 1)" },
       ],
-      { duration: 560, easing: "cubic-bezier(.22,1,.36,1)" },
+      { duration: 480, easing: "cubic-bezier(.22,1,.36,1)" },
     );
   });
 }

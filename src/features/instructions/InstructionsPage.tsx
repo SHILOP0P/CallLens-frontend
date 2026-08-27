@@ -2,6 +2,8 @@ import {
   ArrowLeft,
   Download,
   FileText,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Trash2,
   Upload
@@ -39,6 +41,13 @@ export function InstructionsPage({
   onBackToSettings: () => void;
 }) {
   const [localInstructions, setLocalInstructions] = useState(instructions);
+  const [instructionPanelCollapsed, setInstructionPanelCollapsed] = useState(
+    () => window.localStorage.getItem("verbatrace:instructions-panel-collapsed") === "1"
+  );
+  const [compactInstructionLayout, setCompactInstructionLayout] = useState(
+    () => window.matchMedia("(max-width: 760px)").matches
+  );
+  const instructionPanelEffectivelyCollapsed = instructionPanelCollapsed && !compactInstructionLayout;
   const managedCompanies = useMemo(
     () => companies.filter((company) => isCompanyManager(company, session.user.id)),
     [companies, session.user.id]
@@ -98,6 +107,22 @@ export function InstructionsPage({
   }, [instructions]);
 
   useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const syncLayout = () => setCompactInstructionLayout(media.matches);
+    syncLayout();
+    media.addEventListener("change", syncLayout);
+    return () => media.removeEventListener("change", syncLayout);
+  }, []);
+
+  function toggleInstructionPanel() {
+    setInstructionPanelCollapsed((current) => {
+      const next = !current;
+      window.localStorage.setItem("verbatrace:instructions-panel-collapsed", next ? "1" : "0");
+      return next;
+    });
+  }
+
+  useEffect(() => {
     let cancelled = false;
 
     async function loadSettingsInstructions() {
@@ -130,14 +155,29 @@ export function InstructionsPage({
   }, [managedCompanies, editableDepartments]);
 
   return (
-    <section className="instructions-layout app-page settings-subpage-layout">
+    <section className={`instructions-layout collapsible-instructions-layout app-page settings-subpage-layout ${instructionPanelEffectivelyCollapsed ? "call-list-collapsed" : ""}`}>
       <div className="settings-back-row">
         <button className="ghost-button small" type="button" onClick={onBackToSettings}>
           <ArrowLeft size={16} />
           Назад
         </button>
       </div>
-      <div className="instructions-form glass instructions-list-header">
+      <aside
+        id="instructions-actions-panel"
+        className="instructions-form glass instructions-list-header calls-sidebar"
+        aria-label="Создание инструкций"
+        aria-hidden={instructionPanelEffectivelyCollapsed ? true : undefined}
+        inert={instructionPanelEffectivelyCollapsed}
+      >
+        <button
+          className="icon-button calls-list-collapse"
+          type="button"
+          aria-label="Свернуть панель инструкций"
+          aria-expanded={!instructionPanelEffectivelyCollapsed}
+          onClick={toggleInstructionPanel}
+        >
+          <PanelLeftClose size={19} />
+        </button>
         <div className="app-page-heading settings-heading compact-heading">
           <span className="settings-heading-icon" aria-hidden="true">
             <FileText size={26} />
@@ -156,7 +196,18 @@ export function InstructionsPage({
           </button>
         </div>
         <InstructionExample />
-      </div>
+      </aside>
+      <button
+        className="calls-list-emblem"
+        type="button"
+        aria-label="Открыть панель инструкций"
+        aria-controls="instructions-actions-panel"
+        aria-expanded={!instructionPanelEffectivelyCollapsed}
+        title="Открыть панель инструкций"
+        onClick={toggleInstructionPanel}
+      >
+        <span aria-hidden="true"><PanelLeftOpen size={22} /></span>
+      </button>
       <div className="instructions-list glass">
         <h2>Активные инструкции</h2>
         {loading ? (
@@ -240,8 +291,10 @@ export function InstructionRow({
     const link = document.createElement("a");
     link.href = url;
     link.download = instruction.original_filename || `${instruction.title}.md`;
+    document.body.appendChild(link);
     link.click();
-    URL.revokeObjectURL(url);
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   return (

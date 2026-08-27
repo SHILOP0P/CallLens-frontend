@@ -773,7 +773,7 @@ export function CallsPage({
           <Play size={14} fill="currentColor" />
         </span>
         <span className="call-row-main">
-          <StatusChip status={call.status} analysisStatus={analyses[call.id]?.status} />
+          <StatusChip status={call.status} analysisStatus={call.is_test ? undefined : analyses[call.id]?.status} label={call.is_test ? "Тестовый" : undefined} />
           <strong>{call.title}</strong>
           <small>
             {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)}
@@ -785,7 +785,7 @@ export function CallsPage({
           onPointerDown={(event) => event.stopPropagation()}
           onKeyDown={(event) => event.stopPropagation()}
         >
-          <button className={`icon-button call-favorite-button ${isFavorite ? "active" : ""}`} type="button" aria-label={isFavorite ? "Убрать из избранного" : "Добавить в избранное"} disabled={callBusyId === call.id} onClick={() => void toggleFavoriteCall(call.id)}><Star size={15} fill={isFavorite ? "currentColor" : "none"} /></button>
+          {!call.is_test && <button className={`icon-button call-favorite-button ${isFavorite ? "active" : ""}`} type="button" aria-label={isFavorite ? "Убрать из избранного" : "Добавить в избранное"} disabled={callBusyId === call.id} onClick={() => void toggleFavoriteCall(call.id)}><Star size={15} fill={isFavorite ? "currentColor" : "none"} /></button>}
           <button
             className="icon-button call-row-menu-trigger"
             type="button"
@@ -799,10 +799,10 @@ export function CallsPage({
           </button>
           {open && (
             <span className="call-row-menu" role="menu">
-              <button type="button" role="menuitem" onClick={() => startCallRename(call)}>
+              {!call.is_test && <button type="button" role="menuitem" onClick={() => startCallRename(call)}>
                 <Pencil size={15} />
                 Переименовать
-              </button>
+              </button>}
               <button
                 className="danger"
                 type="button"

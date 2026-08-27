@@ -73,7 +73,25 @@ function PDFViewer({ blob, filename }: { blob: Blob; filename: string }) {
   const [document, setDocument] = useState<PDFDocumentProxy>();
   const [scale, setScale] = useState(1.15);
   const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const url = useMemo(() => URL.createObjectURL(blob), [blob]);
+  const openInNewTab = () => {
+    const opened = window.open(url, "_blank");
+    if (!opened) {
+      setActionError("Браузер заблокировал новую вкладку. Разрешите всплывающие окна и повторите попытку.");
+      return;
+    }
+    setActionError("");
+    opened.opener = null;
+  };
+  const download = () => {
+    const link = window.document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    window.document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
   useEffect(() => {
     let cancelled = false;
     let task: PDFDocumentLoadingTask | undefined;
@@ -85,7 +103,7 @@ function PDFViewer({ blob, filename }: { blob: Blob; filename: string }) {
   }, [blob]);
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
   if (error) return <TransientAlert message={error} />;
-  return <section className="instruction-pdf-document"><header><div><FileText size={18}/><span><strong>{filename}</strong><small>{document ? `${document.numPages} стр.` : "Открываю документ…"}</small></span></div><div className="instruction-pdf-actions"><button type="button" aria-label="Уменьшить масштаб" onClick={() => setScale((value) => Math.max(.65, value - .15))}><Minus size={17}/></button><output>{Math.round(scale * 100)}%</output><button type="button" aria-label="Увеличить масштаб" onClick={() => setScale((value) => Math.min(2, value + .15))}><Plus size={17}/></button><a href={url} target="_blank" rel="noreferrer" aria-label="Открыть PDF в новой вкладке"><ExternalLink size={17}/></a><a href={url} download={filename} aria-label="Скачать PDF"><Download size={17}/></a></div></header><div className="instruction-pdf-pages" aria-busy={!document}>{document ? Array.from({ length: document.numPages }, (_, index) => <PDFPage key={index + 1} document={document} pageNumber={index + 1} scale={scale}/>) : <div className="instruction-document-loading" role="status">Подготавливаю страницы…</div>}</div></section>;
+  return <>{actionError ? <TransientAlert message={actionError} /> : null}<section className="instruction-pdf-document"><header><div><FileText size={18}/><span><strong>{filename}</strong><small>{document ? `${document.numPages} стр.` : "Открываю документ…"}</small></span></div><div className="instruction-pdf-actions"><button type="button" aria-label="Уменьшить масштаб" onClick={() => setScale((value) => Math.max(.65, value - .15))}><Minus size={17}/></button><output>{Math.round(scale * 100)}%</output><button type="button" aria-label="Увеличить масштаб" onClick={() => setScale((value) => Math.min(2, value + .15))}><Plus size={17}/></button><button type="button" aria-label="Открыть PDF в новой вкладке" onClick={openInNewTab}><ExternalLink size={17}/></button><button type="button" aria-label="Скачать PDF" onClick={download}><Download size={17}/></button></div></header><div className="instruction-pdf-pages" aria-busy={!document}>{document ? Array.from({ length: document.numPages }, (_, index) => <PDFPage key={index + 1} document={document} pageNumber={index + 1} scale={scale}/>) : <div className="instruction-document-loading" role="status">Подготавливаю страницы…</div>}</div></section></>;
 }
 
 export function InstructionDocumentViewer({ filename, blob, markdown, changedLines }: { filename: string; blob?: Blob; markdown?: string; changedLines?: ReadonlyMap<number, "added" | "removed"> }) {

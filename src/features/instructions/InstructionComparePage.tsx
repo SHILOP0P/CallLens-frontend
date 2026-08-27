@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, ChevronDown, GitCompareArrows, Plus, X } from "lucide-react";
-import { Fragment, type CSSProperties, type DragEvent, useEffect, useRef, useState } from "react";
+import { Fragment, type CSSProperties, type DragEvent, type PointerEvent as ReactPointerEvent, useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { api } from "../../api";
 import type { AnalysisInstruction, AnalysisInstructionVersion } from "../../types";
@@ -9,6 +9,9 @@ const COLORS = ["#ff8058", "#66a8ff", "#b58cff", "#57c7a1", "#e6b85c"];
 type Loaded = Record<string, { blob: Blob; text?: string }>;
 type LineChange = { kind: "same" | "add" | "remove"; text: string; beforeLine?: number; afterLine?: number };
 type CompareLane = number;
+type DropTarget =
+  | { kind: "lane"; lane: CompareLane; index: number }
+  | { kind: "column"; index: number; lane: CompareLane; placement: "before" | "after" };
 
 export function InstructionComparePage({ instructionId, onBack }: { instructionId: string; onBack: () => void }) {
   const [instruction, setInstruction] = useState<AnalysisInstruction>();
@@ -19,12 +22,15 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
   const [versionColors, setVersionColors] = useState<Record<string,string>>({});
   const [versionLanes, setVersionLanes] = useState<Record<string,CompareLane>>({});
   const [dragging, setDragging] = useState<string>();
-  const [dropTarget, setDropTarget] = useState<{lane:CompareLane;index:number;columnPlacement?:"before"|"after";newColumnIndex?:number}|null>(null);
+  const [dropTarget, setDropTargetState] = useState<DropTarget|null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const addRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef(new Map<string,HTMLElement>());
   const cardRefs = useRef(new Map<string,HTMLElement>());
+  const boardRef = useRef<HTMLElement>(null);
+  const draggingRef = useRef<string|undefined>(undefined);
+  const dropTargetRef = useRef<DropTarget|null>(null);
 
   useEffect(() => {
     if (!isUuid(instructionId)) { setError("Не удалось определить инструкцию для сравнения."); setLoading(false); return; }
@@ -38,7 +44,8 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
       setVersionColors(Object.fromEntries(initial.map((id,index)=>[id,COLORS[index]])));
       const savedLayout=new Map((new URLSearchParams(window.location.search).get("layout")??"").split(",").map((item)=>item.split(":" )).filter(([id,lane])=>initial.includes(id)&&Number.isInteger(Number(lane))) as Array<[string,string]>);
       const savedLaneIds=Array.from(new Set([...savedLayout.values()].map(Number))).sort((a,b)=>a-b);
-      setVersionLanes(Object.fromEntries(initial.map((id,index)=>{const lane=savedLayout.get(id);return [id,lane===undefined?defaultLane(index,initial.length):savedLaneIds.indexOf(Number(lane))]})));
+      const hasCompleteSavedLayout=initial.every((id)=>savedLayout.has(id));
+      setVersionLanes(Object.fromEntries(initial.map((id,index)=>{const lane=hasCompleteSavedLayout?savedLayout.get(id):undefined;return [id,lane===undefined?defaultLane(index,initial.length):savedLaneIds.indexOf(Number(lane))]})));
       await loadFiles(initial, ordered, cancelled);
     }).catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : "Не удалось загрузить версии."); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -55,6 +62,14 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
     const close = (event: PointerEvent) => { if (event.target instanceof Node && !addRef.current?.contains(event.target)) setAdding(false); };
     document.addEventListener("pointerdown", close); return () => document.removeEventListener("pointerdown", close);
   }, [adding]);
+
+  useEffect(() => {
+    if(!dragging)return;
+    const move=(event:PointerEvent)=>{const target=targetAtPoint(event.clientX,event.clientY);if(target)setDropTarget(target);};
+    const end=(event:PointerEvent)=>{const id=draggingRef.current;if(!id)return;const target=targetAtPoint(event.clientX,event.clientY)??dropTargetRef.current;if(target)finishDrop(id,target);else{draggingRef.current=undefined;setDragging(undefined);setDropTarget(null);}};
+    document.addEventListener("pointermove",move,true);document.addEventListener("pointerup",end,true);document.addEventListener("pointercancel",end,true);
+    return()=>{document.removeEventListener("pointermove",move,true);document.removeEventListener("pointerup",end,true);document.removeEventListener("pointercancel",end,true);};
+  },[dragging,selected,versionLanes]);
 
   useEffect(() => {
     if (!versions.length || selected.length < 2) return;
@@ -88,7 +103,9 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
   }
 
   function updateSelected(next:string[],nextLanes=versionLanes){
-    const commit=()=>{setSelected(next);setVersionLanes(nextLanes)};
+    const laneIds=Array.from(new Set(next.map((id)=>nextLanes[id]??0))).sort((a,b)=>a-b);
+    const normalizedLanes=Object.fromEntries(next.map((id)=>[id,Math.max(0,laneIds.indexOf(nextLanes[id]??0))]));
+    const commit=()=>{setSelected(next);setVersionLanes(normalizedLanes)};
     if(window.matchMedia("(prefers-reduced-motion: reduce)").matches){flushSync(commit);return;}
     const chipRects=new Map([...chipRefs.current].map(([id,element])=>[id,element.getBoundingClientRect()]));
     const cardRects=new Map([...cardRefs.current].map(([id,element])=>[id,element.getBoundingClientRect()]));
@@ -97,12 +114,58 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
     animateMovedVersions(cardRefs.current,cardRects);
   }
 
-  function updateDropTarget(event:DragEvent<HTMLDivElement>,lane:CompareLane){event.preventDefault();event.dataTransfer.dropEffect="move";const rect=event.currentTarget.getBoundingClientRect(),horizontal=(event.clientX-rect.left)/rect.width,source=dragging?versionLanes[dragging]??0:lane;const placement=lane!==source&&horizontal<.22?"before":lane!==source&&horizontal>.78?"after":undefined;const cards=[...event.currentTarget.querySelectorAll<HTMLElement>(".compare-version-card:not(.is-dragging)")];const found=cards.findIndex((card)=>event.clientY<card.getBoundingClientRect().top+card.getBoundingClientRect().height/2);setDropTarget({lane,index:found<0?cards.length:found,columnPlacement:placement});}
-  function dropVersion(event:DragEvent<HTMLDivElement>,lane:CompareLane){event.preventDefault();if(!dragging)return;
-    if(dropTarget?.lane===lane&&dropTarget.columnPlacement){const source=versionLanes[dragging]??0,groups=activeLaneIds(selected,versionLanes).map((laneId)=>({laneId,items:selected.filter((id)=>(versionLanes[id]??0)===laneId)})),sourceIndex=groups.findIndex((group)=>group.laneId===source),[sourceGroup]=groups.splice(sourceIndex,1),targetId=selected.find((id)=>id!==dragging&&(versionLanes[id]??0)===lane),targetIndex=targetId===undefined?groups.length:groups.findIndex((group)=>group.items.includes(targetId)),insert=targetIndex<0?groups.length:targetIndex+(dropTarget.columnPlacement==="after"?1:0);groups.splice(insert,0,sourceGroup);const normalized={...versionLanes};groups.forEach((group,index)=>group.items.forEach((id)=>normalized[id]=index));updateSelected(groups.flatMap((group)=>group.items),normalized);setDragging(undefined);setDropTarget(null);return;}
-    const nextLanes={...versionLanes,[dragging]:lane};const remaining=selected.filter((id)=>id!==dragging);const ids=Array.from(new Set([...remaining.map((id)=>nextLanes[id]??0),lane])).sort((a,b)=>a-b);const grouped=new Map(ids.map((id)=>[id,remaining.filter((version)=>(nextLanes[version]??0)===id)]));const target=grouped.get(lane)??[];target.splice(Math.min(dropTarget?.lane===lane?dropTarget.index:target.length,target.length),0,dragging);grouped.set(lane,target);const populated=ids.filter((id)=>(grouped.get(id)?.length??0)>0),normalized={...nextLanes};populated.forEach((id,index)=>grouped.get(id)?.forEach((version)=>normalized[version]=index));updateSelected(populated.flatMap((id)=>grouped.get(id)??[]),normalized);setDragging(undefined);setDropTarget(null);}
-  function dropAsNewColumn(event:DragEvent<HTMLDivElement>,requested:number){event.preventDefault();event.stopPropagation();if(!dragging)return;const source=versionLanes[dragging]??0,groups=activeLaneIds(selected,versionLanes).map((lane)=>selected.filter((id)=>(versionLanes[id]??0)===lane)),sourceIndex=activeLaneIds(selected,versionLanes).indexOf(source);groups[sourceIndex]=groups[sourceIndex].filter((id)=>id!==dragging);let insertion=requested;if(groups[sourceIndex].length===0){groups.splice(sourceIndex,1);if(sourceIndex<insertion)insertion--;}groups.splice(Math.max(0,Math.min(insertion,groups.length)),0,[dragging]);const normalized={...versionLanes};groups.forEach((group,lane)=>group.forEach((id)=>normalized[id]=lane));updateSelected(groups.flat(),normalized);setDragging(undefined);setDropTarget(null);
+  function setDropTarget(target:DropTarget|null){
+    const current=dropTargetRef.current;
+    const unchanged=current===target||(current!==null&&target!==null&&current.kind===target.kind&&(current.kind==="lane"
+      ?target.kind==="lane"&&current.lane===target.lane&&current.index===target.index
+      :target.kind==="column"&&current.index===target.index&&current.lane===target.lane&&current.placement===target.placement));
+    if(unchanged)return;
+    dropTargetRef.current=target;setDropTargetState(target);
   }
+  function targetFromCoordinates(clientX:number,clientY:number,laneElement:HTMLElement,lane:CompareLane):DropTarget{
+    const dragged=draggingRef.current;
+    const source=dragged===undefined?lane:versionLanes[dragged]??0;
+    const rect=laneElement.getBoundingClientRect();
+    const horizontal=Math.max(0,Math.min(1,(clientX-rect.left)/Math.max(rect.width,1)));
+    const boardLaneCount=laneElement.parentElement?.querySelectorAll(":scope > .compare-version-lane").length??1;
+    if(boardLaneCount===1&&selected.length===2&&(horizontal<.18||horizontal>.82)){
+      const before=horizontal<.18;
+      return {kind:"column",index:before?0:1,lane,placement:before?"before":"after"};
+    }
+    if(lane!==source&&(horizontal<.22||horizontal>.78)){
+      const before=horizontal<.22;
+      return {kind:"column",index:lane+(before?0:1),lane,placement:before?"before":"after"};
+    }
+    const cards=[...laneElement.querySelectorAll<HTMLElement>(".compare-version-card:not(.is-dragging)")];
+    const found=cards.findIndex((card)=>clientY<card.getBoundingClientRect().top+card.getBoundingClientRect().height/2);
+    return {kind:"lane",lane,index:found<0?cards.length:found};
+  }
+  function targetFromPointer(event:DragEvent<HTMLDivElement>,lane:CompareLane){return targetFromCoordinates(event.clientX,event.clientY,event.currentTarget,lane);}
+  function updateDropTarget(event:DragEvent<HTMLDivElement>,lane:CompareLane){event.preventDefault();event.dataTransfer.dropEffect="move";setDropTarget(targetFromPointer(event,lane));}
+  function finishDrop(dragged:string,target:DropTarget){
+    const layout=moveVersion(selected,versionLanes,dragged,target);
+    if(layout.order.join("\0")!==selected.join("\0")||layout.order.some((id)=>(layout.lanes[id]??0)!==(versionLanes[id]??0)))updateSelected(layout.order,layout.lanes);
+    draggingRef.current=undefined;setDragging(undefined);setDropTarget(null);
+  }
+  function dropVersion(event:DragEvent<HTMLDivElement>,lane:CompareLane){event.preventDefault();event.stopPropagation();const dragged=draggingRef.current;if(!dragged)return;finishDrop(dragged,targetFromPointer(event,lane));}
+  function dropAsNewColumn(event:DragEvent<HTMLDivElement>,requested:number){event.preventDefault();event.stopPropagation();const dragged=draggingRef.current;if(!dragged)return;const lane=Math.max(0,Math.min(requested,activeLaneIds(selected,versionLanes).length-1));finishDrop(dragged,{kind:"column",index:requested,lane,placement:requested<=lane?"before":"after"});}
+  function targetAtPoint(clientX:number,clientY:number){
+    const board=boardRef.current;
+    if(!board)return null;
+    const laneElements=[...board.querySelectorAll<HTMLElement>(":scope > .compare-version-lane")];
+    const hit=document.elementFromPoint(clientX,clientY)?.closest<HTMLElement>(".compare-version-lane");
+    let lane=hit?laneElements.indexOf(hit):-1;
+    if(lane<0)lane=laneElements.reduce((best,element,index)=>{const rect=element.getBoundingClientRect(),distance=Math.max(rect.left-clientX,0,clientX-rect.right)+Math.max(rect.top-clientY,0,clientY-rect.bottom);return distance<best.distance?{index,distance}:best;},{index:0,distance:Number.POSITIVE_INFINITY}).index;
+    return laneElements[lane]?targetFromCoordinates(clientX,clientY,laneElements[lane],lane):null;
+  }
+  function pointerTarget(event:ReactPointerEvent<HTMLElement>){return targetAtPoint(event.clientX,event.clientY);}
+  function startPointerDrag(event:ReactPointerEvent<HTMLElement>,id:string){
+    if(event.button!==0)return;
+    event.preventDefault();event.currentTarget.setPointerCapture(event.pointerId);
+    draggingRef.current=id;setDragging(id);setDropTarget(null);
+  }
+  function movePointerDrag(event:ReactPointerEvent<HTMLElement>){if(!draggingRef.current)return;event.preventDefault();setDropTarget(pointerTarget(event));}
+  function endPointerDrag(event:ReactPointerEvent<HTMLElement>){const id=draggingRef.current;if(!id)return;event.preventDefault();const target=pointerTarget(event)??dropTargetRef.current;if(target)finishDrop(id,target);else{draggingRef.current=undefined;setDragging(undefined);setDropTarget(null);}}
 
   const selectedVersions = selected.map((id) => versions.find((item) => item.id === id)).filter((item): item is AnalysisInstructionVersion => Boolean(item));
   const changes = selectedVersions.slice(1).map((to, index) => ({ from: selectedVersions[index], to, lines: diffLines(files[selectedVersions[index].id]?.text, files[to.id]?.text) }));
@@ -122,11 +185,11 @@ export function InstructionComparePage({ instructionId, onBack }: { instructionI
     {error && <div className="form-error">{error}</div>}
     {loading ? <div className="transcription-compare-loading">Загружаю версии…</div> : <>
       <section className="compare-selection-panel"><div className="compare-selected-versions">{selectedVersions.map((version)=><span ref={(element)=>{if(element)chipRefs.current.set(version.id,element);else chipRefs.current.delete(version.id)}} className="compare-version-chip" style={{"--version-color":versionColor(version.id)} as CSSProperties} key={version.id}><i/>Версия {version.version}{selected.length>2&&<button type="button" aria-label={`Убрать версию ${version.version}`} onClick={()=>void toggle(version.id)}><X size={14}/></button>}</span>)}</div><div className="compare-add-version" ref={addRef}><button className="ghost-button small" type="button" aria-expanded={adding} onClick={()=>setAdding(!adding)}><Plus size={16}/>Добавить версию<ChevronDown size={15}/></button>{adding&&<div className="compare-version-menu">{versions.map((version)=>{const chosen=selected.includes(version.id);return <button type="button" className={chosen?"selected":""} aria-pressed={chosen} disabled={(chosen&&selected.length<=2)||(!chosen&&selected.length>=COLORS.length)} title={chosen&&selected.length<=2?"Для сравнения нужны минимум две версии":undefined} onClick={()=>void toggle(version.id)} key={version.id}><span><strong>Версия {version.version}</strong><small>{new Date(version.created_at).toLocaleString("ru-RU")}</small></span>{chosen&&(selected.length<=2?<Check size={16}/>:<X size={16}/>)}</button>})}</div>}</div></section>
-      <section className="compare-version-board" style={{"--compare-column-count":lanes.length} as CSSProperties}>{lanes.map((laneVersions,laneIndex)=><div className={`compare-version-lane${dropTarget?.lane===laneIndex?" is-drop-target":""}${dropTarget?.lane===laneIndex&&dropTarget.columnPlacement?` is-column-${dropTarget.columnPlacement}`:""}`} onDragOver={(event)=>updateDropTarget(event,laneIndex)} onDrop={(event)=>dropVersion(event,laneIndex)} key={laneIndex}>
-        {dragging&&lanes.length<selected.length&&<div className={`compare-column-drop-zone is-before${dropTarget?.newColumnIndex===laneIndex?" is-active":""}`} onDragOver={(event)=>{event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";setDropTarget({lane:-1,index:0,newColumnIndex:laneIndex})}} onDrop={(event)=>dropAsNewColumn(event,laneIndex)}/>}
-        {dragging&&lanes.length<selected.length&&laneIndex===lanes.length-1&&<div className={`compare-column-drop-zone is-after${dropTarget?.newColumnIndex===lanes.length?" is-active":""}`} onDragOver={(event)=>{event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";setDropTarget({lane:-1,index:0,newColumnIndex:lanes.length})}} onDrop={(event)=>dropAsNewColumn(event,lanes.length)}/>}
-        {laneVersions.map((version,lanePosition)=><Fragment key={version.id}>{dropTarget?.lane===laneIndex&&!dropTarget.columnPlacement&&dropTarget.index===lanePosition&&<div className="compare-drop-marker"/>}<article ref={(element)=>{if(element)cardRefs.current.set(version.id,element);else cardRefs.current.delete(version.id)}} className={`compare-version-card${dragging===version.id?" is-dragging":""}`} style={{"--version-color":versionColor(version.id)} as CSSProperties}><header draggable onDragStart={(event)=>{event.dataTransfer.effectAllowed="move";event.dataTransfer.setData("text/plain",version.id);setDragging(version.id)}} onDragEnd={()=>{setDragging(undefined);setDropTarget(null)}}><div><span className="version-dot"/><strong>Версия {version.version}</strong>{version.id===versions.at(-1)?.id&&<em>Текущая</em>}</div><time>{new Date(version.created_at).toLocaleString("ru-RU")}</time></header><div className="instruction-version-content"><InstructionDocumentViewer filename={version.original_filename} blob={files[version.id]?.blob} markdown={files[version.id]?.text} changedLines={changedLinesByVersion.get(version.id)}/></div></article></Fragment>)}
-        {dropTarget?.lane===laneIndex&&!dropTarget.columnPlacement&&dropTarget.index===laneVersions.length&&<div className="compare-drop-marker"/>}{laneVersions.length===0&&<div className="compare-empty-lane">Перетащите версию сюда</div>}
+      <section ref={boardRef} className={`compare-version-board${lanes.length===1?" is-single":lanes.length===2?" is-pair":""}`} style={{"--compare-column-count":lanes.length} as CSSProperties}>{lanes.map((laneVersions,laneIndex)=><div className={`compare-version-lane${dropTarget?.lane===laneIndex?" is-drop-target":""}${dropTarget?.kind==="column"&&dropTarget.lane===laneIndex?` is-column-${dropTarget.placement}`:""}`} onDragOver={(event)=>updateDropTarget(event,laneIndex)} onDrop={(event)=>dropVersion(event,laneIndex)} key={laneIndex}>
+        {dragging&&selected.length>2&&lanes.length<selected.length&&<div className={`compare-column-drop-zone is-before${dropTarget?.kind==="column"&&dropTarget.index===laneIndex?" is-active":""}`} onDragOver={(event)=>{event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";setDropTarget({kind:"column",index:laneIndex,lane:laneIndex,placement:"before"})}} onDrop={(event)=>dropAsNewColumn(event,laneIndex)}/>}
+        {dragging&&selected.length>2&&lanes.length<selected.length&&laneIndex===lanes.length-1&&<div className={`compare-column-drop-zone is-after${dropTarget?.kind==="column"&&dropTarget.index===lanes.length?" is-active":""}`} onDragOver={(event)=>{event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect="move";setDropTarget({kind:"column",index:lanes.length,lane:laneIndex,placement:"after"})}} onDrop={(event)=>dropAsNewColumn(event,lanes.length)}/>}
+        {laneVersions.map((version,lanePosition)=><Fragment key={version.id}>{dropTarget?.kind==="lane"&&dropTarget.lane===laneIndex&&dropTarget.index===lanePosition&&<div className="compare-drop-marker"/>}<article ref={(element)=>{if(element)cardRefs.current.set(version.id,element);else cardRefs.current.delete(version.id)}} className={`compare-version-card${dragging===version.id?" is-dragging":""}`} style={{"--version-color":versionColor(version.id)} as CSSProperties}><header onPointerDown={(event)=>startPointerDrag(event,version.id)} onPointerMove={movePointerDrag} onPointerUp={endPointerDrag} onPointerCancel={(event)=>endPointerDrag(event)}><div><span className="version-dot"/><strong>Версия {version.version}</strong>{version.id===versions.at(-1)?.id&&<em>Текущая</em>}</div><time>{new Date(version.created_at).toLocaleString("ru-RU")}</time></header><div className="instruction-version-content"><InstructionDocumentViewer filename={version.original_filename} blob={files[version.id]?.blob} markdown={files[version.id]?.text} changedLines={changedLinesByVersion.get(version.id)}/></div></article></Fragment>)}
+        {dropTarget?.kind==="lane"&&dropTarget.lane===laneIndex&&dropTarget.index===laneVersions.length&&<div className="compare-drop-marker"/>}{laneVersions.length===0&&<div className="compare-empty-lane">Перетащите версию сюда</div>}
       </div>)}</section>
       <section className="compare-change-log"><div className="compare-section-heading"><div><span className="eyebrow">Хронология</span><h2>Что изменилось</h2></div><small>Только различия между соседними выбранными версиями</small></div>{changes.map((change)=>{const compact=compactChanges(change.lines),intermediate=intermediateByTarget.get(change.to.id)??[];return <article className="compare-change-step" style={{"--version-color":versionColor(change.to.id)} as CSSProperties} key={change.to.id}><header><span className="version-dot"/><div><strong>Версия {change.from.version} → {change.to.version}</strong><time>{new Date(change.to.created_at).toLocaleString("ru-RU")}</time></div><b>{compact.length} {compact.length===1?"изменение":"изменений"}</b></header>{change.lines.length===0?<p className="compare-no-changes">Содержимое совпадает.</p>:change.lines[0]?.kind==="same"&&change.lines[0].text==="__binary__"?<p className="compare-no-changes">Файл заменён. Версии отображены выше в исходном формате.</p>:<div className="instruction-compact-diff">{compact.map((item,index)=><div className={`instruction-compact-change is-${item.kind}`} key={index}><span>{item.kind==="add"?"Добавлено":item.kind==="remove"?"Удалено":"Заменено"}</span><div>{item.before&&<del>{shortChange(item.before)}</del>}{item.after&&<ins>{shortChange(item.after)}</ins>}</div></div>)}{intermediate.length>0&&<details className="instruction-intermediate-changes"><summary>Промежуточные изменения, не вошедшие в итог: {intermediate.length}</summary><div>{intermediate.map((line,index)=><p key={index}><span>{line.kind==="add"?"+":"−"}</span>{shortChange(line.text)}</p>)}</div></details>}</div>}</article>})}</section>
     </>}
@@ -151,6 +214,24 @@ function shortChange(text:string){const source=text.trim();return source.length>
 function compactChanges(lines:LineChange[]){const changed=lines.filter((line)=>line.kind!=="same"&&line.text!=="__binary__"),result:Array<{kind:"add"|"remove"|"replace";before?:string;after?:string}>=[];for(let index=0;index<changed.length;index++){const current=changed[index],next=changed[index+1];if(next&&current.kind!==next.kind){const removed=current.kind==="remove"?current:next,added=current.kind==="add"?current:next;result.push({kind:"replace",before:removed.text,after:added.text});index++;}else result.push(current.kind==="add"?{kind:"add",after:current.text}:{kind:"remove",before:current.text});}return result;}
 
 function defaultLane(index:number,total:number){return total<=2?index:index%2;}
-function activeLaneIds(selected:string[],lanes:Record<string,CompareLane>){const populated=Array.from(new Set(selected.map((id)=>lanes[id]??0))).sort((a,b)=>a-b);return populated.length>=2?populated:[0,1];}
+function activeLaneIds(selected:string[],lanes:Record<string,CompareLane>){const populated=Array.from(new Set(selected.map((id)=>lanes[id]??0))).sort((a,b)=>a-b);return populated.length?populated:[0];}
 function countLane(selected:string[],lanes:Record<string,CompareLane>,lane:CompareLane){return selected.filter((id)=>(lanes[id]??0)===lane).length;}
-function animateMovedVersions<Key>(elements:Map<Key,HTMLElement>,before:Map<Key,DOMRect>){elements.forEach((element,key)=>{const first=before.get(key);if(!first||!element.isConnected)return;const last=element.getBoundingClientRect(),x=first.left-last.left,y=first.top-last.top,scaleX=last.width>0?first.width/last.width:1,scaleY=last.height>0?first.height/last.height:1;if(Math.abs(x)<1&&Math.abs(y)<1&&Math.abs(scaleX-1)<.005&&Math.abs(scaleY-1)<.005)return;element.animate([{transformOrigin:"top left",transform:`translate(${x}px,${y}px) scale(${scaleX},${scaleY})`},{transformOrigin:"top left",transform:"translate(0,0) scale(1,1)"}],{duration:560,easing:"cubic-bezier(.22,1,.36,1)"})});}
+function moveVersion(selected:string[],lanes:Record<string,CompareLane>,dragged:string,target:DropTarget){
+  const groups=activeLaneIds(selected,lanes).map((lane)=>selected.filter((id)=>(lanes[id]??0)===lane));
+  const sourceIndex=groups.findIndex((group)=>group.includes(dragged));
+  if(sourceIndex<0)return {order:selected,lanes};
+  groups[sourceIndex]=groups[sourceIndex].filter((id)=>id!==dragged);
+  if(target.kind==="column"){
+    let insertion=Math.max(0,Math.min(target.index,groups.length));
+    if(groups[sourceIndex].length===0){groups.splice(sourceIndex,1);if(sourceIndex<insertion)insertion--;}
+    groups.splice(Math.max(0,Math.min(insertion,groups.length)),0,[dragged]);
+  }else{
+    const destination=Math.max(0,Math.min(target.lane,groups.length-1));
+    groups[destination].splice(Math.max(0,Math.min(target.index,groups[destination].length)),0,dragged);
+  }
+  const populated=groups.filter((group)=>group.length>0);
+  const normalized:Record<string,CompareLane>={};
+  populated.forEach((group,lane)=>group.forEach((id)=>{normalized[id]=lane;}));
+  return {order:populated.flat(),lanes:normalized};
+}
+function animateMovedVersions<Key>(elements:Map<Key,HTMLElement>,before:Map<Key,DOMRect>){elements.forEach((element,key)=>{const first=before.get(key);if(!first||!element.isConnected)return;element.getAnimations().forEach((animation)=>animation.cancel());const last=element.getBoundingClientRect(),x=first.left-last.left,y=first.top-last.top,scaleX=last.width>0?first.width/last.width:1,scaleY=last.height>0?first.height/last.height:1;if(Math.abs(x)<1&&Math.abs(y)<1&&Math.abs(scaleX-1)<.005&&Math.abs(scaleY-1)<.005)return;element.animate([{transformOrigin:"top left",transform:`translate(${x}px,${y}px) scale(${scaleX},${scaleY})`},{transformOrigin:"top left",transform:"translate(0,0) scale(1,1)"}],{duration:480,easing:"cubic-bezier(.22,1,.36,1)"})});}

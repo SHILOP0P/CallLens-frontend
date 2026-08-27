@@ -98,6 +98,7 @@ export function CallDetailPanel({
   showReports?: boolean;
 }) {
   const [showFullTranscript, setShowFullTranscript] = useState(false);
+  const [transcriptExpandable, setTranscriptExpandable] = useState(false);
   const [showFullAnalysis, setShowFullAnalysis] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -137,8 +138,8 @@ export function CallDetailPanel({
   const analysisCardRef = useRef<HTMLDivElement | null>(null);
   const displayedAnalysis = applyEffectiveAnalysis(analysis, reviewContext?.effective_analysis);
   const score = analysisScore100(displayedAnalysis);
-  const canEditAnalysis = reviewContext?.capabilities.can_edit_analysis === true;
-  const canDisputeAnalysis = reviewContext?.capabilities.can_dispute_analysis === true;
+  const canEditAnalysis = !call?.is_test && reviewContext?.capabilities.can_edit_analysis === true;
+  const canDisputeAnalysis = !call?.is_test && reviewContext?.capabilities.can_dispute_analysis === true;
 
   useEffect(() => {
     let cancelled = false;
@@ -471,7 +472,7 @@ export function CallDetailPanel({
             <CloudUpload size={16} />
             Загрузить звонок
           </button>
-          {(onAssignToFolder || (activeFolder && onRemoveFromFolder)) && (
+          {!call.is_test && (onAssignToFolder || (activeFolder && onRemoveFromFolder)) && (
             <div className="call-folder-action-menu" ref={folderMenuRef}>
               {activeFolder && onRemoveFromFolder ? (
                 <button
@@ -529,7 +530,7 @@ export function CallDetailPanel({
               )}
             </div>
           )}
-          {onDeleteCall && (
+          {onDeleteCall && !call.is_test && (
             <button className="ghost-button small call-analysis-button" type="button" onClick={() => void runAnalysis()} disabled={analysisBusy}>
               <WandSparkles size={16} />
               {analysisBusy ? "Анализирую…" : "Сделать анализ"}
@@ -545,18 +546,19 @@ export function CallDetailPanel({
       </div>
       {analysisRunError && <div className="form-error is-dismissible" role="alert">{analysisRunError}</div>}
       {deleteError && <div className="form-error">{deleteError}</div>}
+      {call.is_test && <div className="call-test-notice" role="note"><strong>Тестовый звонок</strong><span>Он хранится отдельно и доступен только для проверки загрузки и удаления. Анализ, редактирование и перенос в другие папки отключены.</span></div>}
       <div className="selected-call-card">
         <div className="play-large">
           <PhoneCall size={22} />
         </div>
         <div className="selected-call-main">
-          <StatusChip status={call.status} analysisStatus={analysis?.status} />
+          <StatusChip status={call.status} analysisStatus={call.is_test ? undefined : analysis?.status} label={call.is_test ? "Тестовый" : undefined} />
           <strong>{call.title}</strong>
           <small>
             {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)} ·{" "}
             {contextLabel(call, companies, departments)}
           </small>
-          {score.score !== null && (
+          {!call.is_test && score.score !== null && (
             <span className="call-score-chip">Оценка {formatScore(score.percent)} / 100</span>
           )}
         </div>
@@ -567,9 +569,9 @@ export function CallDetailPanel({
         seekTarget={seekTarget}
         onActiveWordChange={setActiveWordIndex}
       />
-      <StatusTimeline current={call.status} statuses={timelineStatuses} analysisStatus={analysis?.status} />
-      {showReports && <ReportExportPanel call={call} analysis={analysis} />}
-      <div className="detail-grid">
+      {!call.is_test && <StatusTimeline current={call.status} statuses={timelineStatuses} analysisStatus={analysis?.status} />}
+      {showReports && !call.is_test && <ReportExportPanel call={call} analysis={analysis} />}
+      <div className={`detail-grid${call.is_test ? " is-test-call" : ""}`}>
         <InfoCard
           title="Расшифровка"
           className="transcript-card"
@@ -577,15 +579,15 @@ export function CallDetailPanel({
           status={transcriptionState.label}
           statusTone={transcriptionState.tone}
           statusThinking={transcriptionState.thinking}
-          action={showFullTranscript ? "Свернуть расшифровку" : "Открыть полную расшифровку"}
+          action={transcriptExpandable ? (showFullTranscript ? "Свернуть расшифровку" : "Открыть полную расшифровку") : undefined}
           onAction={() => toggleExpandedCard(showFullTranscript, setShowFullTranscript, transcriptCardRef)}
           actionVariant="analysis"
           expanded={showFullTranscript}
         >
-          {localTranscription?.editable && (
+          {localTranscription?.editable && !call.is_test && (
             <div className="transcript-history-actions">
               <div className="transcript-history-toolbar">
-                {onOpenTranscriptionEditor && <button type="button" className="primary-button small" onClick={() => onOpenTranscriptionEditor(call.id)}>Исправить транскрипцию</button>}
+                {onOpenTranscriptionEditor && !call.is_test && <button type="button" className="primary-button small" onClick={() => onOpenTranscriptionEditor(call.id)}>Исправить транскрипцию</button>}
                 <button type="button" className="ghost-button small" disabled={historyLoading} aria-expanded={showRevisionHistory} onClick={() => void toggleRevisionHistory()}>
                   {historyLoading ? "Загружаю историю…" : showRevisionHistory ? "Свернуть историю" : "История исправлений"}
                 </button>
@@ -604,7 +606,7 @@ export function CallDetailPanel({
               </div>}
             </div>
           )}
-          {showFullTranscript && createPortal(
+          {showFullTranscript && transcriptExpandable && createPortal(
             <div ref={transcriptIslandRef} className="transcript-collapse-island">
               <button type="button" onClick={() => toggleExpandedCard(true, setShowFullTranscript, transcriptCardRef)}>
                 <ChevronUp size={18} />
@@ -620,9 +622,10 @@ export function CallDetailPanel({
             activeWordIndex={activeWordIndex}
             selectedEvidence={seekTarget}
             speakerAssignments={speakerAssignments}
+            onOverflowChange={setTranscriptExpandable}
           />
         </InfoCard>
-        <div className="analysis-card-stack">
+        {!call.is_test && <div className="analysis-card-stack">
           {isAnalysisDone(analysis) && reviewContext && (canEditAnalysis || canDisputeAnalysis || reviewContext.human_review_count > 0) && <div className="quality-review-entry"><div><ClipboardCheck size={20} /><span><strong>{reviewContext.human_review_count > 0 ? `Действует человеческая оценка ${reviewContext.human_review_count}` : "Проверка человеком"}</strong><small>{reviewContext.source_outdated ? "Эта проверка относится к устаревшей версии анализа и доступна только для просмотра." : canEditAnalysis ? `Опубликовано ${reviewContext.human_review_count} из ${reviewContext.human_review_limit} допустимых переоценок.${reviewContext.next_review_requires_different_author ? " Следующую должен выполнить другой проверяющий." : ""}` : canDisputeAnalysis ? "Если выводы или оценки неверны, отправьте анализ своего звонка на независимый пересмотр." : "Доступны просмотр и история оценок."}</small></span></div><div className="quality-review-entry-actions">{canEditAnalysis && <button className="primary-button" type="button" disabled={qualityReviewBusy} onClick={() => void createQualityReview()}>{qualityReviewBusy ? "Открываю…" : "Исправить анализ"}</button>}{reviewContext.review_uuid && !canEditAnalysis && reviewContext.human_review_count > 0 && <button className="ghost-button" type="button" onClick={() => { window.history.pushState({}, "", `/app/quality-reviews/${encodeURIComponent(reviewContext.review_uuid!)}`); window.dispatchEvent(new PopStateEvent("popstate")); }}>История оценок</button>}{canDisputeAnalysis && <button className="ghost-button" type="button" disabled={qualityReviewBusy || challengeSent} onClick={() => setChallengeOpen(true)}><MessageSquareWarning size={17} />{challengeSent ? "Отправлено на пересмотр" : "Оспорить анализ"}</button>}</div></div>}
           {qualityReviewError && <div className="form-error is-dismissible" role="alert">{qualityReviewError}</div>}
           <InfoCard
@@ -656,7 +659,7 @@ export function CallDetailPanel({
             </section>
           )}
           {analysis && isAnalysisDone(analysis) && reviewContext && <AnalysisComments callId={call.id} analysisId={analysis.id} comments={reviewContext.comments ?? []} canComment={reviewContext.capabilities.can_comment_analysis} onChange={(comments)=>setReviewContext((current)=>current?{...current,comments}:current)} />}
-        </div>
+        </div>}
       </div>
       {analysis && isAnalysisDone(analysis) && <div className="next-step">
         <span className={`step-icon${linkedAction?.status === "completed" || noActionRequired ? " is-complete" : ""}`}>

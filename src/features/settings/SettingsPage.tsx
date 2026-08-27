@@ -4,6 +4,7 @@ import {
   CreditCard,
   FileText,
   MonitorSmartphone,
+  PlugZap,
   Settings
 } from "lucide-react";
 import type { AppPage } from "../../types";
@@ -11,6 +12,7 @@ import { settingsRoutes } from "../../app/runtime";
 
 const settingsIcons: Partial<Record<AppPage, React.ReactNode>> = {
   settingsTariffs: <CreditCard size={22} />,
+  settingsIntegrations: <PlugZap size={22} />,
   settingsCompanies: <Building2 size={22} />,
   settingsInstructions: <FileText size={22} />,
   profileDevices: <MonitorSmartphone size={22} />
