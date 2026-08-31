@@ -19,7 +19,6 @@ import type {
 import { analysisLevelLabel, comparePlans, formatHistoryDays, formatInstructionLimit, formatMinutesLimit, planGradients } from "../../shared/lib/plans";
 import { SkeletonLine, TextBlockSkeleton } from "../../shared/ui/loading";
 import { SelectControl } from "../../shared/ui/primitives";
-import { CreditUsagePanel } from "./CreditUsagePanel";
 
 if (typeof window !== "undefined" && window.location.pathname === "/app/settings/tariffs" && "scrollRestoration" in window.history) {
   window.history.scrollRestoration = "manual";
@@ -108,7 +107,6 @@ export function TariffsPage({
       )}
       {!loading && !error && plans.length > 0 && (
         <>
-          <CreditUsagePanel session={session} companies={companies} />
           <PersonalSubscriptionPanel
             personalPlans={personalPlans}
             initialSubscription={personalSubscription}

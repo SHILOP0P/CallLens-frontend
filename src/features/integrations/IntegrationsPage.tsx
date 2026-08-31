@@ -16,6 +16,14 @@ import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "../../api";
 import type {
   CompanyResponse,
+  CompanyMemberListItemResponse,
+  DepartmentResponse,
+  BitrixConnectionHealth,
+  BitrixExternalUser,
+  BitrixBackfill,
+  BitrixBackfillPreview,
+  BitrixMappingChange,
+  BitrixMappingPreview,
   CreatedIntegrationKey,
   DeveloperApplication,
   IntegrationAuditEvent,
@@ -36,6 +44,7 @@ const statusLabels: Record<string, string> = {
   degraded: "Есть ошибки", received: "Получено", processing: "Обрабатывается",
   retry_wait: "Ожидает повтора", failed: "Ошибка", completed: "Завершено",
   cancelled: "Отменено", succeeded: "Доставлено", pending: "Ожидает",
+	authorizing: "Авторизация", testing: "Проверка", paused: "Приостановлено", reconnect_required: "Нужно переподключить",
 };
 const auditLabels: Record<string, string> = {
   "ingest.accepted": "Импорт принят", "ingest.completed": "Импорт завершён",
@@ -59,6 +68,69 @@ function ScopeList({ scopes }: { scopes: string[] }) {
   return <span className="integration-scope-list">{scopes.map((scope) => <span title={scope} key={scope}><ShieldCheck size={13}/>{scopeLabels[scope] ?? scope}</span>)}</span>;
 }
 
+function CapabilityState({ label, ok }: { label: string; ok: boolean }) {
+	return <span className={`bitrix-capability ${ok ? "ok" : "missing"}`}><span aria-hidden="true">{ok ? "✓" : "!"}</span><span><strong>{label}</strong><small>{ok ? "Доступно" : "Требует настройки"}</small></span></span>;
+}
+
+function portalDomainForInput(...values: unknown[]) {
+	const value = values.find((item) => typeof item === "string" && item.trim()) as string | undefined;
+	if (!value || /^oauth\.bitrix\./i.test(value.trim())) return "";
+	return value.trim();
+}
+
+type BitrixBackfillRange = { from: string; to: string };
+
+function bitrixBackfillRangeStorageKey(connectionUUID: string) {
+	return `verbatrace:bitrix-backfill-range:v1:${connectionUUID}`;
+}
+
+function readBitrixBackfillRange(connectionUUID: string): BitrixBackfillRange {
+	try {
+		const raw = window.localStorage.getItem(bitrixBackfillRangeStorageKey(connectionUUID));
+		if (!raw) return { from: "", to: "" };
+		const parsed = JSON.parse(raw) as Partial<BitrixBackfillRange>;
+		return {
+			from: typeof parsed.from === "string" ? parsed.from : "",
+			to: typeof parsed.to === "string" ? parsed.to : "",
+		};
+	} catch {
+		return { from: "", to: "" };
+	}
+}
+
+function writeBitrixBackfillRange(connectionUUID: string, range: BitrixBackfillRange) {
+	try {
+		window.localStorage.setItem(bitrixBackfillRangeStorageKey(connectionUUID), JSON.stringify(range));
+	} catch {
+		// The inputs remain usable when browser storage is unavailable.
+	}
+}
+
+type BitrixMappingDraft = { internalUserId: string; departmentId: string; status: "mapped" | "ignored" | "unmapped" };
+
+function BitrixMappingRow({ user, draft, departments, members, membersLoading, busy, onChange }: {
+	user: BitrixExternalUser;
+	draft: BitrixMappingDraft;
+	departments: DepartmentResponse[];
+	members: CompanyMemberListItemResponse[];
+	membersLoading: boolean;
+	busy: boolean;
+	onChange: (draft: BitrixMappingDraft) => void;
+}) {
+	const availableMembers = members.filter((member) => member.status === "active" && (
+		draft.departmentId
+			? member.departments.some((department) => department.department_uuid === draft.departmentId && department.status === "active")
+			: member.company_role === "company_manager"
+	));
+	const changed = draft.internalUserId !== (user.internal_user_uuid ?? "") || draft.departmentId !== (user.department_uuid ?? "") || draft.status !== user.mapping_status;
+	return <article className={`bitrix-mapping-row is-${user.mapping_status}`}>
+		<div><strong>{user.display_name}</strong><small>Bitrix24 ID {user.external_user_id} · {user.active ? "активен" : "уволен"}{changed ? " · есть несохранённое изменение" : ""}</small></div>
+		<SelectControl disabled={busy || draft.status === "ignored"} aria-label={`Отдел для ${user.display_name}`} value={draft.departmentId} onChange={(event) => onChange({ departmentId: event.target.value, internalUserId: "", status: "unmapped" })}><option value="">Уровень компании — без отдела</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectControl>
+		<SelectControl disabled={busy || membersLoading || draft.status === "ignored"} aria-label={`Пользователь VerbaTrace для ${user.display_name}`} value={draft.internalUserId} onChange={(event) => onChange({ ...draft, internalUserId: event.target.value, status: event.target.value ? "mapped" : "unmapped" })}><option value="">{membersLoading ? "Загружаю участников…" : "Не сопоставлен"}</option>{availableMembers.map((member) => <option key={`${draft.departmentId || "company"}-${member.user_uuid}`} value={member.user_uuid}>{[member.full_surname, member.full_name].filter(Boolean).join(" ") || member.username || member.user_uuid}{!draft.departmentId ? " · руководитель компании" : ""}</option>)}</SelectControl>
+		<button className="ghost-button small" type="button" disabled={busy} onClick={() => onChange(draft.status === "ignored" ? { internalUserId: "", departmentId: "", status: "unmapped" } : { internalUserId: "", departmentId: "", status: "ignored" })}>{draft.status === "ignored" ? "Вернуть к выбору" : "Игнорировать"}</button>
+	</article>;
+}
+
 function AuditEventEmblem({ type }: { type: string }) {
   const kind = type.split(".")[0];
   const Icon = kind === "ingest" ? UploadCloud : kind === "connection" ? Settings2 : kind === "webhook" ? Webhook : kind === "key" ? KeyRound : kind === "service_account" ? UserCog : ScrollText;
@@ -77,16 +149,19 @@ async function copyToClipboard(value: string, onCopied: () => void, onFailed: ()
 export function IntegrationsPage({
   session,
   companies,
+  departments,
   onBack,
 }: {
   session: SessionState;
   companies: CompanyResponse[];
+  departments: DepartmentResponse[];
   onBack: () => void;
 }) {
   const managed = companies.filter(
     (company) => company.manager_user_uuid === session.user.id,
   );
-  const [owner, setOwner] = useState("user");
+  const [owner, setOwner] = useState(() => managed[0]?.id ?? "user");
+  const ownerAutoSelectedRef = useRef(managed.length > 0);
   const [apps, setApps] = useState<DeveloperApplication[]>([]);
   const [name, setName] = useState("");
   const [environment, setEnvironment] = useState<"sandbox" | "production">(
@@ -101,8 +176,17 @@ export function IntegrationsPage({
   const pageScrollRef = useRef<HTMLElement>(null);
   const [keyApp, setKeyApp] = useState("");
   const [keyName, setKeyName] = useState("Основной ключ");
+  const [keyLimitMode, setKeyLimitMode] = useState<"none" | "permanent" | "temporary">("none");
+  const [keyCreditLimit, setKeyCreditLimit] = useState("");
+  const [keyLimitStartsAt, setKeyLimitStartsAt] = useState("");
+  const [keyLimitEndsAt, setKeyLimitEndsAt] = useState("");
   const ownerType = owner === "user" ? "user" : "company";
   const ownerId = owner === "user" ? undefined : owner;
+  useEffect(() => {
+    if (ownerAutoSelectedRef.current || managed.length === 0) return;
+    ownerAutoSelectedRef.current = true;
+    setOwner((current) => current === "user" ? managed[0].id : current);
+  }, [managed]);
   useEffect(() => {
     let alive = true;
     setMessage("");
@@ -157,13 +241,30 @@ export function IntegrationsPage({
   }
   async function createKey() {
     if (!keyApp || !keyName.trim()) return;
+    const creditLimit = Number(keyCreditLimit);
+    if (keyLimitMode !== "none" && (!Number.isSafeInteger(creditLimit) || creditLimit < 0)) {
+      setMessage("Укажите лимит целым неотрицательным числом кредитов.");
+      return;
+    }
+    if (keyLimitMode === "temporary") {
+      const startsAt = new Date(keyLimitStartsAt);
+      const endsAt = new Date(keyLimitEndsAt);
+      if (!keyLimitStartsAt || !keyLimitEndsAt || Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt <= startsAt) {
+        setMessage("Для временного лимита укажите корректный период: окончание должно быть позже начала.");
+        return;
+      }
+    }
     setBusy(true);
     setMessage("");
     try {
       setCreatedKey(
         await api.createIntegrationKey(keyApp, {
           name: keyName.trim(),
-			scopes: ["calls:write", "calls:read", "usage:read", "destinations:read", "webhooks:read", "webhooks:write"],
+          scopes: ["calls:write", "calls:read", "usage:read", "destinations:read", "webhooks:read", "webhooks:write"],
+          permanent_credit_limit: keyLimitMode === "permanent" ? creditLimit : undefined,
+          temporary_credit_limit: keyLimitMode === "temporary" ? creditLimit : undefined,
+          temporary_limit_starts_at: keyLimitMode === "temporary" ? new Date(keyLimitStartsAt).toISOString() : undefined,
+          temporary_limit_ends_at: keyLimitMode === "temporary" ? new Date(keyLimitEndsAt).toISOString() : undefined,
         }),
       );
     } catch (error) {
@@ -275,10 +376,31 @@ export function IntegrationsPage({
               onChange={(e) => setKeyName(e.target.value)}
             />
           </label>
+          <label>
+            Ограничение расхода
+            <SelectControl value={keyLimitMode} onChange={(e) => setKeyLimitMode(e.target.value as "none" | "permanent" | "temporary")}>
+              <option value="none">Без отдельного лимита</option>
+              <option value="permanent">На весь срок ключа</option>
+              <option value="temporary">На заданный период</option>
+            </SelectControl>
+          </label>
+          {keyLimitMode !== "none" && (
+            <label>
+              Лимит, кредитов
+              <input type="number" min="0" step="1" value={keyCreditLimit} onChange={(e) => setKeyCreditLimit(e.target.value)} placeholder="Например, 10000" />
+            </label>
+          )}
+          {keyLimitMode === "temporary" && (
+            <div className="integration-key-limit-period">
+              <label>Начало периода<input type="datetime-local" value={keyLimitStartsAt} onChange={(e) => setKeyLimitStartsAt(e.target.value)} /></label>
+              <label>Окончание периода<input type="datetime-local" value={keyLimitEndsAt} onChange={(e) => setKeyLimitEndsAt(e.target.value)} /></label>
+            </div>
+          )}
+          <p className="integration-limit-note">Лимит фиксируется при выпуске ключа. Чтобы задать другой, отзовите ключ и выпустите новый.</p>
           <button
             className="ghost-button"
             type="button"
-            disabled={busy || !keyApp}
+            disabled={busy || !keyApp || !keyName.trim() || (keyLimitMode !== "none" && keyCreditLimit === "") || (keyLimitMode === "temporary" && (!keyLimitStartsAt || !keyLimitEndsAt))}
             onClick={() => void createKey()}
           >
             <KeyRound size={17} />
@@ -314,6 +436,7 @@ export function IntegrationsPage({
         <ConnectionManager
           application={apps.find((app) => app.application_uuid === keyApp)!}
           busy={busy}
+          departments={departments}
           setBusy={setBusy}
           setMessage={setMessage}
           onApplicationChanged={(updated) => {
@@ -367,12 +490,14 @@ export function IntegrationsPage({
 function ConnectionManager({
   application,
   busy,
+  departments,
   setBusy,
   setMessage,
   onApplicationChanged,
 }: {
   application: DeveloperApplication;
   busy: boolean;
+  departments: DepartmentResponse[];
   setBusy: (value: boolean) => void;
   setMessage: (value: string) => void;
   onApplicationChanged: (application: DeveloperApplication) => void;
@@ -380,6 +505,25 @@ function ConnectionManager({
   const [items, setItems] = useState<IntegrationConnection[]>([]);
   const [selected, setSelected] = useState("");
   const [name, setName] = useState("Основной API");
+	const [provider, setProvider] = useState<"generic_api" | "bitrix24">("generic_api");
+	const [portalDomain, setPortalDomain] = useState("");
+	const [bitrixHealth, setBitrixHealth] = useState<BitrixConnectionHealth | null>(null);
+	const [oauthFeedback, setOAuthFeedback] = useState<"idle" | "waiting" | "success" | "failed">("idle");
+	const [accessCheck, setAccessCheck] = useState<"idle" | "running" | "success" | "partial" | "failed">("idle");
+	const oauthAttemptRef = useRef(0);
+	const oauthCompletionRef = useRef("");
+	const [externalUsers, setExternalUsers] = useState<BitrixExternalUser[]>([]);
+	const [mappingDrafts, setMappingDrafts] = useState<Record<string, BitrixMappingDraft>>({});
+	const [mappingPreview, setMappingPreview] = useState<BitrixMappingPreview | null>(null);
+	const [mappingRequestKey, setMappingRequestKey] = useState("");
+	const [companyMembers, setCompanyMembers] = useState<CompanyMemberListItemResponse[]>([]);
+	const [companyMembersLoading, setCompanyMembersLoading] = useState(false);
+	const [companyMembersError, setCompanyMembersError] = useState("");
+	const [backfillFrom, setBackfillFrom] = useState("");
+	const [backfillTo, setBackfillTo] = useState("");
+	const [backfillPreview, setBackfillPreview] = useState<BitrixBackfillPreview | null>(null);
+	const [backfill, setBackfill] = useState<BitrixBackfill | null>(null);
+	const [backfillError, setBackfillError] = useState("");
 	const [allowFolderOverride, setAllowFolderOverride] = useState(false);
   const [hooks, setHooks] = useState<IntegrationWebhook[]>([]);
   const [deliveries, setDeliveries] = useState<IntegrationWebhookDelivery[]>(
@@ -404,7 +548,51 @@ function ConnectionManager({
   const [detailView, setDetailView] = useState<"overview" | "imports" | "audit">("overview");
   const [importsPage, setImportsPage] = useState(0);
   const [auditPage, setAuditPage] = useState(0);
-  const connection = items.find((item) => item.connection_uuid === selected);
+	const connection = items.find((item) => item.connection_uuid === selected);
+	const validatedOAuth = Boolean(bitrixHealth?.oauth_configured && portalDomainForInput(bitrixHealth.portal_domain));
+	useEffect(() => {
+		if (!connection || connection.provider !== "bitrix24") {
+			setBackfillFrom("");
+			setBackfillTo("");
+			return;
+		}
+		const savedRange = readBitrixBackfillRange(connection.connection_uuid);
+		setBackfillFrom(savedRange.from);
+		setBackfillTo(savedRange.to);
+		setBackfillPreview(null);
+		setBackfillError("");
+	}, [connection?.connection_uuid, connection?.provider]);
+	function changeBackfillRange(range: BitrixBackfillRange) {
+		setBackfillFrom(range.from);
+		setBackfillTo(range.to);
+		setBackfillPreview(null);
+		setBackfillError("");
+		if (connection?.provider === "bitrix24") writeBitrixBackfillRange(connection.connection_uuid, range);
+	}
+	useEffect(() => {
+		if (!connection || connection.provider !== "bitrix24") { setBitrixHealth(null); setOAuthFeedback("idle"); setAccessCheck("idle"); setExternalUsers([]); setMappingDrafts({}); setMappingPreview(null); setMappingRequestKey(""); setBackfillPreview(null); setBackfill(null); return; }
+		let alive = true;
+		Promise.allSettled([api.getBitrixHealth(connection.connection_uuid), api.listBitrixBackfills(connection.connection_uuid)]).then(([healthResult, backfillsResult]) => {
+			if (!alive) return;
+			if (healthResult.status === "fulfilled") {
+				setBitrixHealth(healthResult.value);
+				const validPortalDomain = portalDomainForInput(healthResult.value.portal_domain, connection.settings.portal_domain_display);
+				setOAuthFeedback((current) => healthResult.value.oauth_configured && validPortalDomain ? "success" : healthResult.value.oauth_configured || healthResult.value.reconnect_required ? "failed" : current === "waiting" ? current : "idle");
+				setPortalDomain(validPortalDomain);
+			} else setBitrixHealth(null);
+			setBackfill(backfillsResult.status === "fulfilled" ? backfillsResult.value.backfills[0] ?? null : null);
+		});
+		return () => { alive = false; };
+	}, [connection?.connection_uuid, connection?.lock_version]);
+	useEffect(() => {
+		if (!connection || !backfill || !["pending", "running"].includes(backfill.status)) return;
+		let alive = true;
+		const refresh = () => api.getBitrixBackfill(connection.connection_uuid, backfill.backfill_uuid).then((item) => { if (alive) setBackfill(item); }).catch(() => undefined);
+		const timer = window.setInterval(refresh, 5000);
+		return () => { alive = false; window.clearInterval(timer); };
+	}, [backfill?.backfill_uuid, backfill?.status, connection?.connection_uuid]);
+	useEffect(()=>{function receiveOAuth(event:MessageEvent){if(event.origin!==window.location.origin||event.data?.type!=="verbatrace:bitrix-oauth-complete"||event.data?.connection_uuid!==connection?.connection_uuid)return;void completeBitrixOAuth(event.data.connection_uuid)}window.addEventListener("message",receiveOAuth);return()=>window.removeEventListener("message",receiveOAuth)},[application.application_uuid,connection?.connection_uuid,setMessage]);
+	useEffect(() => () => { oauthAttemptRef.current += 1; }, []);
   useEffect(() => {
     let alive = true;
     api
@@ -428,6 +616,38 @@ function ConnectionManager({
       alive = false;
     };
   }, [application.application_uuid, setMessage]);
+	useEffect(() => {
+		let alive = true;
+		if (application.owner_type !== "company") {
+			setCompanyMembers([]);
+			setCompanyMembersLoading(false);
+			setCompanyMembersError("");
+			return () => { alive = false; };
+		}
+		setCompanyMembersLoading(true);
+		setCompanyMembersError("");
+		async function loadCompanyMembers() {
+			const loaded: CompanyMemberListItemResponse[] = [];
+			let offset = 0;
+			for (;;) {
+				const page = await api.listCompanyMembers(application.owner_uuid, { status: "active", limit: 100, offset });
+				loaded.push(...page.members);
+				if (loaded.length >= page.total || page.members.length === 0) break;
+				offset += page.members.length;
+			}
+			if (!alive) return;
+			setCompanyMembers(loaded);
+			setCompanyMembersLoading(false);
+			setCompanyMembersError("");
+		}
+		void loadCompanyMembers().catch(() => {
+			if (!alive) return;
+			setCompanyMembers([]);
+			setCompanyMembersLoading(false);
+			setCompanyMembersError("Не удалось загрузить участников компании. Обновите страницу и повторите попытку.");
+		});
+		return () => { alive = false; };
+	}, [application.owner_type, application.owner_uuid]);
   useEffect(() => {
     let alive = true;
     if (!selected) {
@@ -438,6 +658,10 @@ function ConnectionManager({
       setAccounts([]);
       return;
     }
+	if(connection?.provider==="bitrix24"){
+		setHooks([]);setDeliveries([]);setAccounts([]);
+		Promise.allSettled([api.listIntegrationIngestItems(selected,{limit:10,offset:0}),api.listIntegrationAuditEvents(selected,{limit:10,offset:0})]).then(([ingest,events])=>{if(!alive)return;setImports(ingest.status==="fulfilled"?(ingest.value.ingest_items??[]):[]);setImportsTotal(ingest.status==="fulfilled"?ingest.value.total:0);setAudit(events.status==="fulfilled"?(events.value.audit_events??[]):[]);setAuditTotal(events.status==="fulfilled"?events.value.total:0);if(ingest.status==="rejected"||events.status==="rejected")setMessage("История подключения временно недоступна.")});return()=>{alive=false};
+	}
     Promise.allSettled([
       api.listIntegrationWebhooks(selected),
       api.listIntegrationWebhookDeliveries(selected),
@@ -462,7 +686,7 @@ function ConnectionManager({
     return () => {
       alive = false;
     };
-  }, [selected, setMessage]);
+  }, [connection?.provider, selected, setMessage]);
   useEffect(() => {
     if (!selected) return;
     let alive = true;
@@ -525,21 +749,167 @@ function ConnectionManager({
         application.application_uuid,
         {
           name: name.trim(),
-          provider: "generic_api",
+          provider,
           company_uuid:
             application.owner_type === "company"
               ? application.owner_uuid
               : undefined,
           disable_policy: "pause",
 					allow_folder_override: allowFolderOverride,
-          settings: { schema_version: 1 },
+          settings: { schema_version: 1, provider_contract_version: provider === "bitrix24" ? 1 : undefined },
         },
       );
       setItems((current) => [item, ...current]);
       setSelected(item.connection_uuid);
-      setMessage("Подключение создано.");
+      setMessage(provider === "bitrix24" ? "Черновик Bitrix24 создан. Теперь авторизуйте портал." : "Подключение создано.");
     });
   }
+	async function startBitrixOAuth() {
+		if (!connection || connection.provider !== "bitrix24" || !portalDomain.trim()) return;
+		await run(async () => {
+			const result = await api.startBitrixOAuth(connection.connection_uuid, portalDomain.trim(), connection.lock_version);
+			oauthCompletionRef.current = "";
+			setOAuthFeedback("waiting");
+			const popup = window.open(result.authorization_url, "verbatrace-bitrix-oauth", "popup,width=720,height=760");
+			if (!popup) window.location.assign(result.authorization_url);
+			setItems((current) => current.map((item) => item.connection_uuid === connection.connection_uuid ? { ...item, status: "authorizing", lock_version: item.lock_version + 1 } : item));
+			setMessage("Завершите авторизацию в окне Bitrix24. Статус обновится автоматически.");
+			const attempt = ++oauthAttemptRef.current;
+			void watchBitrixOAuth(connection.connection_uuid, portalDomain.trim(), attempt);
+		});
+	}
+	async function watchBitrixOAuth(connectionId: string, expectedPortalDomain: string, attempt: number) {
+		for (let index = 0; index < 90 && oauthAttemptRef.current === attempt; index += 1) {
+			try {
+				const health = await api.getBitrixHealth(connectionId);
+				if (health.oauth_configured && health.status !== "authorizing" && portalDomainForInput(health.portal_domain).toLowerCase() === expectedPortalDomain.toLowerCase()) {
+					setBitrixHealth(health);
+					setOAuthFeedback("success");
+					await completeBitrixOAuth(connectionId);
+					return;
+				}
+			} catch {
+				// The next poll may succeed while the popup completes the OAuth callback.
+			}
+			await new Promise((resolve) => window.setTimeout(resolve, 1000));
+		}
+		if (oauthAttemptRef.current === attempt) {
+			setOAuthFeedback("failed");
+			setMessage("Авторизация не завершена. Попробуйте ещё раз и проверьте, что окно туннеля остаётся открытым.");
+		}
+	}
+	async function completeBitrixOAuth(connectionId: string) {
+		if (oauthCompletionRef.current === connectionId) return;
+		oauthCompletionRef.current = connectionId;
+		setItems((current) => current.map((item) => item.connection_uuid === connectionId ? { ...item, status: "testing" } : item));
+		setOAuthFeedback("success");
+		setAccessCheck("running");
+		setMessage("Авторизация завершена. Проверяю доступ к звонкам, пользователям и задачам…");
+		try {
+			const health = await api.testBitrixConnection(connectionId);
+			setBitrixHealth(health);
+			setAccessCheck(health.calls_readable && health.users_readable && health.tasks_writable ? health.connector_verified ? "success" : "partial" : "partial");
+			if (health.users_readable) {
+				const value = await api.listBitrixExternalUsers(connectionId);
+				replaceExternalUsers(value.users);
+			}
+			const refreshed = await api.listIntegrationConnections(application.application_uuid);
+			setItems(refreshed.connections);
+			setSelected(connectionId);
+			setMessage("Проверка Bitrix24 завершена. Доступные возможности отмечены ниже.");
+		} catch (cause) {
+			oauthCompletionRef.current = "";
+			setAccessCheck("failed");
+			setMessage(cause instanceof Error ? cause.message : "Авторизация завершена, но проверить доступы Bitrix24 не удалось.");
+		}
+	}
+	async function testBitrix() {
+		if (!connection) return;
+		setAccessCheck("running");
+		await run(async () => {
+			try {
+				const health = await api.testBitrixConnection(connection.connection_uuid); setBitrixHealth(health);
+				setAccessCheck(health.calls_readable && health.users_readable && health.tasks_writable ? health.connector_verified ? "success" : "partial" : "partial");
+				if (health.users_readable) { const users = await api.listBitrixExternalUsers(connection.connection_uuid); replaceExternalUsers(users.users); }
+				const refreshed=await api.listIntegrationConnections(application.application_uuid);setItems(refreshed.connections);setSelected(connection.connection_uuid);
+				setMessage(health.connector_verified ? "Bitrix24 подключён: звонки, пользователи и задачи доступны." : "Подключение проверено частично. Недоступные возможности отмечены ниже.");
+			} catch (cause) {
+				setAccessCheck("failed");
+				throw cause;
+			}
+		});
+	}
+	async function changeBitrixLifecycle(mode:"pause"|"resume"){
+		if(!connection||connection.provider!=="bitrix24")return;
+		await run(async()=>{const health=mode==="pause"?await api.pauseBitrixConnection(connection.connection_uuid,connection.lock_version):await api.resumeBitrixConnection(connection.connection_uuid,connection.lock_version);setBitrixHealth(health);const refreshed=await api.listIntegrationConnections(application.application_uuid);setItems(refreshed.connections);setSelected(connection.connection_uuid);setMessage(mode==="pause"?"Импорт и отправка задач приостановлены.":health.status==="active"?"Подключение возобновлено и проверено.":"Подключение возобновлено, но требует внимания.")});
+	}
+	function replaceExternalUsers(users: BitrixExternalUser[]) {
+		setExternalUsers(users);
+		setMappingDrafts(Object.fromEntries(users.map((user) => [user.external_user_id, mappingDraftForUser(user)])));
+		setMappingPreview(null);
+		setMappingRequestKey("");
+	}
+	async function loadExternalUsers() { if (!connection) return; await run(async () => { const result = await api.listBitrixExternalUsers(connection.connection_uuid); replaceExternalUsers(result.users); }); }
+	async function previewBackfill() {
+		if (!connection || !backfillFrom || !backfillTo) return;
+		const from = new Date(backfillFrom);
+		const to = new Date(backfillTo);
+		if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) { setBackfillError("Начало периода должно быть раньше окончания."); return; }
+		setBackfillError("");
+		await run(async () => {
+			try {
+				setBackfillPreview(await api.previewBitrixBackfill(connection.connection_uuid, from.toISOString(), to.toISOString()));
+				setBackfill(null);
+			} catch (cause) {
+				setBackfillError(cause instanceof Error ? cause.message : "Не удалось проверить период импорта.");
+				throw cause;
+			}
+		});
+	}
+	async function createBackfill() {
+		if (!connection || !backfillPreview) return;
+		setBackfillError("");
+		await run(async () => {
+			try {
+				const item = await api.createBitrixBackfill(connection.connection_uuid, backfillPreview.range_from, backfillPreview.range_to);
+				setBackfill(item);
+				setMessage("Импорт истории поставлен в очередь. Эту страницу можно закрыть.");
+			} catch (cause) {
+				setBackfillError(cause instanceof Error ? cause.message : "Не удалось запустить импорт истории.");
+				throw cause;
+			}
+		});
+	}
+	function mappingChanges(): BitrixMappingChange[] {
+		return externalUsers.flatMap((user) => {
+			const draft = mappingDrafts[user.external_user_id] ?? mappingDraftForUser(user);
+			const changed = draft.internalUserId !== (user.internal_user_uuid ?? "") || draft.departmentId !== (user.department_uuid ?? "") || draft.status !== normalizedMappingStatus(user.mapping_status);
+			if (!changed) return [];
+			return [{ external_user_id: user.external_user_id, internal_user_uuid: draft.internalUserId || null, department_uuid: draft.departmentId || null, status: draft.status, expected_lock_version: user.lock_version }];
+		});
+	}
+	async function previewMappings() {
+		if (!connection) return;
+		const changes = mappingChanges();
+		if (!changes.length) { setMessage("Нет изменений для проверки."); return; }
+		await run(async () => {
+			const preview = await api.previewBitrixExternalUserMappings(connection.connection_uuid, changes);
+			setMappingPreview(preview);
+			setMappingRequestKey(crypto.randomUUID());
+			setMessage(`Проверено изменений: ${preview.changes_count}. Просмотрите итог и подтвердите применение.`);
+		});
+	}
+	async function applyMappings() {
+		if (!connection || !mappingPreview || !mappingRequestKey) return;
+		const changes = mappingChanges();
+		await run(async () => {
+			const result = await api.bulkUpdateBitrixExternalUserMappings(connection.connection_uuid, mappingPreview.preview_hash, changes, mappingRequestKey);
+			const byExternalID = new Map(result.mappings.map((item) => [item.external_user_id, item]));
+			const updatedUsers = externalUsers.map((user) => byExternalID.has(user.external_user_id) ? { ...user, ...byExternalID.get(user.external_user_id)! } : user);
+			replaceExternalUsers(updatedUsers);
+			setMessage(`Сопоставления применены одной операцией: ${result.changes_count}.`);
+		});
+	}
   async function status(next: "active" | "disabled" | "revoked") {
     if (!connection) return;
     await run(async () => {
@@ -784,7 +1154,14 @@ function ConnectionManager({
                 maxLength={120}
               />
             </label>
-            <label className="integration-checkbox">
+            <label>
+					Тип подключения
+					<SelectControl value={provider} onChange={(event) => { setProvider(event.target.value as typeof provider); setName(event.target.value === "bitrix24" ? "Bitrix24" : "Основной API"); }}>
+						<option value="generic_api">Универсальный API</option>
+					<option value="bitrix24" disabled={application.owner_type!=="company"}>Bitrix24: звонки и задачи{application.owner_type!=="company"?" · только для компании":""}</option>
+					</SelectControl>
+				</label>
+				{provider === "generic_api" && <label className="integration-checkbox">
               <input
                 type="checkbox"
                 checked={allowFolderOverride}
@@ -794,15 +1171,15 @@ function ConnectionManager({
                 Разрешить запросам выбирать папку
                 <small>Только внутри области этого подключения. Без параметра звонок попадёт в «Внешнюю».</small>
               </span>
-            </label>
-            <p className="integration-help">Инструкции выбираются для каждого запроса. По умолчанию применяются инструкции папки назначения; передайте <code>instruction_mode: "scope_and_folder"</code>, чтобы добавить инструкции профиля, компании или отдела.</p>
+				</label>}
+				<p className="integration-help">{provider === "bitrix24" ? "После создания черновика авторизуйте портал. Пароль и данные доступа в интерфейсе не показываются." : <>Инструкции выбираются для каждого запроса. По умолчанию применяются инструкции папки назначения; передайте <code>instruction_mode: "scope_and_folder"</code>, чтобы добавить инструкции профиля, компании или отдела.</>}</p>
             <button
               className="ghost-button integration-create-connection"
               disabled={busy || !name.trim()}
               onClick={() => void create()}
             >
               <Link2 size={17} />
-              Создать API
+					{provider === "bitrix24" ? "Создать черновик Bitrix24" : "Создать API"}
             </button>
           </div>
           <div className="integration-connection-list">
@@ -829,7 +1206,7 @@ function ConnectionManager({
             <div className="integration-management-header">
               <h2 className="integration-title"><span className="integration-icon is-management"><Settings2 size={20}/></span>Управление: {connection.name}</h2>
               <div className="integration-actions">
-              {connection.status === "active" ? (
+				{connection.provider === "generic_api" && (connection.status === "active" ? (
                 <button
                   className="ghost-button"
                   disabled={busy}
@@ -837,7 +1214,7 @@ function ConnectionManager({
                 >
                   Остановить
                 </button>
-              ) : (
+				) : (
                 <button
                   className="primary-button"
                   disabled={busy}
@@ -845,7 +1222,8 @@ function ConnectionManager({
                 >
                   Включить
                 </button>
-              )}
+				))}
+				{connection.provider === "bitrix24" && (connection.status === "paused" ? <button className="primary-button" disabled={busy} onClick={()=>void changeBitrixLifecycle("resume")}>Возобновить</button> : (connection.status === "active" || connection.status === "degraded" || connection.status === "reconnect_required") ? <button className="ghost-button" disabled={busy} onClick={()=>void changeBitrixLifecycle("pause")}>Приостановить</button> : null)}
               <button
                 className="ghost-button danger"
                 disabled={busy}
@@ -855,7 +1233,24 @@ function ConnectionManager({
               </button>
               </div>
             </div>
-            <div className="integration-webhook-panel">
+			{connection.provider === "bitrix24" ? <div className="bitrix-connection-panel">
+				<div className="integration-webhook-heading"><span className="integration-icon is-management"><PlugZap size={19}/></span><span><h2>Подключение портала</h2><small>Данные авторизации хранятся зашифрованно и никогда не показываются в браузере.</small></span></div>
+				<div className="bitrix-connect-row"><label>Домен портала<input value={portalDomain} onChange={(event) => setPortalDomain(event.target.value)} placeholder="Например, company.bitrix24.ru" /></label><button className="primary-button" disabled={busy || !portalDomain.trim() || connection.status === "revoked"} onClick={() => void startBitrixOAuth()}>{bitrixHealth?.reconnect_required ? "Переподключить" : "Авторизовать Bitrix24"}</button><button className="ghost-button" disabled={busy || accessCheck === "running" || !validatedOAuth} onClick={() => void testBitrix()}>{accessCheck === "running" ? "Проверяю…" : "Проверить доступ"}</button></div>
+				{(validatedOAuth || oauthFeedback !== "idle") && <div className={`bitrix-oauth-state is-${validatedOAuth ? "success" : oauthFeedback}`} role="status" aria-live="polite"><span aria-hidden="true">{validatedOAuth ? "✓" : oauthFeedback === "waiting" ? "…" : "!"}</span><span><strong>{validatedOAuth ? "Портал успешно авторизован" : oauthFeedback === "waiting" ? "Ожидается завершение авторизации" : "Нужно авторизоваться заново"}</strong><small>{validatedOAuth ? "Данные доступа получены и привязаны к корректному домену портала." : oauthFeedback === "waiting" ? "Завершите авторизацию в окне Bitrix24 — состояние обновится автоматически." : "Сохранённые данные авторизации не удалось подтвердить для корректного портала. Введите домен и авторизуйтесь заново."}</small></span></div>}
+				<div className={`bitrix-access-check is-${accessCheck}`} role="status" aria-live="polite"><span><strong>{accessCheck === "running" ? "Проверяю доступы Bitrix24…" : accessCheck === "success" ? "Все проверки пройдены" : accessCheck === "partial" ? "Проверка завершена частично" : accessCheck === "failed" ? "Проверка не выполнена" : "Что делает проверка доступа"}</strong><small>{accessCheck === "running" ? "Читаю список методов, статистику звонков и пользователей, затем проверяю право создания задач." : accessCheck === "success" ? "История звонков, пользователи, задачи и реальный звонок доступны." : accessCheck === "partial" ? "Посмотрите карточки ниже: они показывают, какие возможности доступны, а какие требуют настройки или реального звонка." : accessCheck === "failed" ? "Bitrix24 не ответил или вернул ошибку. Повторите проверку после устранения причины." : "Она ничего не создаёт и не изменяет: только читает методы, статистику звонков и пользователей и проверяет наличие права на создание задач."}</small></span></div>
+				{bitrixHealth && <div className="bitrix-capability-grid" aria-label="Доступные возможности Bitrix24"><CapabilityState label="Статистика звонков" ok={bitrixHealth.calls_readable}/><CapabilityState label="Пользователи" ok={bitrixHealth.users_readable}/><CapabilityState label="Создание задач" ok={bitrixHealth.tasks_writable}/><CapabilityState label="Проверено на портале" ok={bitrixHealth.connector_verified}/></div>}
+				<section className="bitrix-backfill-panel" aria-labelledby="bitrix-backfill-title">
+					<div><strong id="bitrix-backfill-title">Импорт истории звонков</strong><small>Сначала проверьте период и ожидаемое количество, затем подтвердите запуск. Повторный запуск не создаёт дубликаты звонков.</small></div>
+					<div className="bitrix-backfill-fields"><label>С даты и времени<input type="datetime-local" value={backfillFrom} onChange={(event) => changeBackfillRange({ from: event.target.value, to: backfillTo })} /></label><label>До даты и времени<input type="datetime-local" value={backfillTo} onChange={(event) => changeBackfillRange({ from: backfillFrom, to: event.target.value })} /></label><button className="ghost-button" type="button" disabled={busy || !bitrixHealth?.calls_readable || !backfillFrom || !backfillTo} onClick={() => void previewBackfill()}>Проверить период</button></div>
+					{backfillError && <p className="integration-help" role="alert">{backfillError}</p>}
+					{backfillPreview && <div className="bitrix-backfill-preview"><span><strong>{backfillPreview.estimated_calls.toLocaleString("ru-RU")}</strong><small>звонков найдено в Bitrix24</small></span><span><small>{new Date(backfillPreview.range_from).toLocaleString("ru-RU")} — {new Date(backfillPreview.range_to).toLocaleString("ru-RU")}</small></span><button className="primary-button" type="button" disabled={busy} onClick={() => void createBackfill()}>Запустить импорт</button></div>}
+					{backfill && <div className={`bitrix-backfill-progress is-${backfill.status}`} role="status"><span><strong>{statusLabels[backfill.status] ?? backfill.status}</strong><small>Операция продолжится в фоне</small></span><dl><div><dt>Найдено</dt><dd>{backfill.discovered_calls}</dd></div><div><dt>Импортировано</dt><dd>{backfill.imported_calls}</dd></div><div><dt>Ожидает записи</dt><dd>{backfill.pending_calls}</dd></div><div><dt>Пропущено</dt><dd>{backfill.skipped_calls}</dd></div><div><dt>Ошибки</dt><dd>{backfill.error_calls}</dd></div></dl></div>}
+				</section>
+				<div className="bitrix-mapping-heading"><div><strong>Сопоставление сотрудников</strong><small>Для руководителя компании оставьте уровень компании без отдела. Для остальных сотрудников сначала выберите их отдел.</small>{companyMembersError && <small role="alert">{companyMembersError}</small>}</div><div className="integration-actions"><button className="ghost-button small" disabled={busy || !bitrixHealth?.users_readable} onClick={() => void loadExternalUsers()}>Обновить список</button><button className="primary-button small" disabled={busy || mappingChanges().length === 0} onClick={() => void previewMappings()}>Проверить изменения · {mappingChanges().length}</button></div></div>
+				<div className="bitrix-mapping-list">{externalUsers.map((user) => <BitrixMappingRow key={user.external_user_id} user={user} draft={mappingDrafts[user.external_user_id] ?? mappingDraftForUser(user)} departments={departments} members={companyMembers} membersLoading={companyMembersLoading} busy={busy} onChange={(draft) => { setMappingDrafts((current) => ({ ...current, [user.external_user_id]: draft })); setMappingPreview(null); setMappingRequestKey(""); }}/>)}</div>
+				{mappingPreview && <section className="bitrix-mapping-preview" aria-labelledby="bitrix-mapping-preview-title"><div><strong id="bitrix-mapping-preview-title">Итог перед применением</strong><small>После проверки всех строк изменения сохранятся атомарно. Если кто-то изменил сопоставления параллельно, команда будет отклонена целиком.</small></div><div className="bitrix-mapping-preview-list">{mappingPreview.items.filter((item) => item.changed).map((item) => <article key={item.external_user_id}><span><strong>{item.display_name || `Bitrix24 user #${item.external_user_id}`}</strong><small>{item.before_status} → {item.after_status}</small></span><small>{mappingTargetLabel(item.after_internal_user_uuid, item.after_department_uuid, companyMembers, departments)}</small></article>)}</div><button className="primary-button" type="button" disabled={busy || mappingPreview.changes_count === 0} onClick={() => void applyMappings()}>Применить {mappingPreview.changes_count} изменений</button></section>}
+				{externalUsers.length === 0 && <p className="integration-help">После успешной проверки загрузите пользователей и подтвердите сопоставления.</p>}
+			</div> : <div className="integration-webhook-panel">
               <div className="integration-webhook-heading">
                 <span className="integration-icon is-management"><Webhook size={19}/></span>
                 <span><h2>Webhook</h2><small>Получайте уведомления о событиях звонков на своём сервере</small></span>
@@ -897,11 +1292,12 @@ function ConnectionManager({
                   </button>
                 </div>
               </div>
-            </div>
+			</div>}
           </section>
         )}
       </div>
-      {connection && (
+		{connection && connection.provider === "bitrix24" ? <section className="glass integration-list bitrix-history-panel"><div className="integration-section-heading"><div><span className="eyebrow">ИСТОРИЯ ПОДКЛЮЧЕНИЯ</span><h2>Импорты и аудит</h2><p>Последние операции доступны здесь, полная история открывается без перехода в отдельный модуль.</p></div><div className="integration-actions"><button className="ghost-button" type="button" onClick={()=>{setDetailView("imports");setImportsPage(0)}}>Все импорты ({importsTotal})</button><button className="ghost-button" type="button" onClick={()=>{setDetailView("audit");setAuditPage(0)}}>Полный аудит ({auditTotal})</button></div></div>{visibleImports.map((item)=><article key={item.ingest_item_uuid}><div><strong>{item.title}</strong><small>{new Date(item.created_at).toLocaleString("ru-RU")} · <code>{item.external_call_id}</code></small></div><span className={`integration-state is-${item.status}`}>{statusLabels[item.status]??item.status}</span></article>)}{visibleImports.length===0?<p>Импортированных звонков пока нет.</p>:null}</section>:null}
+		{connection && connection.provider === "generic_api" && (
         <>
           <section className="glass integration-list">
             <h2 className="integration-title"><span className="integration-icon is-account"><UserCog size={20}/></span>Сервисные аккаунты</h2>
@@ -925,7 +1321,7 @@ function ConnectionManager({
                 >
                   Включить приложение
                 </button>
-              )}
+		)}
               <button
                 className="ghost-button danger"
                 disabled={busy}
@@ -1014,6 +1410,7 @@ function ConnectionManager({
                         )}
                         <dl className="integration-key-metadata">
                           <div><dt>Начало ключа</dt><dd><code>{key.prefix}</code></dd></div>
+                          <div><dt>Лимит</dt><dd>{key.permanent_credit_limit != null ? `${key.permanent_credit_limit.toLocaleString("ru-RU")} кредитов на весь срок` : key.temporary_credit_limit != null ? `${key.temporary_credit_limit.toLocaleString("ru-RU")} кредитов, ${new Date(key.temporary_limit_starts_at!).toLocaleString("ru-RU")} — ${new Date(key.temporary_limit_ends_at!).toLocaleString("ru-RU")}` : "Отдельный лимит не задан"}</dd></div>
                           <div><dt>Последнее использование</dt><dd>{key.last_used_at ? new Date(key.last_used_at).toLocaleString("ru-RU") : "Ещё не использовался"}</dd></div>
                           <div><dt>Создан</dt><dd>{new Date(key.created_at).toLocaleString("ru-RU")}</dd></div>
                         </dl>
@@ -1171,4 +1568,21 @@ function ConnectionManager({
       {copyMessage && <TransientAlert message={copyMessage} tone="success" />}
     </>
   );
+}
+
+function normalizedMappingStatus(status: string): BitrixMappingDraft["status"] {
+	return status === "mapped" || status === "ignored" ? status : "unmapped";
+}
+
+function mappingDraftForUser(user: BitrixExternalUser): BitrixMappingDraft {
+	return { internalUserId: user.internal_user_uuid ?? "", departmentId: user.department_uuid ?? "", status: normalizedMappingStatus(user.mapping_status) };
+}
+
+function mappingTargetLabel(userID: string | null | undefined, departmentID: string | null | undefined, members: CompanyMemberListItemResponse[], departments: DepartmentResponse[]) {
+	if (!userID) return "Без сопоставления";
+	const member = members.find((item) => item.user_uuid === userID);
+	const department = departments.find((item) => item.id === departmentID);
+	const name = member ? [member.full_surname, member.full_name].filter(Boolean).join(" ") || member.username || userID : userID;
+	if (!departmentID) return `${name} · руководитель компании, без отдела`;
+	return `${name} · ${department?.name ?? departmentID}`;
 }

@@ -3,10 +3,12 @@ import {
   isValidElement,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState
 } from "react";
+import { createPortal } from "react-dom";
 import type {
   ChangeEvent,
   CSSProperties,
@@ -70,7 +72,11 @@ export function SelectControl({
   const controlId = id ?? generatedId;
   const [open, setOpen] = useState(false);
   const [internalValue, setInternalValue] = useState(() => String(defaultValue ?? ""));
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 0 });
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
   const rootRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLSpanElement>(null);
   const options = useMemo(() => collectSelectOptions(children), [children]);
   const currentValue = value !== undefined ? String(value) : internalValue || options[0]?.value || "";
   const selectedOption = options.find((option) => option.value === currentValue) ?? options[0];
@@ -80,13 +86,47 @@ export function SelectControl({
     if (!open) return;
 
     function closeOnOutsideClick(event: PointerEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) {
+      if (!rootRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
     }
 
     document.addEventListener("pointerdown", closeOnOutsideClick);
     return () => document.removeEventListener("pointerdown", closeOnOutsideClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      setPortalRoot(null);
+      return;
+    }
+    const host = document.createElement("span");
+    host.className = "app-shell select-menu-portal-root";
+    host.style.cssText = "all:unset;display:contents;pointer-events:none;";
+    document.body.appendChild(host);
+    setPortalRoot(host);
+    return () => {
+      host.remove();
+      setPortalRoot(null);
+    };
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+
+    function updateMenuPosition() {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPosition({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    }
+
+    updateMenuPosition();
+    window.addEventListener("resize", updateMenuPosition);
+    window.addEventListener("scroll", updateMenuPosition, true);
+    return () => {
+      window.removeEventListener("resize", updateMenuPosition);
+      window.removeEventListener("scroll", updateMenuPosition, true);
+    };
   }, [open]);
 
   function selectValue(nextValue: string) {
@@ -112,6 +152,7 @@ export function SelectControl({
         className="select-trigger"
         type="button"
         id={controlId}
+        ref={triggerRef}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -138,8 +179,21 @@ export function SelectControl({
         </span>
       </button>
       {name && <input type="hidden" name={name} value={currentValue} />}
-      {open && (
-        <span className="select-menu" role="listbox" aria-labelledby={controlId}>
+      {open && portalRoot && createPortal(
+        <span
+          className="select-menu select-menu-portal"
+          role="listbox"
+          aria-labelledby={controlId}
+          ref={menuRef}
+          style={{
+            left: menuPosition.left,
+            top: menuPosition.top,
+            width: menuPosition.width,
+            pointerEvents: "auto",
+            position: "fixed",
+            zIndex: 10001
+          }}
+        >
           {options.map((option) => (
             <button
               className={option.value === currentValue ? "active" : ""}
@@ -159,7 +213,8 @@ export function SelectControl({
               <span>{option.label}</span>
             </button>
           ))}
-        </span>
+        </span>,
+        portalRoot
       )}
     </span>
   );

@@ -16,12 +16,14 @@ import type {
   AppPage,
   CompanyResponse,
   SessionState,
+  Subscription,
   UserResponse
 } from "../../types";
 
 import { formatDate } from "../../shared/lib/formatters";
 import { ProfileField, SelectControl } from "../../shared/ui/primitives";
 import { CompanyMiniCard } from "../companies/CompaniesPage";
+import { CreditUsagePanel } from "../tariffs/CreditUsagePanel";
 import { AvatarEditor } from "./AvatarEditor";
 import { AnalysisPersonalizationCard } from "../analysis-context/AnalysisPersonalizationCard";
 
@@ -51,10 +53,12 @@ const timeZoneOptions = [
 export function ProfilePage({
   session,
   companies,
+  personalSubscription,
   onNavigate
 }: {
   session: SessionState;
   companies: CompanyResponse[];
+  personalSubscription: Subscription | null;
   onUserUpdated: (user: UserResponse) => void;
   onCompanyCreated: (company: CompanyResponse) => void | Promise<void>;
   onNavigate: (page: AppPage) => void;
@@ -77,21 +81,42 @@ export function ProfilePage({
         </div>
       </div>
 
+      <section className="profile-overview-card glass-panel">
+        <CreditUsagePanel
+          session={session}
+          companies={[]}
+          embeddedHeader={(
+            <div className="profile-identity-card">
+              <button
+                className="icon-button profile-identity-edit"
+                type="button"
+                aria-label="Изменить профиль"
+                title="Изменить профиль"
+                onClick={() => onNavigate("profileEdit")}
+              >
+                <Pencil size={18} />
+              </button>
+              <div className="avatar profile-identity-avatar">
+                {avatarUrl ? <img src={avatarUrl} alt="" /> : avatarInitial}
+              </div>
+              <div className="profile-identity-copy">
+                <h2>{[session.user.full_surname, session.user.full_name].filter(Boolean).join(" ") || username}</h2>
+                <div className="profile-identity-meta">
+                  <span>{username}</span>
+                  <span aria-hidden="true">·</span>
+                  <button type="button" onClick={() => onNavigate("settingsTariffs")}>
+                    {personalSubscription?.plan.name ?? "Выбрать тариф"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        />
+      </section>
+
       <div className="profile-settings-grid">
         <section className="profile-account-panel glass-panel">
-          <div className="profile-account-head">
-            <div className="avatar large">{avatarUrl ? <img src={avatarUrl} alt="" /> : avatarInitial}</div>
-            <div>
-              <h2>
-                {session.user.full_name} {session.user.full_surname}
-              </h2>
-              <p>{roleLabel(session.user.role)} • {session.user.headline || "профессиональное описание не указано"}</p>
-            </div>
-            <button className="primary-button" type="button" onClick={() => onNavigate("profileEdit")}>
-              <Pencil size={17} />
-              Изменить профиль
-            </button>
-          </div>
+          <h2>Данные профиля</h2>
 
           <div className="profile-data-list">
             <ProfileDataRow

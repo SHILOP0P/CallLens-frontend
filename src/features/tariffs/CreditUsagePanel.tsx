@@ -1,5 +1,5 @@
 import { Activity, ArrowDownLeft, ArrowUpRight, FlaskConical, RefreshCw, TrendingDown, WalletCards } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { api, ApiError } from "../../api";
 import type { CompanyResponse, CreditActivityDay, CreditDashboardResponse, CreditWalletEntry, SandboxWalletDashboard, SessionState } from "../../types";
 import { SelectControl } from "../../shared/ui/primitives";
@@ -7,7 +7,7 @@ import { SelectControl } from "../../shared/ui/primitives";
 type Period = "day" | "week" | "total";
 type CalendarCell = CreditActivityDay & { placeholder?: boolean };
 
-export function CreditUsagePanel({ session, companies, companyId }: { session: SessionState; companies: CompanyResponse[]; companyId?: string }) {
+export function CreditUsagePanel({ session, companies, companyId, embeddedHeader }: { session: SessionState; companies: CompanyResponse[]; companyId?: string; embeddedHeader?: ReactNode }) {
   const managed = companies.filter((company) => company.manager_user_uuid === session.user.id);
   const [scope, setScope] = useState(companyId ?? "personal");
   const [period, setPeriod] = useState<Period>("total");
@@ -101,7 +101,8 @@ export function CreditUsagePanel({ session, companies, companyId }: { session: S
 
   if (hiddenByManager) return null;
 
-  return <section className="credit-usage-panel glass" aria-labelledby="credit-usage-title">
+  return <section className={`credit-usage-panel${embeddedHeader ? " is-profile-overview" : " glass"}`} aria-labelledby="credit-usage-title">
+    {embeddedHeader}
     <div className="credit-usage-head">
       <div><span className="credit-usage-icon"><Activity size={20} /></span><h2 id="credit-usage-title">Использование кредитов</h2><p>Остаток месячного лимита и фактическая активность.</p></div>
       {!companyId && managed.length > 0 && <label>Аккаунт<SelectControl value={scope} onChange={(event) => setScope(event.target.value)}><option value="personal">Личный</option>{managed.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</SelectControl></label>}

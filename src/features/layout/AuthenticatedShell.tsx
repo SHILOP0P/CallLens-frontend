@@ -57,6 +57,7 @@ export function AuthenticatedShell({
   onNavigate,
   onOpenCall,
   onOpenCompany,
+	onOpenNotification,
   onOpenLanding,
   onToggleTheme,
   onLogout
@@ -75,6 +76,7 @@ export function AuthenticatedShell({
   onNavigate: (page: AppPage) => void;
   onOpenCall: (callId: string) => void;
   onOpenCompany: (companyId: string) => void;
+	onOpenNotification: (notification: NotificationResponse) => void;
   onOpenLanding: () => void;
   onToggleTheme: (event: ThemeToggleEvent) => void;
   onLogout: () => void;
@@ -360,22 +362,7 @@ export function AuthenticatedShell({
     setUnreadNotifications((current) => Math.max(0, current - (notification.read_at ? 0 : 1)));
     closeNotifications();
 
-    if (notification.entity_type === "call" && notification.entity_uuid) {
-      onOpenCall(notification.entity_uuid);
-      return;
-    }
-    if (notification.entity_type === "company" && notification.entity_uuid) {
-      onOpenCompany(notification.entity_uuid);
-      return;
-    }
-    if (notification.entity_type === "call_action" && notification.entity_uuid) {
-      window.history.pushState({}, "", `/app/actions/${encodeURIComponent(notification.entity_uuid)}`);
-      window.dispatchEvent(new PopStateEvent("popstate"));
-      return;
-    }
-    if (notification.type === "invitation") onNavigate("settingsInvitations");
-    if (notification.entity_type === "report") onNavigate("reports");
-    if (notification.entity_type === "instruction") onNavigate("settingsInstructions");
+	onOpenNotification(notification);
   }
 
   async function markAllNotificationsRead() {
@@ -766,7 +753,7 @@ export function AuthenticatedShell({
   );
 }
 
-function notificationActionLabel(notification:NotificationResponse,pendingInvitationIds:string[]){if(notification.entity_type==="call_action"){if(notification.type==="action_assigned")return"Открыть задачу";if(notification.type==="action_reminder"||notification.type==="action_grace_started"||notification.type==="action_overdue")return"Проверить срок";return"Посмотреть задачу"}if(notification.type==="invitation")return notification.entity_uuid&&pendingInvitationIds.includes(notification.entity_uuid)?"Ответить на приглашение":"Приглашение обработано";if(notification.entity_type==="report")return"Открыть отчёт";if(notification.entity_type==="call")return"Открыть звонок";return"Посмотреть"}
+function notificationActionLabel(notification:NotificationResponse,pendingInvitationIds:string[]){if(notification.entity_type==="support_access_request")return notification.type==="support_access_requested"?"Проверить доступ":"Посмотреть решение";if(notification.entity_type==="action_external_sync")return notification.type==="action_external_sync_requested"?"Согласовать отправку":"Открыть задачу";if(notification.entity_type==="call_action"){if(notification.type==="action_assigned")return"Открыть задачу";if(notification.type==="action_reminder"||notification.type==="action_grace_started"||notification.type==="action_overdue")return"Проверить срок";return"Посмотреть задачу"}if(notification.type==="invitation")return notification.entity_uuid&&pendingInvitationIds.includes(notification.entity_uuid)?"Ответить на приглашение":"Приглашение обработано";if(notification.entity_type==="report")return"Открыть отчёт";if(notification.entity_type==="call")return"Открыть звонок";return"Посмотреть"}
 function formatNotificationTime(value:string){const date=new Date(value);if(Number.isNaN(date.getTime()))return"";return new Intl.DateTimeFormat("ru-RU",{day:"2-digit",month:"short",hour:"2-digit",minute:"2-digit"}).format(date)}
 function isRecentNotification(value: string) {
   const timestamp = new Date(value).getTime();

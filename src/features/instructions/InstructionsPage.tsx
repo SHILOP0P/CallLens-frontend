@@ -1,9 +1,9 @@
 import {
   ArrowLeft,
+  ChevronRight,
   Download,
   FileText,
   PanelLeftClose,
-  PanelLeftOpen,
   Plus,
   Trash2,
   Upload
@@ -162,6 +162,18 @@ export function InstructionsPage({
           Назад
         </button>
       </div>
+      <button
+        className="icon-button calls-list-collapse instructions-panel-toggle"
+        type="button"
+        aria-label={instructionPanelEffectivelyCollapsed ? "Открыть панель инструкций" : "Свернуть панель инструкций"}
+        aria-controls="instructions-actions-panel"
+        aria-expanded={!instructionPanelEffectivelyCollapsed}
+        title={instructionPanelEffectivelyCollapsed ? "Открыть панель инструкций" : "Свернуть панель инструкций"}
+        onClick={toggleInstructionPanel}
+      >
+        <span className="instructions-panel-toggle-expanded" aria-hidden="true"><PanelLeftClose size={19} /></span>
+        <span className="instructions-panel-toggle-collapsed" aria-hidden="true"><ChevronRight size={21} /></span>
+      </button>
       <aside
         id="instructions-actions-panel"
         className="instructions-form glass instructions-list-header calls-sidebar"
@@ -169,15 +181,6 @@ export function InstructionsPage({
         aria-hidden={instructionPanelEffectivelyCollapsed ? true : undefined}
         inert={instructionPanelEffectivelyCollapsed}
       >
-        <button
-          className="icon-button calls-list-collapse"
-          type="button"
-          aria-label="Свернуть панель инструкций"
-          aria-expanded={!instructionPanelEffectivelyCollapsed}
-          onClick={toggleInstructionPanel}
-        >
-          <PanelLeftClose size={19} />
-        </button>
         <div className="app-page-heading settings-heading compact-heading">
           <span className="settings-heading-icon" aria-hidden="true">
             <FileText size={26} />
@@ -197,17 +200,6 @@ export function InstructionsPage({
         </div>
         <InstructionExample />
       </aside>
-      <button
-        className="calls-list-emblem"
-        type="button"
-        aria-label="Открыть панель инструкций"
-        aria-controls="instructions-actions-panel"
-        aria-expanded={!instructionPanelEffectivelyCollapsed}
-        title="Открыть панель инструкций"
-        onClick={toggleInstructionPanel}
-      >
-        <span aria-hidden="true"><PanelLeftOpen size={22} /></span>
-      </button>
       <div className="instructions-list glass">
         <h2>Активные инструкции</h2>
         {loading ? (

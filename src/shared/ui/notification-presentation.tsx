@@ -5,6 +5,8 @@ import {
   CircleAlert,
   FileCheck2,
   RefreshCw,
+	Send,
+	ShieldAlert,
   UserPlus,
   UserRoundCheck,
   XCircle
@@ -15,6 +17,10 @@ export type NotificationTone = "info" | "success" | "warning" | "danger" | "invi
 
 export function notificationPresentation(notification: NotificationResponse) {
   const type = notification.type;
+	if (type === "support_access_requested") return { tone: "warning" as const, label: "Запрос администратора", icon: ShieldAlert };
+	if (type === "support_access_decided") return { tone: "info" as const, label: "Доступ поддержки", icon: ShieldAlert };
+	if (type === "action_external_sync_requested") return { tone: "warning" as const, label: "Согласование Bitrix24", icon: Send };
+	if (type === "action_external_sync_decided") return { tone: "success" as const, label: "Отправка в Bitrix24", icon: Send };
   if (type === "invitation") return { tone: "invitation" as const, label: "Приглашение", icon: UserPlus };
   if (type === "action_completed" || type === "report_ready") return { tone: "success" as const, label: type === "report_ready" ? "Отчёт готов" : "Выполнено", icon: type === "report_ready" ? FileCheck2 : CheckCircle2 };
   if (type === "action_cancelled" || type === "processing_failed") return { tone: "danger" as const, label: type === "processing_failed" ? "Ошибка обработки" : "Отменено", icon: type === "processing_failed" ? CircleAlert : XCircle };

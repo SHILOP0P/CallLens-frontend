@@ -242,6 +242,16 @@ export interface CallResponse {
   }>;
   diarization_roles?: Array<{ name: string; description?: string }>;
   is_favorite?: boolean;
+  occurred_at?: string | null;
+  display_time?: string;
+  time_source?: "source" | "upload_fallback";
+  source_provider?: "generic_api" | "bitrix24" | null;
+  connection_uuid?: string | null;
+  external_call_id?: string | null;
+  imported_at?: string | null;
+  ingest_error_code?: string | null;
+  has_analysis?: boolean;
+  has_actions?: boolean;
   created_at: string;
 }
 
@@ -250,6 +260,7 @@ export interface CallsListResponse {
   total: number;
   limit: number;
   offset: number;
+  next_cursor?: string;
 }
 
 export interface CallFilterOptionsResponse {
@@ -260,6 +271,11 @@ export interface CallFilterOptionsResponse {
     full_name: string;
     full_surname: string;
     username: string;
+  }>;
+  connections: Array<{
+    id: string;
+    name: string;
+    provider: string;
   }>;
 }
 
@@ -721,6 +737,10 @@ export interface CreatedIntegrationKey {
   scopes: string[];
   expires_at: string | null;
   created_at: string;
+  permanent_credit_limit?: number | null;
+  temporary_credit_limit?: number | null;
+  temporary_limit_starts_at?: string | null;
+  temporary_limit_ends_at?: string | null;
   secret: string;
   secret_visible_once: true;
 }
@@ -735,6 +755,10 @@ export interface IntegrationAPIKey {
   last_used_at?: string | null;
   revoked_at?: string | null;
   created_at: string;
+  permanent_credit_limit?: number | null;
+  temporary_credit_limit?: number | null;
+  temporary_limit_starts_at?: string | null;
+  temporary_limit_ends_at?: string | null;
 }
 
 export interface IntegrationConnection {
@@ -745,7 +769,7 @@ export interface IntegrationConnection {
   folder_uuid: string | null;
   name: string;
   provider: "generic_api" | "bitrix24" | "amocrm" | "telephony";
-  status: "draft" | "active" | "degraded" | "disabled" | "revoked";
+	status: "draft" | "authorizing" | "testing" | "active" | "degraded" | "paused" | "disabled" | "reconnect_required" | "revoked";
 	disable_policy: "continue" | "pause" | "cancel";
 	allow_folder_override: boolean;
   settings: {
@@ -760,6 +784,173 @@ export interface IntegrationConnection {
   last_error_code: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface BitrixConnectionHealth {
+  connection_uuid: string;
+  status: IntegrationConnection["status"];
+  portal_domain: string;
+  calls_readable: boolean;
+  tasks_writable: boolean;
+  users_readable: boolean;
+  reconnect_required: boolean;
+  oauth_configured: boolean;
+  connector_verified: boolean;
+  last_success_at?: string | null;
+  last_error_code?: string | null;
+}
+
+export interface BitrixExternalUser {
+  external_user_id: string;
+  display_name: string;
+  active: boolean;
+  mapping_uuid?: string | null;
+  internal_user_uuid?: string | null;
+  department_uuid?: string | null;
+  mapping_status: "unmapped" | "mapped" | "conflict" | "inactive" | "ignored";
+  lock_version: number;
+}
+
+export interface BitrixMappingChange {
+  external_user_id: string;
+  internal_user_uuid?: string | null;
+  department_uuid?: string | null;
+  status: "mapped" | "ignored" | "unmapped";
+  expected_lock_version: number;
+}
+
+export interface BitrixMappingDiff {
+  external_user_id: string;
+  display_name: string;
+  before_internal_user_uuid?: string | null;
+  before_department_uuid?: string | null;
+  before_status: string;
+  after_internal_user_uuid?: string | null;
+  after_department_uuid?: string | null;
+  after_status: string;
+  lock_version: number;
+  changed: boolean;
+}
+
+export interface BitrixMappingPreview {
+  connection_uuid: string;
+  preview_hash: string;
+  changes_count: number;
+  items: BitrixMappingDiff[];
+}
+
+export interface BitrixMappingBulkResult {
+  command_uuid: string;
+  connection_uuid: string;
+  preview_hash: string;
+  changes_count: number;
+  mappings: BitrixExternalUser[];
+  created: boolean;
+}
+
+export interface BitrixBackfillPreview {
+  connection_uuid: string;
+  range_from: string;
+  range_to: string;
+  estimated_calls: number;
+}
+
+export interface BitrixBackfill {
+  backfill_uuid: string;
+  connection_uuid: string;
+  requested_by_user_uuid: string;
+  range_from: string;
+  range_to: string;
+  status: "pending" | "running" | "paused" | "completed" | "cancelled" | "failed";
+  estimated_calls?: number | null;
+  discovered_calls: number;
+  imported_calls: number;
+  pending_calls: number;
+  skipped_calls: number;
+  error_calls: number;
+  lock_version: number;
+  created_at: string;
+  updated_at: string;
+  finished_at?: string | null;
+}
+
+export interface ActionExternalSync {
+  sync_uuid: string;
+  action_uuid: string;
+  connection_uuid: string;
+  provider: "bitrix24";
+  requester_user_uuid: string;
+  approver_user_uuid?: string | null;
+  state: "pending_approval" | "rejected" | "queued" | "sending" | "reconciling" | "needs_review" | "synced" | "failed" | "cancelled" | "unlinked";
+  external_task_id?: string | null;
+	external_task_url?: string | null;
+	last_error_code?: string | null;
+	external_snapshot?: {
+		id?: string;
+		title?: string;
+		description?: string;
+		responsible_id?: string;
+		deadline?: string | null;
+		status?: string;
+		link?: string;
+		changed_at?: string | null;
+	} | null;
+	review_state?: "needs_review" | null;
+	review_reason?: string | null;
+	last_checked_at?: string | null;
+	can_approve: boolean;
+	can_reject: boolean;
+	can_resolve: boolean;
+  lock_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ActionExternalSyncPreview {
+	action_uuid: string;
+	title: string;
+	due_at: string;
+	assignee_user_uuid: string;
+	options: Array<{
+		connection_uuid: string;
+		connection_name: string;
+		portal_domain: string;
+		external_assignee_id?: string | null;
+		available: boolean;
+		unavailable_reason?: "assignee_not_mapped" | string;
+	}>;
+}
+
+export interface SupportAccessRequest {
+	request_uuid: string;
+	requested_by_user_uuid: string;
+	approver_user_uuid: string;
+	subject_type: "user" | "company";
+	subject_user_uuid?: string | null;
+	subject_company_uuid?: string | null;
+	reason: string;
+	requested_resources: string[];
+	requested_commands: string[];
+	requested_duration_minutes: number;
+	status: "pending" | "approved" | "denied" | "expired" | "cancelled";
+	decision_comment?: string | null;
+	lock_version: number;
+	created_at: string;
+	expires_at: string;
+	decided_at?: string | null;
+}
+
+export interface SupportAccessGrant {
+	grant_uuid: string;
+	request_uuid: string;
+	grantee_user_uuid: string;
+	granted_by_user_uuid: string;
+	subject_type: "user" | "company";
+	resource_allowlist: string[];
+	command_allowlist: string[];
+	valid_from: string;
+	expires_at: string;
+	revoked_at?: string | null;
 }
 
 export interface IntegrationServiceAccount {

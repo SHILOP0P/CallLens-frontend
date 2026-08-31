@@ -53,6 +53,7 @@ import { UploadPage } from "./features/upload/UploadPage";
 import { AdminPage } from "./features/admin/AdminPage";
 import { QualityReviewsPage } from "./features/quality-reviews/QualityReviewsPage";
 import { QualityReviewPage } from "./features/quality-reviews/QualityReviewPage";
+import { SupportAccessDecisionDialog } from "./features/support-access/SupportAccessDecisionDialog";
 import {
   nextTimelineStatuses,
   parseCallStatusEvent,
@@ -84,6 +85,7 @@ function App() {
   const [selectedCallId, setSelectedCallId] = useState<string>(() => callIdFromLocation());
   const [loadingWorkspace, setLoadingWorkspace] = useState(() => Boolean(session));
   const [loadingCallDetails, setLoadingCallDetails] = useState<Record<string, boolean>>({});
+	const [supportAccessRequestId,setSupportAccessRequestId]=useState("");
   const { theme: activeTheme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -418,6 +420,8 @@ function App() {
   }
 
   function openNotificationTarget(notification: NotificationResponse) {
+	if(notification.entity_type==="support_access_request"&&notification.entity_uuid){setSupportAccessRequestId(notification.entity_uuid);return}
+	if(notification.entity_type==="action_external_sync"&&notification.entity_uuid){api.getActionExternalSyncRequest(notification.entity_uuid).then((sync)=>{window.history.pushState({},"",`/app/actions/${encodeURIComponent(sync.action_uuid)}`);window.dispatchEvent(new PopStateEvent("popstate"))}).catch(()=>navigate("actions"));return}
     if (notification.entity_type === "call" && notification.entity_uuid) {
       openCallPage(notification.entity_uuid);
       return;
@@ -615,6 +619,7 @@ function App() {
         openCallPage(callId);
       }}
       onOpenCompany={openCompany}
+	  onOpenNotification={openNotificationTarget}
       onOpenLanding={openLanding}
       onToggleTheme={toggleTheme}
       onLogout={logout}
@@ -837,6 +842,7 @@ function App() {
         <ProfilePage
           session={session}
           companies={companies}
+          personalSubscription={personalSubscription}
           onUserUpdated={updateSessionUser}
           onCompanyCreated={async (company) => {
             setCompanies((current) => [company, ...current]);
@@ -878,7 +884,8 @@ function App() {
           onBackToSettings={() => navigate("settings")}
         />
       )}
-      {page === "settingsIntegrations" && <IntegrationsPage session={session} companies={companies} onBack={() => navigate("settings")} />}
+      {page === "settingsIntegrations" && <IntegrationsPage session={session} companies={companies} departments={departments} onBack={() => navigate("settings")} />}
+	  {supportAccessRequestId?<SupportAccessDecisionDialog requestId={supportAccessRequestId} currentUserId={session.user.id} onClose={()=>setSupportAccessRequestId("")}/>:null}
     </AuthenticatedShell>
   );
 }

@@ -8,7 +8,7 @@ import {
   Search,
   Trash2
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, openAuthorizedEventStream } from "../../api";
 import type {
   AggregateAnalysisResponse,
@@ -36,6 +36,7 @@ import {
 import { isAnalysisDone } from "../../shared/lib/analysis";
 import { formatBytes, formatDate, reportFormatLabel, reportStatusLabel } from "../../shared/lib/formatters";
 import { SelectControl } from "../../shared/ui/primitives";
+import { CustomScrollbar } from "../../shared/ui/custom-scrollbar";
 import { aggregateResult, callCountLabel, formatShare, shortIdentifier } from "./aggregate-analysis";
 import { reportFormats } from "./ReportExportPanel";
 
@@ -66,6 +67,7 @@ export function AiReportsPage({
   companies: CompanyResponse[];
   departments: DepartmentResponse[];
 }) {
+  const reportsPageScrollRef = useRef<HTMLElement>(null);
   const [activeTab, setActiveTab] = useState<ReportsTab>(() => readReportsTabFromLocation());
   const [reports, setReports] = useState<ReportWithCallResponse[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
@@ -448,7 +450,7 @@ export function AiReportsPage({
   }
 
   return (
-    <section className="reports-page app-page atmospheric-page">
+    <section ref={reportsPageScrollRef} className="reports-page app-page atmospheric-page custom-scroll-target">
       <div className="app-page-heading readable-heading">
         <h1>AI-отчеты</h1>
         <p>Экспорт, статусы, история отчетов и глубокий анализ выбранных периодов.</p>
@@ -543,6 +545,7 @@ export function AiReportsPage({
           />
         </>
       )}
+      <CustomScrollbar targetRef={reportsPageScrollRef} inset={15} />
     </section>
   );
 }

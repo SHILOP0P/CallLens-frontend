@@ -4,10 +4,10 @@ import {
   ChevronDown,
   ChevronRight,
   CloudUpload,
+  Filter,
   MoreHorizontal,
   MoreVertical,
   PanelLeftClose,
-  PanelLeftOpen,
   Pencil,
   Play,
   Plus,
@@ -42,6 +42,7 @@ import { formatDate, formatDuration } from "../../shared/lib/formatters";
 import { activeDepartmentLeaderIds, isCompanyManager } from "../../shared/lib/access";
 import { StatusChip } from "../../shared/ui/call";
 import { ConfirmDialog } from "../../shared/ui/confirm-dialog";
+import { DateTimePicker } from "../../shared/ui/DateTimePicker";
 import { useEscapeDismiss } from "../../shared/ui/dismissible-layer";
 import { CallListSkeleton } from "../../shared/ui/loading";
 import { SelectControl } from "../../shared/ui/primitives";
@@ -58,6 +59,61 @@ import {
   managerLabel,
   periodStart
 } from "./call-page-utils";
+
+type CallsURLFilters = {
+  status: CallStatus | "all";
+  scope: VisibilityScope | "all";
+  manager: string;
+  period: "all" | "7d" | "30d";
+  query: string;
+  company: string;
+  department: string;
+  participant: string;
+  source: "all" | "manual" | "generic_api" | "bitrix24";
+  connection: string;
+  folder: string;
+  occurredFrom: string;
+  occurredTo: string;
+  durationMin: string;
+  durationMax: string;
+  analysis: "all" | "yes" | "no";
+  actions: "all" | "yes" | "no";
+  processingError: boolean;
+  favorite: boolean;
+  sort: "occurred_at" | "created_at" | "duration";
+  order: "asc" | "desc";
+};
+
+function initialCallsURLFilters(): CallsURLFilters {
+  const query = new URLSearchParams(window.location.search);
+  const oneOf = <T extends string>(key: string, allowed: readonly T[], fallback: T): T => {
+    const value = query.get(key) as T | null;
+    return value && allowed.includes(value) ? value : fallback;
+  };
+  return {
+    status: oneOf("status", ["new", "processing", "transcribed", "analyzed", "failed", "all"] as const, "all"),
+    scope: oneOf("scope", ["personal", "company", "department", "all"] as const, "all"),
+    manager: query.get("uploaded_by_user_uuid") || "all",
+    period: oneOf("period", ["all", "7d", "30d"] as const, "all"),
+    query: query.get("q") || "",
+    company: query.get("company_uuid") || "all",
+    department: query.get("department_uuid") || "all",
+    participant: query.get("participant_user_uuid") || "all",
+    source: oneOf("source_provider", ["all", "manual", "generic_api", "bitrix24"] as const, "all"),
+    connection: query.get("connection_uuid") || "all",
+    folder: query.get("folder_uuid") || "",
+    occurredFrom: query.get("occurred_from") || "",
+    occurredTo: query.get("occurred_to") || "",
+    durationMin: query.get("duration_min_seconds") || "",
+    durationMax: query.get("duration_max_seconds") || "",
+    analysis: oneOf("has_analysis", ["all", "yes", "no"] as const, "all"),
+    actions: oneOf("has_actions", ["all", "yes", "no"] as const, "all"),
+    processingError: query.get("has_processing_error") === "true",
+    favorite: query.get("favorite_only") === "true",
+    sort: oneOf("sort", ["occurred_at", "created_at", "duration"] as const, "occurred_at"),
+    order: oneOf("order", ["asc", "desc"] as const, "desc"),
+  };
+}
 
 export function CallsPage({
   calls,
@@ -102,20 +158,40 @@ export function CallsPage({
   onOpenTranscriptionEditor?: (callId: string) => void;
   onOpenRevisionComparison?: (callId: string, revision?: number) => void;
 }) {
+  const [initialURLFilters] = useState(initialCallsURLFilters);
   const callsSidebarScrollRef = useRef<HTMLElement | null>(null);
   const callOverviewScrollRef = useRef<HTMLElement | null>(null);
-  const [statusFilter, setStatusFilter] = useState<CallStatus | "all">("all");
-  const [scopeFilter, setScopeFilter] = useState<VisibilityScope | "all">("all");
-  const [managerFilter, setManagerFilter] = useState("all");
-  const [periodFilter, setPeriodFilter] = useState<"all" | "7d" | "30d">("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CallStatus | "all">(initialURLFilters.status);
+  const [scopeFilter, setScopeFilter] = useState<VisibilityScope | "all">(initialURLFilters.scope);
+  const [managerFilter, setManagerFilter] = useState(initialURLFilters.manager);
+  const [periodFilter, setPeriodFilter] = useState<"all" | "7d" | "30d">(initialURLFilters.period);
+  const [searchQuery, setSearchQuery] = useState(initialURLFilters.query);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [favoriteOnly, setFavoriteOnly] = useState(initialURLFilters.favorite);
+  const [companyFilter, setCompanyFilter] = useState(initialURLFilters.company);
+  const [departmentFilter, setDepartmentFilter] = useState(initialURLFilters.department);
+  const [participantFilter, setParticipantFilter] = useState(initialURLFilters.participant);
+  const [sourceFilter, setSourceFilter] = useState<"all" | "manual" | "generic_api" | "bitrix24">(initialURLFilters.source);
+  const [connectionFilter, setConnectionFilter] = useState(initialURLFilters.connection);
+  const [occurredFrom, setOccurredFrom] = useState(initialURLFilters.occurredFrom);
+  const [occurredTo, setOccurredTo] = useState(initialURLFilters.occurredTo);
+  const [durationMin, setDurationMin] = useState(initialURLFilters.durationMin);
+  const [durationMax, setDurationMax] = useState(initialURLFilters.durationMax);
+  const [analysisFilter, setAnalysisFilter] = useState<"all" | "yes" | "no">(initialURLFilters.analysis);
+  const [actionsFilter, setActionsFilter] = useState<"all" | "yes" | "no">(initialURLFilters.actions);
+  const [processingErrorOnly, setProcessingErrorOnly] = useState(initialURLFilters.processingError);
+  const [sortFilter, setSortFilter] = useState<"occurred_at" | "created_at" | "duration">(initialURLFilters.sort);
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(initialURLFilters.order);
   const [serverCalls, setServerCalls] = useState<CallResponse[] | null>(null);
+  const [nextCallsCursor, setNextCallsCursor] = useState<string | null>(null);
+  const [loadingMoreCalls, setLoadingMoreCalls] = useState(false);
   const [filterOptions, setFilterOptions] = useState<CallFilterOptionsResponse | null>(null);
   const [filtersLoading, setFiltersLoading] = useState(false);
+  const [filtersError, setFiltersError] = useState("");
   const [callFolders, setCallFolders] = useState<CallFolderResponse[]>([]);
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [folderError, setFolderError] = useState("");
-  const [selectedFolderId, setSelectedFolderId] = useState("");
+  const [selectedFolderId, setSelectedFolderId] = useState(initialURLFilters.folder);
   const [editingFolderId, setEditingFolderId] = useState("");
   const [folderEditorOpen, setFolderEditorOpen] = useState(false);
   const [folderBusyId, setFolderBusyId] = useState("");
@@ -175,28 +251,59 @@ export function CallsPage({
     companies.length === 0 && (scopeFilter === "company" || scopeFilter === "department")
       ? "all"
       : scopeFilter;
+  const filterValidationError = (() => {
+    const minDuration = durationMin === "" ? undefined : Number(durationMin);
+    const maxDuration = durationMax === "" ? undefined : Number(durationMax);
+    if ((minDuration !== undefined && (!Number.isFinite(minDuration) || minDuration < 0)) ||
+        (maxDuration !== undefined && (!Number.isFinite(maxDuration) || maxDuration < 0))) {
+      return "Длительность не может быть отрицательной.";
+    }
+    if (minDuration !== undefined && maxDuration !== undefined && minDuration > maxDuration) {
+      return "Минимальная длительность не может быть больше максимальной.";
+    }
+    if (occurredFrom && occurredTo && occurredFrom > occurredTo) {
+      return "Дата начала не может быть позже даты окончания.";
+    }
+    return "";
+  })();
   const filterInput = {
     q: searchQuery.trim() || undefined,
     status: statusFilter === "all" ? undefined : statusFilter,
     scope: effectiveScopeFilter === "all" ? undefined : effectiveScopeFilter,
+    company_uuid: companyFilter === "all" ? undefined : companyFilter,
+    department_uuid: departmentFilter === "all" ? undefined : departmentFilter,
+    participant_user_uuid: participantFilter === "all" ? undefined : participantFilter,
     uploaded_by_user_uuid: managerFilter === "all" ? undefined : managerFilter,
-    from: periodStart(periodFilter)
+    source_provider: sourceFilter === "all" ? undefined : sourceFilter,
+    connection_uuid: connectionFilter === "all" ? undefined : connectionFilter,
+    folder_uuid: selectedFolderId || undefined,
+    occurred_from: occurredFrom || periodStart(periodFilter),
+    occurred_to: occurredTo || undefined,
+    duration_min_seconds: durationMin === "" ? undefined : Number(durationMin),
+    duration_max_seconds: durationMax === "" ? undefined : Number(durationMax),
+    has_analysis: analysisFilter === "all" ? undefined : analysisFilter === "yes",
+    has_actions: actionsFilter === "all" ? undefined : actionsFilter === "yes",
+    has_processing_error: processingErrorOnly || undefined,
+    favorite_only: favoriteOnly || undefined,
+    include_upload_fallback: true,
+    sort: sortFilter,
+    order: sortOrder
   };
-  const hasBackendFilters = Object.values(filterInput).some(Boolean);
   const displayedCalls = serverCalls ?? calls;
   const callsRefreshKey = calls.map((call) => `${call.id}:${call.status}`).join("|");
-  const filteredCalls = (hasBackendFilters ? displayedCalls : calls).filter((call) => {
+  const filteredCalls = displayedCalls.filter((call) => {
     const query = searchQuery.trim().toLowerCase();
     const matchesScope = effectiveScopeFilter === "all" || call.visibility_scope === effectiveScopeFilter;
     const matchesStatus = statusFilter === "all" || call.status === statusFilter;
     const matchesManager = managerFilter === "all" || call.uploaded_by_user_uuid === managerFilter;
     const matchesSearch = !query || callSearchText(call).includes(query);
-    const matchesPeriod = isWithinPeriod(call.created_at, periodFilter);
+    const matchesPeriod = isWithinPeriod(call.display_time || call.occurred_at || call.created_at, periodFilter);
+    const matchesCompany = companyFilter === "all" || call.company_uuid === companyFilter;
+    const matchesConnection = connectionFilter === "all" || call.connection_uuid === connectionFilter;
 
-    return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod;
+    return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod && matchesCompany && matchesConnection;
   });
 
-  const [favoriteOnly, setFavoriteOnly] = useState(false);
   useEffect(() => { api.listFavoriteCalls().then((items) => setFavoriteCallIds(items.map((call) => call.id))).catch(() => setFavoriteCallIds([])); }, []);
 
   useEffect(() => {
@@ -265,6 +372,19 @@ export function CallsPage({
     };
   }, [folderEditorOpen, folderForm.company_uuid, folderForm.department_uuid, folderForm.scope]);
   const managerOptions = filterOptions?.managers ?? [];
+  const connectionOptions = filterOptions?.connections ?? [];
+  const participantOptions = Array.from(
+    new Map(
+      departmentMembers
+        .filter((member) => member.status === "active")
+        .map((member) => [member.user_uuid, member])
+    ).values()
+  ).sort((left, right) =>
+    `${left.full_surname ?? ""} ${left.full_name ?? ""} ${left.username ?? ""}`.localeCompare(
+      `${right.full_surname ?? ""} ${right.full_name ?? ""} ${right.username ?? ""}`,
+      "ru"
+    )
+  );
   const visibleFolders = callFolders.filter((folder) =>
     effectiveScopeFilter === "all" || folder.scope === effectiveScopeFilter
   );
@@ -289,7 +409,57 @@ export function CallsPage({
     effectiveScopeFilter !== "all" ||
     managerFilter !== "all" ||
     periodFilter !== "all" ||
+    companyFilter !== "all" ||
+    departmentFilter !== "all" ||
+    participantFilter !== "all" ||
+    sourceFilter !== "all" ||
+    connectionFilter !== "all" ||
+    Boolean(selectedFolderId) ||
+    Boolean(occurredFrom || occurredTo || durationMin || durationMax) ||
+    analysisFilter !== "all" ||
+    actionsFilter !== "all" ||
+    processingErrorOnly ||
+    favoriteOnly ||
+    sortFilter !== "occurred_at" ||
+    sortOrder !== "desc" ||
     searchQuery.trim().length > 0;
+  const activeFilterCount = [
+    statusFilter !== "all",
+    effectiveScopeFilter !== "all",
+    managerFilter !== "all",
+    periodFilter !== "all",
+    companyFilter !== "all",
+    departmentFilter !== "all",
+    participantFilter !== "all",
+    sourceFilter !== "all",
+    connectionFilter !== "all",
+    Boolean(selectedFolderId),
+    Boolean(occurredFrom || occurredTo),
+    Boolean(durationMin || durationMax),
+    analysisFilter !== "all",
+    actionsFilter !== "all",
+    processingErrorOnly,
+    favoriteOnly,
+    sortFilter !== "occurred_at" || sortOrder !== "desc"
+  ].filter(Boolean).length;
+  const activeFilterChips: Array<{ key: string; label: string; clear: () => void }> = [];
+  if (statusFilter !== "all") activeFilterChips.push({ key: "status", label: `Статус: ${{ new: "новые", processing: "в обработке", transcribed: "расшифрованы", analyzed: "анализ готов", failed: "ошибки" }[statusFilter]}`, clear: () => setStatusFilter("all") });
+  if (effectiveScopeFilter !== "all") activeFilterChips.push({ key: "scope", label: `Область: ${{ personal: "личные", company: "компания", department: "отдел" }[effectiveScopeFilter]}`, clear: () => setScopeFilter("all") });
+  if (managerFilter !== "all") activeFilterChips.push({ key: "manager", label: `Загрузил: ${managerOptions.find((item) => item.id === managerFilter) ? managerLabel(managerOptions.find((item) => item.id === managerFilter)!, session) : "пользователь"}`, clear: () => setManagerFilter("all") });
+  if (companyFilter !== "all") activeFilterChips.push({ key: "company", label: `Компания: ${companies.find((item) => item.id === companyFilter)?.name || "выбрана"}`, clear: () => { setCompanyFilter("all"); setDepartmentFilter("all"); setConnectionFilter("all"); } });
+  if (participantFilter !== "all") activeFilterChips.push({ key: "participant", label: `Сотрудник: ${participantOptions.find((item) => item.user_uuid === participantFilter)?.username || "выбран"}`, clear: () => setParticipantFilter("all") });
+  if (departmentFilter !== "all") activeFilterChips.push({ key: "department", label: `Отдел: ${departments.find((item) => item.id === departmentFilter)?.name || "выбран"}`, clear: () => setDepartmentFilter("all") });
+  if (sourceFilter !== "all") activeFilterChips.push({ key: "source", label: `Источник: ${{ manual: "ручная загрузка", generic_api: "API", bitrix24: "Bitrix24" }[sourceFilter]}`, clear: () => setSourceFilter("all") });
+  if (connectionFilter !== "all") activeFilterChips.push({ key: "connection", label: `Подключение: ${connectionOptions.find((item) => item.id === connectionFilter)?.name || "выбрано"}`, clear: () => setConnectionFilter("all") });
+  if (selectedFolderId) activeFilterChips.push({ key: "folder", label: `Папка: ${callFolders.find((item) => item.id === selectedFolderId)?.name || "выбрана"}`, clear: () => setSelectedFolderId("") });
+  if (periodFilter !== "all") activeFilterChips.push({ key: "period", label: periodFilter === "7d" ? "Последние 7 дней" : "Последние 30 дней", clear: () => setPeriodFilter("all") });
+  if (occurredFrom || occurredTo) activeFilterChips.push({ key: "occurred", label: `Разговор: ${occurredFrom || "…"} — ${occurredTo || "…"}`, clear: () => { setOccurredFrom(""); setOccurredTo(""); } });
+  if (durationMin || durationMax) activeFilterChips.push({ key: "duration", label: `Длительность: ${durationMin || "0"}–${durationMax || "∞"} сек.`, clear: () => { setDurationMin(""); setDurationMax(""); } });
+  if (analysisFilter !== "all") activeFilterChips.push({ key: "analysis", label: analysisFilter === "yes" ? "С анализом" : "Без анализа", clear: () => setAnalysisFilter("all") });
+  if (actionsFilter !== "all") activeFilterChips.push({ key: "actions", label: actionsFilter === "yes" ? "С действиями" : "Без действий", clear: () => setActionsFilter("all") });
+  if (processingErrorOnly) activeFilterChips.push({ key: "errors", label: "Только ошибки", clear: () => setProcessingErrorOnly(false) });
+  if (favoriteOnly) activeFilterChips.push({ key: "favorite", label: "Только избранные", clear: () => setFavoriteOnly(false) });
+  if (sortFilter !== "occurred_at" || sortOrder !== "desc") activeFilterChips.push({ key: "sort", label: `Сортировка: ${{ occurred_at: "время разговора", created_at: "время импорта", duration: "длительность" }[sortFilter]}, ${sortOrder === "desc" ? "по убыванию" : "по возрастанию"}`, clear: () => { setSortFilter("occurred_at"); setSortOrder("desc"); } });
   const selectedCallVisibleInFolderFilter = Boolean(
     selectedFolderId &&
     selectedCall &&
@@ -307,9 +477,45 @@ export function CallsPage({
     setScopeFilter("all");
     setManagerFilter("all");
     setPeriodFilter("all");
+    setCompanyFilter("all");
+    setDepartmentFilter("all");
+    setParticipantFilter("all");
+    setSourceFilter("all");
+    setConnectionFilter("all");
+    setOccurredFrom("");
+    setOccurredTo("");
+    setDurationMin("");
+    setDurationMax("");
+    setAnalysisFilter("all");
+    setActionsFilter("all");
+    setProcessingErrorOnly(false);
+    setFavoriteOnly(false);
+    setSortFilter("occurred_at");
+    setSortOrder("desc");
     setSearchQuery("");
     setSelectedFolderId("");
     setServerCalls(null);
+    setNextCallsCursor(null);
+    setFiltersError("");
+  }
+
+  async function loadMoreCalls() {
+    if (!nextCallsCursor || loadingMoreCalls || filterValidationError) return;
+    setLoadingMoreCalls(true);
+    setFiltersError("");
+    try {
+      const response = await api.listCalls({ ...filterInput, cursor: nextCallsCursor, limit: 50 });
+      const page = Array.isArray(response) ? response : response.items;
+      setServerCalls((current) => {
+        const merged = [...(current ?? []), ...page];
+        return [...new Map(merged.map((call) => [call.id, call])).values()];
+      });
+      setNextCallsCursor(Array.isArray(response) ? null : response.next_cursor ?? null);
+    } catch {
+      setFiltersError("Не удалось загрузить следующую страницу. Повторите попытку.");
+    } finally {
+      setLoadingMoreCalls(false);
+    }
   }
 
   async function refreshFolders() {
@@ -610,7 +816,10 @@ export function CallsPage({
   useEffect(() => {
     let cancelled = false;
     api
-      .getCallFilterOptions()
+      .getCallFilterOptions({
+        company_uuid: companyFilter === "all" ? undefined : companyFilter,
+        department_uuid: departmentFilter === "all" ? undefined : departmentFilter
+      })
       .then((response) => {
         if (!cancelled) setFilterOptions(response);
       })
@@ -620,7 +829,7 @@ export function CallsPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [companyFilter, departmentFilter]);
 
   useEffect(() => {
     void refreshFolders();
@@ -699,9 +908,19 @@ export function CallsPage({
     const matchesStatus = statusFilter === "all" || call.status === statusFilter;
     const matchesManager = managerFilter === "all" || call.uploaded_by_user_uuid === managerFilter;
     const matchesSearch = !query || callSearchText(call).includes(query);
-    const matchesPeriod = isWithinPeriod(call.created_at, periodFilter);
+    const callTime = call.display_time || call.occurred_at || call.created_at;
+    const matchesPeriod = isWithinPeriod(callTime, periodFilter);
+    const matchesCompany = companyFilter === "all" || call.company_uuid === companyFilter;
+    const matchesDepartment = departmentFilter === "all" || call.department_uuid === departmentFilter;
+    const matchesSource = sourceFilter === "all" || (sourceFilter === "manual" ? !call.source_provider : call.source_provider === sourceFilter);
+    const matchesConnection = connectionFilter === "all" || call.connection_uuid === connectionFilter;
+    const matchesDurationMin = durationMin === "" || call.duration_seconds >= Number(durationMin);
+    const matchesDurationMax = durationMax === "" || call.duration_seconds <= Number(durationMax);
+    const matchesAnalysis = analysisFilter === "all" || Boolean(call.has_analysis ?? analyses[call.id]) === (analysisFilter === "yes");
+    const matchesActions = actionsFilter === "all" || Boolean(call.has_actions) === (actionsFilter === "yes");
+    const matchesError = !processingErrorOnly || call.status === "failed" || Boolean(call.ingest_error_code);
 
-    return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod;
+    return matchesScope && matchesStatus && matchesManager && matchesSearch && matchesPeriod && matchesCompany && matchesDepartment && matchesSource && matchesConnection && matchesDurationMin && matchesDurationMax && matchesAnalysis && matchesActions && matchesError;
   }
 
   useEffect(() => {
@@ -710,19 +929,79 @@ export function CallsPage({
   }, [companies.length, folderForm.scope]);
 
   useEffect(() => {
-    if (!hasBackendFilters) {
+    if (companyFilter !== "all" && !companies.some((company) => company.id === companyFilter)) {
+      setCompanyFilter("all");
+      setDepartmentFilter("all");
+      setConnectionFilter("all");
+      return;
+    }
+    if (departmentFilter !== "all" && !departments.some((department) =>
+      department.id === departmentFilter && (companyFilter === "all" || department.company_uuid === companyFilter)
+    )) {
+      setDepartmentFilter("all");
+    }
+  }, [companies, departments, companyFilter, departmentFilter]);
+
+  useEffect(() => {
+    if (connectionFilter !== "all" && filterOptions && !filterOptions.connections.some((connection) => connection.id === connectionFilter)) {
+      setConnectionFilter("all");
+    }
+  }, [connectionFilter, filterOptions]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const values: Record<string, string | undefined> = {
+      q: searchQuery.trim() || undefined,
+      status: statusFilter === "all" ? undefined : statusFilter,
+      scope: effectiveScopeFilter === "all" ? undefined : effectiveScopeFilter,
+      uploaded_by_user_uuid: managerFilter === "all" ? undefined : managerFilter,
+      period: periodFilter === "all" ? undefined : periodFilter,
+      company_uuid: companyFilter === "all" ? undefined : companyFilter,
+      department_uuid: departmentFilter === "all" ? undefined : departmentFilter,
+      participant_user_uuid: participantFilter === "all" ? undefined : participantFilter,
+      source_provider: sourceFilter === "all" ? undefined : sourceFilter,
+      connection_uuid: connectionFilter === "all" ? undefined : connectionFilter,
+      folder_uuid: selectedFolderId || undefined,
+      occurred_from: occurredFrom || undefined,
+      occurred_to: occurredTo || undefined,
+      duration_min_seconds: durationMin || undefined,
+      duration_max_seconds: durationMax || undefined,
+      has_analysis: analysisFilter === "all" ? undefined : analysisFilter,
+      has_actions: actionsFilter === "all" ? undefined : actionsFilter,
+      has_processing_error: processingErrorOnly ? "true" : undefined,
+      favorite_only: favoriteOnly ? "true" : undefined,
+      sort: sortFilter === "occurred_at" ? undefined : sortFilter,
+      order: sortOrder === "desc" ? undefined : sortOrder,
+    };
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined) url.searchParams.delete(key);
+      else url.searchParams.set(key, value);
+    }
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter, companyFilter, departmentFilter, participantFilter, sourceFilter, connectionFilter, selectedFolderId, occurredFrom, occurredTo, durationMin, durationMax, analysisFilter, actionsFilter, processingErrorOnly, favoriteOnly, sortFilter, sortOrder]);
+
+  useEffect(() => {
+    if (filterValidationError) {
+      setFiltersError(filterValidationError);
       setServerCalls(null);
+      setNextCallsCursor(null);
       setFiltersLoading(false);
       return;
     }
 
     let cancelled = false;
+	const controller = new AbortController();
     const timer = window.setTimeout(() => {
       setFiltersLoading(true);
+      setFiltersError("");
+      setNextCallsCursor(null);
       api
-        .listCalls({ ...filterInput, limit: 100, offset: 0 })
+        .listCalls({ ...filterInput, limit: 50 }, controller.signal)
         .then((response) => {
-          if (!cancelled) setServerCalls(Array.isArray(response) ? response : response.items);
+          if (!cancelled) {
+            setServerCalls(Array.isArray(response) ? response : response.items);
+            setNextCallsCursor(Array.isArray(response) ? null : response.next_cursor ?? null);
+          }
         })
         .catch((error) => {
           if (cancelled) return;
@@ -731,6 +1010,7 @@ export function CallsPage({
             void refreshFolders();
           }
           setServerCalls([]);
+          setFiltersError("Не удалось применить фильтры. Проверьте значения и повторите.");
         })
         .finally(() => {
           if (!cancelled) setFiltersLoading(false);
@@ -739,9 +1019,10 @@ export function CallsPage({
 
     return () => {
       cancelled = true;
+	  controller.abort();
       window.clearTimeout(timer);
     };
-  }, [hasBackendFilters, searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter, selectedFolderId, callsRefreshKey]);
+  }, [filterValidationError, searchQuery, statusFilter, effectiveScopeFilter, managerFilter, periodFilter, companyFilter, departmentFilter, participantFilter, sourceFilter, connectionFilter, occurredFrom, occurredTo, durationMin, durationMax, analysisFilter, actionsFilter, processingErrorOnly, favoriteOnly, sortFilter, sortOrder, selectedFolderId, callsRefreshKey]);
 
   function renderSidebarCallRow(call: CallResponse, folderId?: string) {
     const selected = selectedCallId === call.id;
@@ -776,8 +1057,10 @@ export function CallsPage({
           <StatusChip status={call.status} analysisStatus={call.is_test ? undefined : analyses[call.id]?.status} label={call.is_test ? "Тестовый" : undefined} />
           <strong>{call.title}</strong>
           <small>
-            {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)}
+            {formatDate(call.display_time || call.occurred_at || call.created_at)} · {formatDuration(call.duration_seconds)}
+            {call.time_source === "upload_fallback" ? " · время загрузки" : ""}
           </small>
+          {call.source_provider && <small className="call-source-line">{call.source_provider === "bitrix24" ? "Bitrix24" : "API"}{call.external_call_id ? ` · #${call.external_call_id}` : ""}</small>}
         </span>
         <span
           className="call-row-actions"
@@ -877,45 +1160,58 @@ export function CallsPage({
           </div>
         </div>
         <div className="calls-filter-bar">
-          <SelectControl
-            aria-label="Статус"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as CallStatus | "all")}
-          >
-            <option value="all">Все статусы</option>
-            <option value="new">Новые</option>
-            <option value="processing">В обработке</option>
-            <option value="transcribed">Расшифрованы</option>
-            <option value="analyzed">Анализ готов</option>
-            <option value="failed">Ошибки</option>
-          </SelectControl>
-          <SelectControl
-            aria-label="Менеджер"
-            value={managerFilter}
-            onChange={(event) => setManagerFilter(event.target.value)}
-          >
-            <option value="all">Все менеджеры</option>
-            {managerOptions.map((manager) => (
-              <option key={manager.id} value={manager.id}>
-                {managerLabel(manager, session)}
-              </option>
-            ))}
-          </SelectControl>
-          <SelectControl
-            aria-label="Период"
-            value={periodFilter}
-            onChange={(event) => setPeriodFilter(event.target.value as "all" | "7d" | "30d")}
-          >
-            <option value="all">Все даты</option>
-            <option value="7d">Последние 7 дней</option>
-            <option value="30d">Последние 30 дней</option>
-          </SelectControl>
           <input
             aria-label="Поиск звонка"
             placeholder="Поиск по названию"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
           />
+          <button
+            className={`ghost-button call-filter-toggle ${filtersExpanded ? "active" : ""}`}
+            type="button"
+            aria-expanded={filtersExpanded}
+            aria-controls="call-advanced-filters"
+            onClick={() => setFiltersExpanded((value) => !value)}
+          >
+            <Filter size={16} />
+            Фильтры{activeFilterCount > 0 ? ` · ${activeFilterCount}` : ""}
+          </button>
+        </div>
+        {activeFilterChips.length > 0 && <div className="call-filter-chips" aria-label="Активные фильтры">
+          {activeFilterChips.map((chip) => <button key={chip.key} type="button" onClick={chip.clear} aria-label={`Убрать фильтр: ${chip.label}`}>
+            <span>{chip.label}</span>
+            <X size={13} aria-hidden="true" />
+          </button>)}
+        </div>}
+        <div className={`call-filters-reveal ${filtersExpanded ? "expanded" : ""}`} aria-hidden={!filtersExpanded} inert={!filtersExpanded}>
+          <div className="call-filters-reveal-inner">
+        <section className="call-advanced-filters" id="call-advanced-filters" aria-label="Расширенные фильтры звонков">
+          <div className="call-filter-section-heading">
+            <div><strong>Найти нужные звонки</strong><small>Все параметры применяются только к доступным вам звонкам.</small></div>
+            {filtersChanged && <button className="text-button" type="button" onClick={resetFilters}>Сбросить всё</button>}
+          </div>
+          <div className="call-filter-grid">
+            <label><span>Статус</span><SelectControl aria-label="Статус" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as CallStatus | "all")}><option value="all">Все статусы</option><option value="new">Новые</option><option value="processing">В обработке</option><option value="transcribed">Расшифрованы</option><option value="analyzed">Анализ готов</option><option value="failed">Ошибки</option></SelectControl></label>
+            <label><span>Сотрудник</span><SelectControl aria-label="Сотрудник" value={participantFilter} onChange={(event) => setParticipantFilter(event.target.value)}><option value="all">Все сотрудники</option>{participantOptions.map((member) => <option key={member.user_uuid} value={member.user_uuid}>{[member.full_surname, member.full_name].filter(Boolean).join(" ") || member.username || "Пользователь"}</option>)}</SelectControl></label>
+            <label><span>Компания</span><SelectControl aria-label="Компания" value={companyFilter} onChange={(event) => { const companyId = event.target.value; setCompanyFilter(companyId); setDepartmentFilter("all"); setConnectionFilter("all"); }}><option value="all">Все компании</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}</SelectControl></label>
+            <label><span>Отдел</span><SelectControl aria-label="Отдел" value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)}><option value="all">Все отделы</option>{departments.filter((department) => companyFilter === "all" || department.company_uuid === companyFilter).map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</SelectControl></label>
+            <label><span>Загрузил</span><SelectControl aria-label="Загрузил" value={managerFilter} onChange={(event) => setManagerFilter(event.target.value)}><option value="all">Любой пользователь</option>{managerOptions.map((manager) => <option key={manager.id} value={manager.id}>{managerLabel(manager, session)}</option>)}</SelectControl></label>
+            <label><span>Источник</span><SelectControl aria-label="Источник" value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value as typeof sourceFilter)}><option value="all">Все источники</option><option value="manual">Ручная загрузка</option><option value="generic_api">API</option><option value="bitrix24">Bitrix24</option></SelectControl></label>
+            <label><span>Подключение</span><SelectControl aria-label="Подключение" value={connectionFilter} onChange={(event) => setConnectionFilter(event.target.value)}><option value="all">Все подключения</option>{connectionOptions.map((connection) => <option key={connection.id} value={connection.id}>{connection.name}{connection.provider === "bitrix24" ? " · Bitrix24" : ""}</option>)}</SelectControl></label>
+            <label><span>Быстрый период</span><SelectControl aria-label="Период" value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value as "all" | "7d" | "30d")}><option value="all">Все даты</option><option value="7d">Последние 7 дней</option><option value="30d">Последние 30 дней</option></SelectControl></label>
+            <label><span>Разговор с</span><DateTimePicker mode="date" placement="right-center" ariaLabel="Дата начала периода" value={occurredFrom} onChange={(value) => { setOccurredFrom(value); setPeriodFilter("all"); }} /></label>
+            <label><span>Разговор до</span><DateTimePicker mode="date" placement="right-center" ariaLabel="Дата окончания периода" value={occurredTo} onChange={(value) => { setOccurredTo(value); setPeriodFilter("all"); }} /></label>
+            <label><span>Длительность от, сек.</span><input inputMode="numeric" min="0" type="number" value={durationMin} onChange={(event) => setDurationMin(event.target.value)} /></label>
+            <label><span>Длительность до, сек.</span><input inputMode="numeric" min="0" type="number" value={durationMax} onChange={(event) => setDurationMax(event.target.value)} /></label>
+            <label><span>Анализ</span><SelectControl aria-label="Наличие анализа" value={analysisFilter} onChange={(event) => setAnalysisFilter(event.target.value as typeof analysisFilter)}><option value="all">Не важно</option><option value="yes">Есть анализ</option><option value="no">Без анализа</option></SelectControl></label>
+            <label><span>Действия</span><SelectControl aria-label="Наличие действий" value={actionsFilter} onChange={(event) => setActionsFilter(event.target.value as typeof actionsFilter)}><option value="all">Не важно</option><option value="yes">Есть действия</option><option value="no">Без действий</option></SelectControl></label>
+            <label><span>Сортировка</span><SelectControl aria-label="Сортировка" value={sortFilter} onChange={(event) => setSortFilter(event.target.value as typeof sortFilter)}><option value="occurred_at">Время разговора</option><option value="created_at">Время импорта</option><option value="duration">Длительность</option></SelectControl></label>
+            <label><span>Порядок</span><SelectControl aria-label="Порядок сортировки" value={sortOrder} onChange={(event) => setSortOrder(event.target.value as typeof sortOrder)}><option value="desc">Сначала новые / длинные</option><option value="asc">Сначала старые / короткие</option></SelectControl></label>
+          </div>
+          <label className="call-filter-check"><input type="checkbox" checked={processingErrorOnly} onChange={(event) => setProcessingErrorOnly(event.target.checked)} /><span>Только звонки с ошибкой обработки</span></label>
+          {filtersError && <p className="call-filter-error" role="alert">{filtersError}</p>}
+        </section>
+          </div>
         </div>
         <label className={`call-favorite-filter ${favoriteOnly ? "checked" : ""}`}>
           <input
@@ -1056,13 +1352,19 @@ export function CallsPage({
             <div className="empty-state">{calls.length === 0 ? "Звонков пока нет." : "Звонков без папки по фильтрам нет."}</div>
           )}
         </div>
+        {nextCallsCursor && !filtersLoading && (
+          <button className="ghost-button wide calls-load-more" type="button" disabled={loadingMoreCalls} onClick={() => void loadMoreCalls()}>
+            {loadingMoreCalls ? "Загружаю…" : "Показать ещё звонки"}
+            <ChevronDown size={16} />
+          </button>
+        )}
         <button className="ghost-button wide calls-show-all" type="button" onClick={resetFilters} disabled={!filtersChanged}>
           {filtersChanged ? "Показать все звонки" : "Все звонки показаны"}
           <ChevronRight size={16} />
         </button>
       </aside>
       <button
-        className="calls-list-emblem"
+        className="icon-button calls-list-collapse calls-list-emblem"
         type="button"
         aria-label="Открыть список звонков"
         aria-controls="mobile-call-drawer"
@@ -1070,7 +1372,7 @@ export function CallsPage({
         title="Открыть список звонков"
         onClick={toggleCallList}
       >
-        <span aria-hidden="true"><PanelLeftOpen size={22} /></span>
+        <span aria-hidden="true"><ChevronRight size={21} /></span>
       </button>
       <button
         className={`mobile-call-drawer-backdrop ${mobileSidebarOpen ? "open" : ""}`}

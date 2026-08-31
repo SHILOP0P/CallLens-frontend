@@ -1111,19 +1111,37 @@ export const api = {
 
   listCalls(filters?: {
     q?: string;
-    status?: CallStatus;
-    scope?: VisibilityScope;
+    status?: CallStatus | CallStatus[];
+    scope?: VisibilityScope | VisibilityScope[];
     company_uuid?: string;
-    department_uuid?: string;
+    department_uuid?: string | string[];
+    participant_user_uuid?: string | string[];
     uploaded_by_user_uuid?: string;
-    folder_uuid?: string;
+    folder_uuid?: string | string[];
+    source_provider?: "manual" | "generic_api" | "bitrix24";
+    connection_uuid?: string | string[];
     from?: string;
     to?: string;
+    occurred_from?: string;
+    occurred_to?: string;
+    imported_from?: string;
+    imported_to?: string;
+    duration_min_seconds?: number;
+    duration_max_seconds?: number;
+    has_analysis?: boolean;
+    has_actions?: boolean;
+    has_processing_error?: boolean;
+    favorite_only?: boolean;
+    include_upload_fallback?: boolean;
+    sort?: "occurred_at" | "created_at" | "duration";
+    order?: "asc" | "desc";
+    cursor?: string;
     limit?: number;
     offset?: number;
-  }) {
+  }, signal?: AbortSignal) {
     return request<CallResponse[] | CallsListResponse>(
       `/calls${queryString(filters)}`,
+      { signal },
     );
   },
 
@@ -1520,7 +1538,15 @@ export const api = {
 
   createIntegrationKey(
     applicationId: string,
-    input: { name: string; scopes: string[]; expires_at?: string },
+    input: {
+      name: string;
+      scopes: string[];
+      expires_at?: string;
+      permanent_credit_limit?: number;
+      temporary_credit_limit?: number;
+      temporary_limit_starts_at?: string;
+      temporary_limit_ends_at?: string;
+    },
   ) {
     return request<CreatedIntegrationKey>(
       `/developer/applications/${encodeURIComponent(applicationId)}/keys`,
@@ -1538,13 +1564,13 @@ export const api = {
     applicationId: string,
     input: {
       name: string;
-      provider: "generic_api";
+      provider: "generic_api" | "bitrix24";
       company_uuid?: string;
 			department_uuid?: string;
 			folder_uuid?: string;
 			allow_folder_override?: boolean;
       disable_policy: "continue" | "pause" | "cancel";
-      settings: { schema_version: number; inherit_scope_instructions?: boolean };
+      settings: { schema_version: number; inherit_scope_instructions?: boolean; provider_contract_version?: number };
     },
   ) {
     return request<import("./types").IntegrationConnection>(
@@ -1555,6 +1581,120 @@ export const api = {
         body: JSON.stringify(input),
       },
     );
+  },
+
+  startBitrixOAuth(connectionId: string, portalDomain: string, lockVersion: number) {
+    return request<{ authorization_url: string; expires_at: string }>("/integrations/bitrix24/oauth/start", {
+      method: "POST",
+      headers: { "If-Match": String(lockVersion) },
+      body: JSON.stringify({ connection_uuid: connectionId, portal_domain: portalDomain }),
+    });
+  },
+
+  testBitrixConnection(connectionId: string) {
+    return request<import("./types").BitrixConnectionHealth>(`/integrations/${encodeURIComponent(connectionId)}/test`, { method: "POST" });
+  },
+
+  getBitrixHealth(connectionId: string) {
+    return request<import("./types").BitrixConnectionHealth>(`/integrations/${encodeURIComponent(connectionId)}/health`);
+  },
+
+  pauseBitrixConnection(connectionId: string, lockVersion: number) {
+    return request<import("./types").BitrixConnectionHealth>(`/integrations/${encodeURIComponent(connectionId)}/pause`, { method: "POST", headers: { "If-Match": String(lockVersion) } });
+  },
+
+  resumeBitrixConnection(connectionId: string, lockVersion: number) {
+    return request<import("./types").BitrixConnectionHealth>(`/integrations/${encodeURIComponent(connectionId)}/resume`, { method: "POST", headers: { "If-Match": String(lockVersion) } });
+  },
+
+  listBitrixExternalUsers(connectionId: string) {
+    return request<{ users: import("./types").BitrixExternalUser[] }>(`/integrations/${encodeURIComponent(connectionId)}/external-users`);
+  },
+
+  updateBitrixExternalUserMapping(connectionId: string, externalUserId: string, input: { internal_user_uuid?: string | null; department_uuid?: string | null; status: string }, lockVersion: number) {
+    return request<import("./types").BitrixExternalUser>(`/integrations/${encodeURIComponent(connectionId)}/external-user-mappings/${encodeURIComponent(externalUserId)}`, {
+      method: "PATCH", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify(input),
+    });
+  },
+
+  previewBitrixExternalUserMappings(connectionId: string, changes: import("./types").BitrixMappingChange[]) {
+    return request<import("./types").BitrixMappingPreview>(`/integrations/${encodeURIComponent(connectionId)}/mapping-preview`, {
+      method: "POST", body: JSON.stringify({ changes }),
+    });
+  },
+
+  bulkUpdateBitrixExternalUserMappings(connectionId: string, previewHash: string, changes: import("./types").BitrixMappingChange[], requestKey: string) {
+    return request<import("./types").BitrixMappingBulkResult>(`/integrations/${encodeURIComponent(connectionId)}/external-user-mappings/bulk`, {
+      method: "POST",
+      headers: { "Idempotency-Key": requestKey },
+      body: JSON.stringify({ preview_hash: previewHash, changes }),
+    });
+  },
+
+  previewBitrixBackfill(connectionId: string, rangeFrom: string, rangeTo: string) {
+    return request<import("./types").BitrixBackfillPreview>(`/integrations/${encodeURIComponent(connectionId)}/backfills/preview`, {
+      method: "POST", body: JSON.stringify({ range_from: rangeFrom, range_to: rangeTo }),
+    });
+  },
+
+  createBitrixBackfill(connectionId: string, rangeFrom: string, rangeTo: string) {
+    return request<import("./types").BitrixBackfill>(`/integrations/${encodeURIComponent(connectionId)}/backfills`, {
+      method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ range_from: rangeFrom, range_to: rangeTo }),
+    });
+  },
+
+  getBitrixBackfill(connectionId: string, backfillId: string) {
+    return request<import("./types").BitrixBackfill>(`/integrations/${encodeURIComponent(connectionId)}/backfills/${encodeURIComponent(backfillId)}`);
+  },
+
+  listBitrixBackfills(connectionId: string) {
+    return request<{ backfills: import("./types").BitrixBackfill[] }>(`/integrations/${encodeURIComponent(connectionId)}/backfills`);
+  },
+
+  createActionExternalSync(actionId: string, connectionId: string) {
+    return request<import("./types").ActionExternalSync>(`/actions/${encodeURIComponent(actionId)}/external-sync-requests`, {
+      method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify({ connection_uuid: connectionId }),
+    });
+  },
+
+  previewActionExternalSync(actionId: string) {
+    return request<import("./types").ActionExternalSyncPreview>(`/actions/${encodeURIComponent(actionId)}/external-sync-preview`);
+  },
+
+  getActionExternalSync(actionId: string) {
+    return request<import("./types").ActionExternalSync>(`/actions/${encodeURIComponent(actionId)}/external-sync`);
+  },
+
+  getActionExternalSyncRequest(syncId: string) {
+    return request<import("./types").ActionExternalSync>(`/action-external-sync-requests/${encodeURIComponent(syncId)}`);
+  },
+
+  approveActionExternalSync(syncId: string, lockVersion: number) {
+    return request<import("./types").ActionExternalSync>(`/action-external-sync-requests/${encodeURIComponent(syncId)}/approve`, { method: "POST", headers: { "If-Match": String(lockVersion) } });
+  },
+
+  rejectActionExternalSync(syncId: string, lockVersion: number, comment: string) {
+    return request<void>(`/action-external-sync-requests/${encodeURIComponent(syncId)}/reject`, { method: "POST", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify({ comment }) });
+  },
+
+  resolveActionExternalSync(syncId: string, lockVersion: number, resolution: "retry_create" | "cancel" | "confirm_task" | "accept_external" | "unlink" | "restore_verbatrace", reason: string, externalTaskId?: string) {
+    return request<import("./types").ActionExternalSync>(`/action-external-sync-requests/${encodeURIComponent(syncId)}/resolve`, {
+      method: "POST",
+      headers: { "If-Match": String(lockVersion) },
+      body: JSON.stringify({ resolution, reason, ...(externalTaskId ? { external_task_id: externalTaskId } : {}) }),
+    });
+  },
+
+  getSupportAccessRequest(requestId: string) {
+    return request<import("./types").SupportAccessRequest>(`/support-access-requests/${encodeURIComponent(requestId)}`);
+  },
+
+  approveSupportAccessRequest(requestId: string, lockVersion: number, comment: string) {
+    return request<import("./types").SupportAccessGrant>(`/support-access-requests/${encodeURIComponent(requestId)}/approve`, { method: "POST", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify({ comment }) });
+  },
+
+  denySupportAccessRequest(requestId: string, lockVersion: number, comment: string) {
+    return request<void>(`/support-access-requests/${encodeURIComponent(requestId)}/deny`, { method: "POST", headers: { "If-Match": String(lockVersion) }, body: JSON.stringify({ comment }) });
   },
 
   updateIntegrationConnection(
@@ -1654,7 +1794,15 @@ export const api = {
 
   createServiceAccountKey(
     serviceAccountId: string,
-    input: { name: string; scopes: string[]; expires_at?: string },
+    input: {
+      name: string;
+      scopes: string[];
+      expires_at?: string;
+      permanent_credit_limit?: number;
+      temporary_credit_limit?: number;
+      temporary_limit_starts_at?: string;
+      temporary_limit_ends_at?: string;
+    },
   ) {
     return request<CreatedIntegrationKey>(
       `/service-accounts/${encodeURIComponent(serviceAccountId)}/keys`,

@@ -20,11 +20,15 @@ const hiddenMetrics: ThumbMetrics = {
 export function CustomScrollbar({
   targetRef,
   className = "",
-  alignToViewport = false
+  alignToViewport = false,
+  inset = 6,
+  rightOffset = 8
 }: {
   targetRef: RefObject<HTMLElement | null>;
   className?: string;
   alignToViewport?: boolean;
+  inset?: number;
+  rightOffset?: number;
 }) {
   const thumbRef = useRef<HTMLDivElement>(null);
   const metricsRef = useRef<ThumbMetrics>(hiddenMetrics);
@@ -50,11 +54,10 @@ export function CustomScrollbar({
         return;
       }
 
-      const inset = 6;
       const trackHeight = Math.max(0, rect.height - inset * 2);
       const height = Math.max(56, trackHeight * (target.clientHeight / target.scrollHeight));
       const travel = Math.max(0, trackHeight - height);
-      const left = (alignToViewport ? window.innerWidth : rect.right) - 8;
+      const left = (alignToViewport ? window.innerWidth : rect.right) - rightOffset;
       const top = rect.top + inset + travel * (target.scrollTop / maxScroll);
 
       metricsRef.current = { visible: true, left, top, height, trackHeight };
@@ -118,7 +121,7 @@ export function CustomScrollbar({
       shell?.removeEventListener("transitionend", stopTransition);
       shell?.removeEventListener("transitioncancel", stopTransition);
     };
-  }, [alignToViewport, targetRef]);
+  }, [alignToViewport, inset, rightOffset, targetRef]);
 
   function startDrag(event: PointerEvent<HTMLDivElement>) {
     const target = targetRef.current;
