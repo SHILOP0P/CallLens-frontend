@@ -12,7 +12,7 @@ type DateTimePickerProps = {
   required?: boolean;
   id?: string;
   mode?: "date" | "date-time";
-  placement?: "auto" | "right-center";
+  placement?: "auto" | "right-center" | "below";
   ariaLabel?: string;
 };
 
@@ -60,6 +60,16 @@ export function DateTimePicker({ value, onChange, required, id, mode = "date-tim
       const viewportGap = 12;
       const width = Math.min(360, window.innerWidth - viewportGap * 2);
       const height = popoverRef.current?.offsetHeight ?? 520;
+      if (placement === "below") {
+        const below = rect.bottom + 8;
+        const above = rect.top - height - 8;
+        const top = below + height <= window.innerHeight - viewportGap
+          ? below
+          : Math.max(viewportGap, above);
+        const left = Math.min(Math.max(viewportGap, rect.left), window.innerWidth - width - viewportGap);
+        setPopoverPosition({ top, left, width });
+        return;
+      }
       const centeredTop = anchorRect ? anchorRect.top + (anchorRect.height - height) / 2 : (window.innerHeight - height) / 2;
       const top = Math.min(Math.max(viewportGap, centeredTop), Math.max(viewportGap, window.innerHeight - height - viewportGap));
       const leftOfAnchor = anchorRect ? anchorRect.left - width - viewportGap : -1;

@@ -38,6 +38,7 @@ import type {
 import { SelectControl } from "../../shared/ui/primitives";
 import { TransientAlert } from "../../shared/ui/TransientAlert";
 import { CustomScrollbar } from "../../shared/ui/custom-scrollbar";
+import { DateTimePicker } from "../../shared/ui/DateTimePicker";
 
 const statusLabels: Record<string, string> = {
   active: "Активно", disabled: "Отключено", revoked: "Отозвано", draft: "Черновик",
@@ -62,6 +63,48 @@ const scopeLabels: Record<string, string> = {
 };
 const actorLabels: Record<string, string> = { user: "Пользователь", service_account: "Сервисный аккаунт", system: "Система" };
 const entityLabels: Record<string, string> = { connection: "Подключение", ingest_item: "Импорт", service_account: "Сервисный аккаунт", api_key: "API-ключ", webhook: "Webhook" };
+
+const integrationsPageStateKey = "verbatrace:integrations-page:v1";
+
+type IntegrationsPageState = {
+  applicationUUID?: string;
+  scrollTop?: number;
+};
+
+type IntegrationConnectionViewState = {
+  connectionUUID?: string;
+  detailView?: "overview" | "imports" | "audit";
+  importsPage?: number;
+  auditPage?: number;
+};
+
+function readSessionState<T>(key: string): T | null {
+  try {
+    const value = window.sessionStorage.getItem(key);
+    return value ? JSON.parse(value) as T : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSessionState(key: string, value: unknown) {
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // The page remains usable when browser storage is unavailable.
+  }
+}
+
+function connectionViewStateKey(applicationUUID: string) {
+  return `verbatrace:integration-view:v1:${applicationUUID}`;
+}
+
+function isBitrixConnection(connection: IntegrationConnection | undefined): boolean {
+  if (!connection) return false;
+  return connection.provider === "bitrix24"
+    || connection.settings.provider_contract_version === 1
+    || typeof connection.settings.portal_domain_display === "string";
+}
 const placementLabels: Record<string, string> = { connection_default: "Папка подключения", request_override: "Папка из запроса", system_external: "Системная папка «Внешние»" };
 
 function ScopeList({ scopes }: { scopes: string[] }) {
@@ -79,32 +122,6 @@ function portalDomainForInput(...values: unknown[]) {
 }
 
 type BitrixBackfillRange = { from: string; to: string };
-
-function bitrixBackfillRangeStorageKey(connectionUUID: string) {
-	return `verbatrace:bitrix-backfill-range:v1:${connectionUUID}`;
-}
-
-function readBitrixBackfillRange(connectionUUID: string): BitrixBackfillRange {
-	try {
-		const raw = window.localStorage.getItem(bitrixBackfillRangeStorageKey(connectionUUID));
-		if (!raw) return { from: "", to: "" };
-		const parsed = JSON.parse(raw) as Partial<BitrixBackfillRange>;
-		return {
-			from: typeof parsed.from === "string" ? parsed.from : "",
-			to: typeof parsed.to === "string" ? parsed.to : "",
-		};
-	} catch {
-		return { from: "", to: "" };
-	}
-}
-
-function writeBitrixBackfillRange(connectionUUID: string, range: BitrixBackfillRange) {
-	try {
-		window.localStorage.setItem(bitrixBackfillRangeStorageKey(connectionUUID), JSON.stringify(range));
-	} catch {
-		// The inputs remain usable when browser storage is unavailable.
-	}
-}
 
 type BitrixMappingDraft = { internalUserId: string; departmentId: string; status: "mapped" | "ignored" | "unmapped" };
 
@@ -174,6 +191,8 @@ export function IntegrationsPage({
   );
   const [copyMessage, setCopyMessage] = useState("");
   const pageScrollRef = useRef<HTMLElement>(null);
+  const initialPageStateRef = useRef(readSessionState<IntegrationsPageState>(integrationsPageStateKey));
+  const restoringScrollRef = useRef((initialPageStateRef.current?.scrollTop ?? 0) > 0);
   const [keyApp, setKeyApp] = useState("");
   const [keyName, setKeyName] = useState("Основной ключ");
   const [keyLimitMode, setKeyLimitMode] = useState<"none" | "permanent" | "temporary">("none");
@@ -195,7 +214,12 @@ export function IntegrationsPage({
       .then((value) => {
         if (alive) {
           setApps(value.applications);
-          setKeyApp(value.applications[0]?.application_uuid ?? "");
+          const savedApplicationUUID = initialPageStateRef.current?.applicationUUID;
+          setKeyApp(
+            value.applications.some((app) => app.application_uuid === savedApplicationUUID)
+              ? savedApplicationUUID ?? ""
+              : value.applications[0]?.application_uuid ?? "",
+          );
         }
       })
       .catch((error) => {
@@ -210,6 +234,61 @@ export function IntegrationsPage({
       alive = false;
     };
   }, [owner, ownerId, ownerType]);
+  useEffect(() => {
+    if (!keyApp || apps.length === 0) return;
+    const current = readSessionState<IntegrationsPageState>(integrationsPageStateKey) ?? {};
+    writeSessionState(integrationsPageStateKey, { ...current, applicationUUID: keyApp });
+  }, [apps.length, keyApp]);
+  useEffect(() => {
+    const target = pageScrollRef.current;
+    if (!target) return;
+
+    let frame = 0;
+    const saveScroll = () => {
+      if (restoringScrollRef.current) return;
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const current = readSessionState<IntegrationsPageState>(integrationsPageStateKey) ?? {};
+        writeSessionState(integrationsPageStateKey, { ...current, scrollTop: target.scrollTop });
+      });
+    };
+    target.addEventListener("scroll", saveScroll, { passive: true });
+    return () => {
+      target.removeEventListener("scroll", saveScroll);
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+  useEffect(() => {
+    const target = pageScrollRef.current;
+    const savedScrollTop = initialPageStateRef.current?.scrollTop ?? 0;
+    if (!target || !keyApp || savedScrollTop <= 0) {
+      restoringScrollRef.current = false;
+      return;
+    }
+    const scrollTarget = target;
+
+    const observer = new ResizeObserver(restore);
+    const timeout = window.setTimeout(() => {
+      restore();
+      restoringScrollRef.current = false;
+      observer.disconnect();
+    }, 5000);
+    function restore() {
+      scrollTarget.scrollTop = Math.min(savedScrollTop, Math.max(0, scrollTarget.scrollHeight - scrollTarget.clientHeight));
+      if (Math.abs(scrollTarget.scrollTop - savedScrollTop) <= 1) {
+        restoringScrollRef.current = false;
+        observer.disconnect();
+        window.clearTimeout(timeout);
+      }
+    }
+    observer.observe(scrollTarget);
+    const frame = window.requestAnimationFrame(restore);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+      observer.disconnect();
+    };
+  }, [keyApp]);
   async function createApp() {
     if (!name.trim()) return;
     setBusy(true);
@@ -434,6 +513,7 @@ export function IntegrationsPage({
       </section>
       {keyApp && (
         <ConnectionManager
+          key={keyApp}
           application={apps.find((app) => app.application_uuid === keyApp)!}
           busy={busy}
           departments={departments}
@@ -502,6 +582,11 @@ function ConnectionManager({
   setMessage: (value: string) => void;
   onApplicationChanged: (application: DeveloperApplication) => void;
 }) {
+  const initialViewStateRef = useRef(
+    readSessionState<IntegrationConnectionViewState>(
+      connectionViewStateKey(application.application_uuid),
+    ),
+  );
   const [items, setItems] = useState<IntegrationConnection[]>([]);
   const [selected, setSelected] = useState("");
   const [name, setName] = useState("Основной API");
@@ -545,20 +630,21 @@ function ConnectionManager({
   const [hookURL, setHookURL] = useState("");
   const [secret, setSecret] = useState<string | null>(null);
   const [copyMessage, setCopyMessage] = useState("");
-  const [detailView, setDetailView] = useState<"overview" | "imports" | "audit">("overview");
-  const [importsPage, setImportsPage] = useState(0);
-  const [auditPage, setAuditPage] = useState(0);
+  const [detailView, setDetailView] = useState<"overview" | "imports" | "audit">(
+    initialViewStateRef.current?.detailView ?? "overview",
+  );
+  const [importsPage, setImportsPage] = useState(initialViewStateRef.current?.importsPage ?? 0);
+  const [auditPage, setAuditPage] = useState(initialViewStateRef.current?.auditPage ?? 0);
 	const connection = items.find((item) => item.connection_uuid === selected);
 	const validatedOAuth = Boolean(bitrixHealth?.oauth_configured && portalDomainForInput(bitrixHealth.portal_domain));
 	useEffect(() => {
-		if (!connection || connection.provider !== "bitrix24") {
+		if (!connection || !isBitrixConnection(connection)) {
 			setBackfillFrom("");
 			setBackfillTo("");
 			return;
 		}
-		const savedRange = readBitrixBackfillRange(connection.connection_uuid);
-		setBackfillFrom(savedRange.from);
-		setBackfillTo(savedRange.to);
+		setBackfillFrom("");
+		setBackfillTo("");
 		setBackfillPreview(null);
 		setBackfillError("");
 	}, [connection?.connection_uuid, connection?.provider]);
@@ -567,10 +653,9 @@ function ConnectionManager({
 		setBackfillTo(range.to);
 		setBackfillPreview(null);
 		setBackfillError("");
-		if (connection?.provider === "bitrix24") writeBitrixBackfillRange(connection.connection_uuid, range);
 	}
 	useEffect(() => {
-		if (!connection || connection.provider !== "bitrix24") { setBitrixHealth(null); setOAuthFeedback("idle"); setAccessCheck("idle"); setExternalUsers([]); setMappingDrafts({}); setMappingPreview(null); setMappingRequestKey(""); setBackfillPreview(null); setBackfill(null); return; }
+		if (!connection || !isBitrixConnection(connection)) { setBitrixHealth(null); setOAuthFeedback("idle"); setAccessCheck("idle"); setExternalUsers([]); setMappingDrafts({}); setMappingPreview(null); setMappingRequestKey(""); setBackfillPreview(null); setBackfill(null); return; }
 		let alive = true;
 		Promise.allSettled([api.getBitrixHealth(connection.connection_uuid), api.listBitrixBackfills(connection.connection_uuid)]).then(([healthResult, backfillsResult]) => {
 			if (!alive) return;
@@ -600,7 +685,12 @@ function ConnectionManager({
       .then((value) => {
         if (alive) {
           setItems(value.connections);
-          setSelected(value.connections[0]?.connection_uuid ?? "");
+          const savedConnectionUUID = initialViewStateRef.current?.connectionUUID;
+          setSelected(
+            value.connections.some((item) => item.connection_uuid === savedConnectionUUID)
+              ? savedConnectionUUID ?? ""
+              : value.connections[0]?.connection_uuid ?? "",
+          );
         }
       })
       .catch(
@@ -616,6 +706,15 @@ function ConnectionManager({
       alive = false;
     };
   }, [application.application_uuid, setMessage]);
+	useEffect(() => {
+		if (!selected) return;
+		writeSessionState(connectionViewStateKey(application.application_uuid), {
+			connectionUUID: selected,
+			detailView,
+			importsPage,
+			auditPage,
+		} satisfies IntegrationConnectionViewState);
+	}, [application.application_uuid, auditPage, detailView, importsPage, selected]);
 	useEffect(() => {
 		let alive = true;
 		if (application.owner_type !== "company") {
@@ -658,7 +757,7 @@ function ConnectionManager({
       setAccounts([]);
       return;
     }
-	if(connection?.provider==="bitrix24"){
+	if(isBitrixConnection(connection)){
 		setHooks([]);setDeliveries([]);setAccounts([]);
 		Promise.allSettled([api.listIntegrationIngestItems(selected,{limit:10,offset:0}),api.listIntegrationAuditEvents(selected,{limit:10,offset:0})]).then(([ingest,events])=>{if(!alive)return;setImports(ingest.status==="fulfilled"?(ingest.value.ingest_items??[]):[]);setImportsTotal(ingest.status==="fulfilled"?ingest.value.total:0);setAudit(events.status==="fulfilled"?(events.value.audit_events??[]):[]);setAuditTotal(events.status==="fulfilled"?events.value.total:0);if(ingest.status==="rejected"||events.status==="rejected")setMessage("История подключения временно недоступна.")});return()=>{alive=false};
 	}
@@ -765,7 +864,7 @@ function ConnectionManager({
     });
   }
 	async function startBitrixOAuth() {
-		if (!connection || connection.provider !== "bitrix24" || !portalDomain.trim()) return;
+		if (!connection || !isBitrixConnection(connection) || !portalDomain.trim()) return;
 		await run(async () => {
 			const result = await api.startBitrixOAuth(connection.connection_uuid, portalDomain.trim(), connection.lock_version);
 			oauthCompletionRef.current = "";
@@ -840,7 +939,7 @@ function ConnectionManager({
 		});
 	}
 	async function changeBitrixLifecycle(mode:"pause"|"resume"){
-		if(!connection||connection.provider!=="bitrix24")return;
+		if(!connection||!isBitrixConnection(connection))return;
 		await run(async()=>{const health=mode==="pause"?await api.pauseBitrixConnection(connection.connection_uuid,connection.lock_version):await api.resumeBitrixConnection(connection.connection_uuid,connection.lock_version);setBitrixHealth(health);const refreshed=await api.listIntegrationConnections(application.application_uuid);setItems(refreshed.connections);setSelected(connection.connection_uuid);setMessage(mode==="pause"?"Импорт и отправка задач приостановлены.":health.status==="active"?"Подключение возобновлено и проверено.":"Подключение возобновлено, но требует внимания.")});
 	}
 	function replaceExternalUsers(users: BitrixExternalUser[]) {
@@ -1206,7 +1305,7 @@ function ConnectionManager({
             <div className="integration-management-header">
               <h2 className="integration-title"><span className="integration-icon is-management"><Settings2 size={20}/></span>Управление: {connection.name}</h2>
               <div className="integration-actions">
-				{connection.provider === "generic_api" && (connection.status === "active" ? (
+				{!isBitrixConnection(connection) && (connection.status === "active" ? (
                 <button
                   className="ghost-button"
                   disabled={busy}
@@ -1223,7 +1322,7 @@ function ConnectionManager({
                   Включить
                 </button>
 				))}
-				{connection.provider === "bitrix24" && (connection.status === "paused" ? <button className="primary-button" disabled={busy} onClick={()=>void changeBitrixLifecycle("resume")}>Возобновить</button> : (connection.status === "active" || connection.status === "degraded" || connection.status === "reconnect_required") ? <button className="ghost-button" disabled={busy} onClick={()=>void changeBitrixLifecycle("pause")}>Приостановить</button> : null)}
+				{isBitrixConnection(connection) && (connection.status === "paused" ? <button className="primary-button" disabled={busy} onClick={()=>void changeBitrixLifecycle("resume")}>Возобновить</button> : (connection.status === "active" || connection.status === "degraded" || connection.status === "reconnect_required") ? <button className="ghost-button" disabled={busy} onClick={()=>void changeBitrixLifecycle("pause")}>Приостановить</button> : null)}
               <button
                 className="ghost-button danger"
                 disabled={busy}
@@ -1233,7 +1332,7 @@ function ConnectionManager({
               </button>
               </div>
             </div>
-			{connection.provider === "bitrix24" ? <div className="bitrix-connection-panel">
+			{isBitrixConnection(connection) ? <div className="bitrix-connection-panel">
 				<div className="integration-webhook-heading"><span className="integration-icon is-management"><PlugZap size={19}/></span><span><h2>Подключение портала</h2><small>Данные авторизации хранятся зашифрованно и никогда не показываются в браузере.</small></span></div>
 				<div className="bitrix-connect-row"><label>Домен портала<input value={portalDomain} onChange={(event) => setPortalDomain(event.target.value)} placeholder="Например, company.bitrix24.ru" /></label><button className="primary-button" disabled={busy || !portalDomain.trim() || connection.status === "revoked"} onClick={() => void startBitrixOAuth()}>{bitrixHealth?.reconnect_required ? "Переподключить" : "Авторизовать Bitrix24"}</button><button className="ghost-button" disabled={busy || accessCheck === "running" || !validatedOAuth} onClick={() => void testBitrix()}>{accessCheck === "running" ? "Проверяю…" : "Проверить доступ"}</button></div>
 				{(validatedOAuth || oauthFeedback !== "idle") && <div className={`bitrix-oauth-state is-${validatedOAuth ? "success" : oauthFeedback}`} role="status" aria-live="polite"><span aria-hidden="true">{validatedOAuth ? "✓" : oauthFeedback === "waiting" ? "…" : "!"}</span><span><strong>{validatedOAuth ? "Портал успешно авторизован" : oauthFeedback === "waiting" ? "Ожидается завершение авторизации" : "Нужно авторизоваться заново"}</strong><small>{validatedOAuth ? "Данные доступа получены и привязаны к корректному домену портала." : oauthFeedback === "waiting" ? "Завершите авторизацию в окне Bitrix24 — состояние обновится автоматически." : "Сохранённые данные авторизации не удалось подтвердить для корректного портала. Введите домен и авторизуйтесь заново."}</small></span></div>}
@@ -1241,7 +1340,7 @@ function ConnectionManager({
 				{bitrixHealth && <div className="bitrix-capability-grid" aria-label="Доступные возможности Bitrix24"><CapabilityState label="Статистика звонков" ok={bitrixHealth.calls_readable}/><CapabilityState label="Пользователи" ok={bitrixHealth.users_readable}/><CapabilityState label="Создание задач" ok={bitrixHealth.tasks_writable}/><CapabilityState label="Проверено на портале" ok={bitrixHealth.connector_verified}/></div>}
 				<section className="bitrix-backfill-panel" aria-labelledby="bitrix-backfill-title">
 					<div><strong id="bitrix-backfill-title">Импорт истории звонков</strong><small>Сначала проверьте период и ожидаемое количество, затем подтвердите запуск. Повторный запуск не создаёт дубликаты звонков.</small></div>
-					<div className="bitrix-backfill-fields"><label>С даты и времени<input type="datetime-local" value={backfillFrom} onChange={(event) => changeBackfillRange({ from: event.target.value, to: backfillTo })} /></label><label>До даты и времени<input type="datetime-local" value={backfillTo} onChange={(event) => changeBackfillRange({ from: backfillFrom, to: event.target.value })} /></label><button className="ghost-button" type="button" disabled={busy || !bitrixHealth?.calls_readable || !backfillFrom || !backfillTo} onClick={() => void previewBackfill()}>Проверить период</button></div>
+					<div className="bitrix-backfill-fields"><label>С даты и времени<DateTimePicker placement="below" ariaLabel="Начало периода импорта" value={backfillFrom} onChange={(value) => changeBackfillRange({ from: value, to: backfillTo })} /></label><label>До даты и времени<DateTimePicker placement="below" ariaLabel="Окончание периода импорта" value={backfillTo} onChange={(value) => changeBackfillRange({ from: backfillFrom, to: value })} /></label><button className="ghost-button" type="button" disabled={busy || !bitrixHealth?.calls_readable || !backfillFrom || !backfillTo} onClick={() => void previewBackfill()}>Проверить период</button></div>
 					{backfillError && <p className="integration-help" role="alert">{backfillError}</p>}
 					{backfillPreview && <div className="bitrix-backfill-preview"><span><strong>{backfillPreview.estimated_calls.toLocaleString("ru-RU")}</strong><small>звонков найдено в Bitrix24</small></span><span><small>{new Date(backfillPreview.range_from).toLocaleString("ru-RU")} — {new Date(backfillPreview.range_to).toLocaleString("ru-RU")}</small></span><button className="primary-button" type="button" disabled={busy} onClick={() => void createBackfill()}>Запустить импорт</button></div>}
 					{backfill && <div className={`bitrix-backfill-progress is-${backfill.status}`} role="status"><span><strong>{statusLabels[backfill.status] ?? backfill.status}</strong><small>Операция продолжится в фоне</small></span><dl><div><dt>Найдено</dt><dd>{backfill.discovered_calls}</dd></div><div><dt>Импортировано</dt><dd>{backfill.imported_calls}</dd></div><div><dt>Ожидает записи</dt><dd>{backfill.pending_calls}</dd></div><div><dt>Пропущено</dt><dd>{backfill.skipped_calls}</dd></div><div><dt>Ошибки</dt><dd>{backfill.error_calls}</dd></div></dl></div>}
@@ -1296,8 +1395,8 @@ function ConnectionManager({
           </section>
         )}
       </div>
-		{connection && connection.provider === "bitrix24" ? <section className="glass integration-list bitrix-history-panel"><div className="integration-section-heading"><div><span className="eyebrow">ИСТОРИЯ ПОДКЛЮЧЕНИЯ</span><h2>Импорты и аудит</h2><p>Последние операции доступны здесь, полная история открывается без перехода в отдельный модуль.</p></div><div className="integration-actions"><button className="ghost-button" type="button" onClick={()=>{setDetailView("imports");setImportsPage(0)}}>Все импорты ({importsTotal})</button><button className="ghost-button" type="button" onClick={()=>{setDetailView("audit");setAuditPage(0)}}>Полный аудит ({auditTotal})</button></div></div>{visibleImports.map((item)=><article key={item.ingest_item_uuid}><div><strong>{item.title}</strong><small>{new Date(item.created_at).toLocaleString("ru-RU")} · <code>{item.external_call_id}</code></small></div><span className={`integration-state is-${item.status}`}>{statusLabels[item.status]??item.status}</span></article>)}{visibleImports.length===0?<p>Импортированных звонков пока нет.</p>:null}</section>:null}
-		{connection && connection.provider === "generic_api" && (
+		{connection && isBitrixConnection(connection) ? <section className="glass integration-list bitrix-history-panel"><div className="integration-section-heading"><div><span className="eyebrow">ИСТОРИЯ ПОДКЛЮЧЕНИЯ</span><h2>Импорты и аудит</h2><p>Последние операции доступны здесь, полная история открывается без перехода в отдельный модуль.</p></div><div className="integration-actions"><button className="ghost-button" type="button" onClick={()=>{setDetailView("imports");setImportsPage(0)}}>Все импорты ({importsTotal})</button><button className="ghost-button" type="button" onClick={()=>{setDetailView("audit");setAuditPage(0)}}>Полный аудит ({auditTotal})</button></div></div>{visibleImports.map((item)=><article key={item.ingest_item_uuid}><div><strong>{item.title}</strong><small>{new Date(item.created_at).toLocaleString("ru-RU")} · <code>{item.external_call_id}</code></small></div><span className={`integration-state is-${item.status}`}>{statusLabels[item.status]??item.status}</span></article>)}{visibleImports.length===0?<p>Импортированных звонков пока нет.</p>:null}</section>:null}
+		{connection && !isBitrixConnection(connection) && (
         <>
           <section className="glass integration-list">
             <h2 className="integration-title"><span className="integration-icon is-account"><UserCog size={20}/></span>Сервисные аккаунты</h2>

@@ -8138,7 +8138,8 @@ html[data-theme="light"] .credit-skeleton-heatmap span { background:rgba(49,132,
 .app-shell .integrations-page.custom-scroll-target { scrollbar-width:none; }
 .app-shell .integrations-page.custom-scroll-target::-webkit-scrollbar { display:none; width:0; height:0; }
 .integration-section-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
-.integration-section-heading > div { display:grid; gap:5px; }
+.integration-section-heading > div:not(.integration-actions) { display:grid; min-width:0; gap:5px; }
+.integration-section-heading > .integration-actions { flex:0 0 auto; flex-wrap:nowrap; }
 .integration-section-heading p { margin:0; color:var(--muted); font-size:.88rem; }
 .integration-title { display:flex; align-items:center; gap:10px; }
 .integration-icon { display:inline-grid; place-items:center; flex:0 0 auto; width:36px; height:36px; border-radius:11px; }
@@ -8222,7 +8223,8 @@ html[data-theme="light"] .app-shell .bitrix-backfill-fields input { color-scheme
 .bitrix-backfill-progress dd { margin:2px 0 0; font-weight:800; }
 .bitrix-backfill-progress.is-failed { border-color:color-mix(in srgb,var(--app-danger,#e96868) 38%,var(--app-border)); }
 .bitrix-mapping-heading { display:flex; justify-content:space-between; align-items:end; gap:12px; }
-.bitrix-mapping-heading > div,.bitrix-mapping-row > div { display:grid; gap:3px; }
+.bitrix-mapping-heading > div:not(.integration-actions),.bitrix-mapping-row > div { display:grid; min-width:0; gap:3px; }
+.bitrix-mapping-heading > .integration-actions { flex:0 0 auto; flex-wrap:nowrap; }
 .bitrix-mapping-list { display:grid; gap:8px; }
 .bitrix-mapping-list:has(.custom-select.open) { position:relative; z-index:100; }
 .bitrix-mapping-row { position:relative; display:grid; grid-template-columns:minmax(170px,1fr) minmax(150px,.8fr) minmax(170px,1fr) auto; gap:9px; align-items:center; padding:10px; border:1px solid var(--app-border); border-radius:14px; background:var(--app-surface); }
