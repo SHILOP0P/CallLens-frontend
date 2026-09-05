@@ -24,3 +24,11 @@ export function wordNeedsLeadingSpace(text: string, index: number) {
   if (index === 0) return false;
   return !/^[,.;:!?%)\]}»”’…]/u.test(text);
 }
+
+/** Keep punctuation outside the visual mask without changing the transcript text. */
+export function splitRedactedWord(text: string, marker?: string) {
+  if (!marker) return null;
+  const start = text.indexOf(marker);
+  if (start < 0) return null;
+  return { before: text.slice(0, start), marker, after: text.slice(start + marker.length) };
+}

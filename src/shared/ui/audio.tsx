@@ -1,7 +1,7 @@
 import { Download, Pause, Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { getCallAudioBlob, getCallAudioUrl, getCallMediaBlob, getCallMediaUrl } from "../../api";
+import { api, getCallMediaBlob, getCallMediaUrl } from "../../api";
 import type { CallResponse, MediaSeekTarget, TranscriptionWordResponse } from "../../types";
 import { activeTranscriptWordIndex } from "../lib/transcript";
 import { formatDuration } from "../lib/formatters";
@@ -22,11 +22,66 @@ type MediaPlayerProps = {
   onActiveWordChange?: (index: number) => void;
 };
 
+type ResolvedMediaPlayerProps = MediaPlayerProps & {
+  mediaVariant: "original" | "redacted";
+  accessSession: string;
+};
+
 export function CallMediaPlayer(props: MediaPlayerProps) {
-  return isVideoCall(props.call) ? <CallVideoPlayer {...props} /> : <CallAudioPlayer {...props} />;
+  const privacy = props.call.privacy;
+  const initialVariant = privacy?.recommended_media_variant ?? "original";
+  const [mediaVariant, setMediaVariant] = useState<"original" | "redacted">(initialVariant);
+  const [accessSession, setAccessSession] = useState("");
+  const [redactedStatus, setRedactedStatus] = useState(privacy?.sanitized_media_status ?? "not_requested");
+  const [variantError, setVariantError] = useState("");
+
+  useEffect(() => { setMediaVariant(initialVariant); setRedactedStatus(privacy?.sanitized_media_status ?? "not_requested"); }, [props.call.id, initialVariant, privacy?.sanitized_media_status]);
+  useEffect(() => {
+    let cancelled = false;
+    let pollTimer = 0;
+    setAccessSession(""); setVariantError("");
+    async function prepare() {
+      try {
+        if (mediaVariant === "redacted" && redactedStatus !== "ready") {
+          const requested = await api.requestRedactedMedia(props.call.id);
+          if (cancelled) return;
+          setRedactedStatus(requested.status);
+          if (requested.status !== "ready") {
+            pollTimer = window.setInterval(async () => {
+              try {
+                const current = await api.getRedactedMedia(props.call.id);
+                if (cancelled) return;
+                setRedactedStatus(current.status);
+                if (current.status === "ready") {
+                  window.clearInterval(pollTimer);
+                  const session = await api.createMediaAccessSession(props.call.id, "redacted");
+                  if (!cancelled) setAccessSession(session.media_access_session_uuid);
+                } else if (current.status === "failed") {
+                  window.clearInterval(pollTimer);
+                  setVariantError("Не удалось подготовить очищенную запись");
+                }
+              } catch (cause) { if (!cancelled) setVariantError(cause instanceof Error ? cause.message : "Не удалось проверить очищенную запись"); }
+            }, 2000);
+            return;
+          }
+        }
+        const session = await api.createMediaAccessSession(props.call.id, mediaVariant);
+        if (!cancelled) setAccessSession(session.media_access_session_uuid);
+      } catch (cause) { if (!cancelled) setVariantError(cause instanceof Error ? cause.message : "Запись недоступна"); }
+    }
+    void prepare();
+    return () => { cancelled = true; if (pollTimer) window.clearInterval(pollTimer); };
+  }, [props.call.id, mediaVariant]);
+
+  const resolved = { ...props, mediaVariant, accessSession };
+  return <div className="privacy-media-shell">
+    {privacy?.protected && <div className="privacy-media-toolbar"><div role="group" aria-label="Версия записи"><button type="button" className={mediaVariant === "original" ? "active" : ""} disabled={!privacy.capabilities.can_read_original_media} onClick={() => setMediaVariant("original")}>Оригинал</button><button type="button" className={mediaVariant === "redacted" ? "active" : ""} disabled={!privacy.capabilities.can_request_sanitized_media} onClick={() => setMediaVariant("redacted")}>Очищенная</button></div><small>{mediaVariant === "redacted" && redactedStatus !== "ready" ? "Подготавливаем запись: звук с персональными данными будет заменён сигналом" : mediaVariant === "redacted" ? "Персональные данные в звуке скрыты" : "Исходная запись без изменений"}</small></div>}
+    {variantError && <div className="form-error" role="alert">{variantError}</div>}
+    {accessSession ? (isVideoCall(props.call) ? <CallVideoPlayer {...resolved} /> : <CallAudioPlayer {...resolved} />) : <div className="media-access-loading">Проверяем доступ к записи…</div>}
+  </div>;
 }
 
-function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onActiveWordChange }: MediaPlayerProps) {
+function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onActiveWordChange, mediaVariant, accessSession }: ResolvedMediaPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const speedControlRef = useRef<HTMLDivElement | null>(null);
   const speedHoldTimerRef = useRef<number | null>(null);
@@ -38,7 +93,7 @@ function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onAct
   const [duration, setDuration] = useState(call.duration_seconds || 0);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
-  const source = useMemo(() => getCallMediaUrl(call), [call.id, call.media_url, call.audio_url]);
+  const source = useMemo(() => getCallMediaUrl(call, mediaVariant, accessSession), [call.id, mediaVariant, accessSession]);
 
   useEffect(() => {
     if (videoRef.current && seekTarget) {
@@ -121,7 +176,7 @@ function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onAct
   async function downloadVideo() {
     setDownloading(true);
     try {
-      const blob = await getCallMediaBlob(call);
+      const blob = await getCallMediaBlob(call, mediaVariant, accessSession);
       const downloadUrl = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
@@ -181,7 +236,7 @@ function CallVideoPlayer({ call, seekTarget, words = emptyTranscriptWords, onAct
   );
 }
 
-export function CallAudioPlayer({ call, seekTarget, words = emptyTranscriptWords, onActiveWordChange }: MediaPlayerProps) {
+export function CallAudioPlayer({ call, seekTarget, words = emptyTranscriptWords, onActiveWordChange, mediaVariant = "original", accessSession = "" }: MediaPlayerProps & Partial<ResolvedMediaPlayerProps>) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const waveformRef = useRef<HTMLDivElement | null>(null);
   const speedControlRef = useRef<HTMLDivElement | null>(null);
@@ -201,7 +256,7 @@ export function CallAudioPlayer({ call, seekTarget, words = emptyTranscriptWords
   const [playbackRate, setPlaybackRate] = useState(1);
   const [speedMenuOpen, setSpeedMenuOpen] = useState(false);
   const source = useMemo(
-    () => getCallAudioUrl(call),
+    () => getCallMediaUrl(call, mediaVariant, accessSession),
     [
       call.id,
       call.audio_url,
@@ -209,7 +264,9 @@ export function CallAudioPlayer({ call, seekTarget, words = emptyTranscriptWords
       call.file_url,
       call.media_url,
       call.recording_url,
-      call.download_url
+      call.download_url,
+      mediaVariant,
+      accessSession
     ]
   );
 
@@ -228,7 +285,7 @@ export function CallAudioPlayer({ call, seekTarget, words = emptyTranscriptWords
     setWaveform([]);
     setLoadingWaveform(false);
 
-    getCallAudioBlob(call)
+    getCallMediaBlob(call, mediaVariant, accessSession)
       .then(async (blob) => {
         if (cancelled) return;
         objectUrl = URL.createObjectURL(blob);

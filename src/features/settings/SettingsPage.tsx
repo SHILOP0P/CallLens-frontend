@@ -5,6 +5,7 @@ import {
   FileText,
   MonitorSmartphone,
   PlugZap,
+  ShieldCheck,
   Settings
 } from "lucide-react";
 import type { AppPage } from "../../types";
@@ -15,6 +16,7 @@ const settingsIcons: Partial<Record<AppPage, React.ReactNode>> = {
   settingsIntegrations: <PlugZap size={22} />,
   settingsCompanies: <Building2 size={22} />,
   settingsInstructions: <FileText size={22} />,
+  settingsPrivacy: <ShieldCheck size={22} />,
   profileDevices: <MonitorSmartphone size={22} />
 };
 

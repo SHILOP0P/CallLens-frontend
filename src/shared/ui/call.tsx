@@ -14,9 +14,9 @@ import type {
   TranscriptionSpeakerAssignment,
   TranscriptionWordResponse
 } from "../../types";
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, Ref } from "react";
-import { wordNeedsLeadingSpace } from "../lib/transcript";
+import { splitRedactedWord, wordNeedsLeadingSpace } from "../lib/transcript";
 
 import {
   activeCallProcess,
@@ -365,11 +365,26 @@ const TranscriptWord = memo(function TranscriptWord({ word, index, firstInBlock,
   selectedEnd: boolean;
   setRef: (element: HTMLSpanElement | null) => void;
 }) {
-  return <span
-    ref={setRef}
-    className={`transcript-word ${active ? "active" : ""} ${selected ? "evidence-selected" : ""} ${selectedStart ? "evidence-start" : ""} ${selectedEnd ? "evidence-end" : ""}`}
-    data-word-index={index}
-  >{!firstInBlock && wordNeedsLeadingSpace(word.text, index) ? " " : ""}{word.text}</span>;
+  const redaction = splitRedactedWord(word.text, word.redaction?.marker);
+  return <>
+    {!firstInBlock && wordNeedsLeadingSpace(word.text, index) ? " " : ""}
+    <span
+      ref={setRef}
+      className={`transcript-word ${word.redaction ? "is-redacted" : ""} ${active ? "active" : ""} ${selected ? "evidence-selected" : ""} ${selectedStart ? "evidence-start" : ""} ${selectedEnd ? "evidence-end" : ""}`}
+      title={word.redaction ? `${word.redaction.label}: значение скрыто` : undefined}
+      data-word-index={index}
+    >
+      {redaction ? <>
+        {redaction.before}
+        <span className="transcript-redaction-marker">
+          {redaction.marker.split("_").map((part, partIndex, parts) => <Fragment key={partIndex}>
+            {part}{partIndex < parts.length - 1 ? <>_<wbr /></> : null}
+          </Fragment>)}
+        </span>
+        {redaction.after}
+      </> : word.text}
+    </span>
+  </>;
 });
 
 function groupTranscriptWords(words: TranscriptionWordResponse[]) {

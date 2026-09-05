@@ -54,10 +54,16 @@ import type {
   PlanType,
   PlansResponse,
   ProcessingMonitoringResponse,
+  PrivacyPolicyConfig,
+  PrivacyPolicyScope,
+  PrivacyPolicyView,
+  PrivacyCorrectionRequest,
+  PrivacyCorrectionPreview,
   QualityReviewAppeal,
   QualityReviewEvent,
   QualityReviewResponse,
   QualityReviewsResponse,
+  RedactedMediaVariant,
   RegisterRequest,
   ReportFormat,
   ReportResponse,
@@ -627,7 +633,7 @@ function apiPathFromUrl(pathOrUrl: string) {
   return pathOrUrl;
 }
 
-export function getCallMediaUrl(call: CallResponse) {
+export function getCallMediaUrl(call: CallResponse, variant?: "original" | "redacted", accessSession?: string) {
   const callWithAudioLinks = call as CallResponse & {
     audio_url?: string | null;
     audio_download_url?: string | null;
@@ -636,7 +642,7 @@ export function getCallMediaUrl(call: CallResponse) {
     recording_url?: string | null;
     download_url?: string | null;
   };
-  const directUrl = [
+  const directUrl = variant ? undefined : [
     callWithAudioLinks.media_url,
     callWithAudioLinks.audio_url,
     callWithAudioLinks.audio_download_url,
@@ -650,11 +656,15 @@ export function getCallMediaUrl(call: CallResponse) {
 
   if (directUrl) return absoluteApiAssetUrl(directUrl);
 
-  return `${apiRoot}/calls/${encodeURIComponent(call.id)}/media`;
+  const params = new URLSearchParams();
+  if (variant) params.set("variant", variant);
+  if (accessSession) params.set("access_session", accessSession);
+  const query = params.toString();
+  return `${apiRoot}/calls/${encodeURIComponent(call.id)}/media${query ? `?${query}` : ""}`;
 }
 
-export function getCallMediaBlob(call: CallResponse) {
-  return requestAssetBlob(getCallMediaUrl(call));
+export function getCallMediaBlob(call: CallResponse, variant?: "original" | "redacted", accessSession?: string) {
+  return requestAssetBlob(getCallMediaUrl(call, variant, accessSession));
 }
 
 export const getCallAudioUrl = getCallMediaUrl;
@@ -668,7 +678,62 @@ export function openAuthorizedEventStream(url: string) {
   return new AuthorizedEventStream(url, refreshSessionRequest);
 }
 
+function privacyPolicyPath(scope: PrivacyPolicyScope) {
+  if (scope.type === "personal") return "/privacy-policies/personal";
+  const companyPath = `/companies/${encodeURIComponent(scope.companyId)}`;
+  if (scope.type === "company") return `${companyPath}/privacy-policy`;
+  return `${companyPath}/departments/${encodeURIComponent(scope.departmentId)}/privacy-policy`;
+}
+
 export const api = {
+  getCall(callId: string) {
+    return request<CallResponse>(`/calls/${encodeURIComponent(callId)}`);
+  },
+  requestRedactedMedia(callId: string) {
+    return request<RedactedMediaVariant>(`/calls/${encodeURIComponent(callId)}/media-variants/redacted`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } });
+  },
+  getRedactedMedia(callId: string) {
+    return request<RedactedMediaVariant>(`/calls/${encodeURIComponent(callId)}/media-variants/redacted`);
+  },
+  createMediaAccessSession(callId: string, variant: "original" | "redacted") {
+    return request<{ media_access_session_uuid: string; variant: "original" | "redacted"; expires_at: string }>(`/calls/${encodeURIComponent(callId)}/media-access-sessions`, { method: "POST", body: JSON.stringify({ schema_version: 1, variant }) });
+  },
+  previewPrivacyCorrection(callId: string, input: PrivacyCorrectionRequest) {
+    return request<PrivacyCorrectionPreview>(`/calls/${encodeURIComponent(callId)}/privacy-corrections/preview`, { method: "POST", body: JSON.stringify(input) });
+  },
+  applyPrivacyCorrection(callId: string, input: PrivacyCorrectionRequest) {
+    return request<{ revision: number; reanalysis_required: boolean }>(`/calls/${encodeURIComponent(callId)}/privacy-corrections`, { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() }, body: JSON.stringify(input) });
+  },
+  getPrivacyPolicy(scope: PrivacyPolicyScope = { type: "personal" }) {
+    const path = privacyPolicyPath(scope);
+    return request<PrivacyPolicyView>(path);
+  },
+
+  savePrivacyDraft(config: PrivacyPolicyConfig, lockVersion?: number, scope: PrivacyPolicyScope = { type: "personal" }) {
+    const path = `${privacyPolicyPath(scope)}/draft`;
+    return request<{ draft: PrivacyPolicyView["draft"] }>(path, {
+      method: "PUT",
+      headers: lockVersion ? { "If-Match": `"${lockVersion}"` } : { "If-None-Match": "*" },
+      body: JSON.stringify({ schema_version: 1, config, preview_hash: "", reason: "" }),
+    });
+  },
+
+  previewPrivacyPolicy(config: PrivacyPolicyConfig, scope: PrivacyPolicyScope = { type: "personal" }) {
+    const path = `${privacyPolicyPath(scope)}/preview`;
+    return request<{ preview_hash: string; effective_config: PrivacyPolicyConfig; warnings: Array<{ code: string; title: string; message: string }>; sample: { before: string; after: string } }>(path, {
+      method: "POST",
+      body: JSON.stringify({ schema_version: 1, config, preview_hash: "", reason: "" }),
+    });
+  },
+
+  publishPrivacyPolicy(config: PrivacyPolicyConfig, previewHash: string, reason: string, highImpactAcknowledged: boolean, scope: PrivacyPolicyScope = { type: "personal" }) {
+    const path = `${privacyPolicyPath(scope)}/publish`;
+    return request<{ active_version: PrivacyPolicyView["active_version"] }>(path, {
+      method: "POST",
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ schema_version: 1, config, preview_hash: previewHash, reason, high_impact_acknowledged: highImpactAcknowledged }),
+    });
+  },
   listQualityReviews(
     input: {
       company_uuid?: string;

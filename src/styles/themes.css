@@ -436,7 +436,7 @@ html[data-theme="dark"] .app-shell {
     #1c130f;
 }
 
-html[data-theme="dark"] .app-shell::before {
+html[data-theme="dark"] .app-shell:not(.select-menu-portal-root)::before {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 9, 0.12), rgba(18, 12, 9, 0.58) 52%, rgba(18, 12, 9, 0.2)),
     url("/assets/verbatrace-hero-background.png");
@@ -446,7 +446,7 @@ html[data-theme="dark"] .app-shell::before {
   transform: scaleX(-1);
 }
 
-html[data-theme="dark"] .app-shell::after {
+html[data-theme="dark"] .app-shell:not(.select-menu-portal-root)::after {
   content: "";
   position: fixed;
   inset: 0;

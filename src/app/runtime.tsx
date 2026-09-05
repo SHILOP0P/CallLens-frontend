@@ -74,6 +74,7 @@ export const pageRoutes: Record<AppPage, string> = {
   settingsIntegrations: "/app/settings/integrations",
   settingsCompanies: "/app/settings/companies",
   settingsInstructions: "/app/instructions",
+  settingsPrivacy: "/app/settings/privacy",
   settingsInvitations: "/app/settings/invitations",
   profile: "/app/profile",
   profileEdit: "/app/profile/edit",
@@ -127,6 +128,11 @@ export const settingsRoutes: Array<{ page: AppPage; label: string; description: 
     page: "settingsInstructions",
     label: "Инструкции",
     description: "Правила и критерии для AI-анализа звонков."
+  },
+  {
+    page: "settingsPrivacy",
+    label: "Защита данных",
+    description: "Русские смысловые маркеры, доступ к оригиналу и очищенные записи."
   },
   {
     page: "profileDevices",

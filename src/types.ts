@@ -22,6 +22,7 @@ export type AppPage =
   | "settingsIntegrations"
   | "settingsCompanies"
   | "settingsInstructions"
+  | "settingsPrivacy"
   | "settingsInvitations"
   | "profile"
   | "profileEdit"
@@ -60,7 +61,106 @@ export type SubscriptionStatus = "active" | "canceled" | "expired";
 export type ReportFormat = "pdf" | "docx" | "md" | "xlsx";
 export type ReportStatus = "pending" | "ready" | "failed";
 export type CriteriaStatus =
-  "met" | "partially_met" | "missed" | "not_applicable" | "unclear";
+  "met" | "partially_met" | "missed" | "not_applicable" | "not_evaluable" | "unclear";
+
+export type PrivacyEntityType =
+  | "person_name" | "phone_number" | "email_address" | "address"
+  | "date_of_birth" | "passport_number" | "drivers_license"
+  | "account_number" | "banking_information" | "credit_card_number"
+  | "credit_card_cvv" | "credit_card_expiration" | "password"
+  | "ip_address" | "username" | "medical_condition" | "money_amount" | "organization";
+
+export interface PrivacyPolicyConfig {
+  schema_version: 1;
+  enabled: boolean;
+  enforcement: "required";
+  marker_contract: "ru-v1";
+  entity_types: PrivacyEntityType[];
+  original_media_access: "call_acl" | "uploader_and_scope_managers" | "uploader_only";
+  sanitized_media: "off" | "on_demand";
+  exports: "redacted_by_default" | "redacted_only";
+  analysis_input: "redacted";
+}
+
+export interface PrivacyPolicyVersion {
+  id: string;
+  version: number;
+  config: PrivacyPolicyConfig;
+  publish_reason: string;
+  published_at: string;
+}
+
+export interface PrivacyPolicyView {
+  scope_type: "personal" | "company" | "department";
+  scope_uuid: string;
+  can_manage: boolean;
+  marker_contract: "ru-v1";
+  catalog: Array<{ entity_type: PrivacyEntityType; label: string; marker: string; default_enabled: boolean }>;
+  active_version: PrivacyPolicyVersion | null;
+  draft: { config: PrivacyPolicyConfig; lock_version: number; updated_at: string } | null;
+  inherited_from: {
+    scope_type: "company";
+    scope_uuid: string;
+    active_version: PrivacyPolicyVersion;
+  } | null;
+}
+
+export type PrivacyPolicyScope =
+  | { type: "personal" }
+  | { type: "company"; companyId: string }
+  | { type: "department"; companyId: string; departmentId: string };
+
+export interface CallPrivacy {
+  status: "legacy_unprotected" | "not_requested" | "queued" | "processing" | "ready" | "failed" | string;
+  protected: boolean;
+  marker_contract: string;
+  policy_version?: number | null;
+  policy_source_label: string;
+  detected_spans: number;
+  recommended_media_variant: "original" | "redacted";
+  sanitized_media_status: "not_requested" | "pending" | "processing" | "ready" | "failed" | string;
+  capabilities: {
+    can_read_original_media: boolean;
+    can_request_sanitized_media: boolean;
+    can_review_redactions: boolean;
+  };
+}
+
+export interface RedactedMediaVariant {
+  id: string;
+  status: "not_requested" | "pending" | "processing" | "ready" | "failed" | string;
+  variant: "redacted_audio" | "redacted_video";
+  mime_type?: string;
+  size_bytes?: number;
+  file_name?: string;
+  video_stream_copied?: boolean | null;
+  last_error_code?: string | null;
+  updated_at: string;
+}
+
+export interface PrivacyCorrectionRequest {
+  schema_version: 1;
+  operation: "add_mask";
+  expected_revision: number;
+  reason: string;
+  word_start_index?: number;
+  word_end_index?: number;
+  span_uuid?: string;
+  entity_type?: PrivacyEntityType;
+  replacement_text?: string;
+  remove_confirmed?: boolean;
+}
+
+export interface PrivacyCorrectionPreview {
+  operation: PrivacyCorrectionRequest["operation"];
+  current_revision: number;
+  before: string;
+  after: string;
+  entity_label: string;
+  marker: string;
+  requires_confirmation: boolean;
+  reanalysis_required: boolean;
+}
 export type BusinessOutcomeStatus =
   | "success"
   | "follow_up_needed"
@@ -253,6 +353,7 @@ export interface CallResponse {
   has_analysis?: boolean;
   has_actions?: boolean;
   created_at: string;
+  privacy?: CallPrivacy;
 }
 
 export interface CallsListResponse {
@@ -302,6 +403,12 @@ export interface TranscriptionResponse {
   edited?: boolean;
   editable?: boolean;
   editability_reason?: string;
+  redaction?: {
+    status: string;
+    marker_contract: string;
+    spans_count: number;
+    entity_counts: Array<{ entity_type: PrivacyEntityType; label: string; marker: string; count: number }>;
+  };
 }
 
 export interface TranscriptionWordEdit {
@@ -363,6 +470,12 @@ export interface TranscriptionWordResponse {
   end_seconds: number;
   confidence?: number | null;
   speaker?: string;
+  redaction?: {
+    span_uuid: string;
+    entity_type: PrivacyEntityType;
+    label: string;
+    marker: string;
+  } | null;
 }
 
 export type AnalysisEvidenceMatchStatus =
@@ -395,7 +508,7 @@ export interface TranscriptionSegmentResponse {
 export interface AnalysisResponse {
   id: string;
   call_uuid: string;
-  status: "pending" | "processing" | "done" | "failed" | string;
+  status: "pending" | "processing" | "done" | "failed" | "stale" | string;
   provider: string;
   model?: string | null;
   result_json: Record<string, unknown> | unknown[] | string | null;
@@ -528,6 +641,7 @@ export interface AnalysisV2Result {
 
 export interface CreateReportRequest {
   format: ReportFormat;
+  privacy_variant?: "redacted";
 }
 
 export interface CreateGlobalReportRequest {

@@ -2,7 +2,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   ChevronRight,
-  ChevronUp,
   CloudUpload,
   FolderMinus,
   FolderPlus,
@@ -12,8 +11,9 @@ import {
   PhoneCall,
   Trash2,
   WandSparkles
+  , ShieldCheck
 } from "lucide-react";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactNode } from "react";
 import type {
@@ -45,6 +45,7 @@ import { CallDetailSkeleton } from "../../shared/ui/loading";
 import { ReportExportPanel } from "../reports/ReportExportPanel";
 import { AnalysisComments } from "./AnalysisComments";
 import { CreateActionDialog } from "../actions/ActionsPage";
+import { TranscriptCollapseIsland } from "./TranscriptCollapseIsland";
 
 type CardProcessState = {
   label: string;
@@ -132,7 +133,6 @@ export function CallDetailPanel({
   const [instructionsError, setInstructionsError] = useState("");
   const folderMenuRef = useRef<HTMLDivElement | null>(null);
   const transcriptCardRef = useRef<HTMLDivElement | null>(null);
-  const transcriptIslandRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(()=>{if(!call?.id)return;const query=new URLSearchParams(window.location.search);if(query.get("call")!==call.id)return;const wordStart=optionalNonNegativeNumber(query.get("evidence_start"));const wordEnd=optionalNonNegativeNumber(query.get("evidence_end"));const startSeconds=optionalNonNegativeNumber(query.get("evidence_time"));const endSeconds=optionalNonNegativeNumber(query.get("evidence_end_time"));if(wordStart===undefined&&startSeconds===undefined)return;setShowFullTranscript(true);setSeekTarget({startSeconds:startSeconds??localTranscription?.words?.[wordStart??-1]?.start_seconds??0,endSeconds:endSeconds,wordStartIndex:wordStart,wordEndIndex:wordEnd??wordStart});requestAnimationFrame(()=>transcriptCardRef.current?.scrollIntoView({block:"start",behavior:"smooth"}))},[call?.id,localTranscription?.words]);
   const analysisCardRef = useRef<HTMLDivElement | null>(null);
@@ -254,87 +254,6 @@ export function CallDetailPanel({
     const timer = window.setTimeout(() => setAnalysisRunError(""), 5200);
     return () => window.clearTimeout(timer);
   }, [analysisRunError]);
-
-  useLayoutEffect(() => {
-    const card = transcriptCardRef.current;
-    const island = transcriptIslandRef.current;
-    if (!showFullTranscript || !card || !island) return;
-    const scrollArea = card.closest(".call-overview");
-    const mainToggle = card.querySelector<HTMLElement>(":scope > .analysis-toggle-button");
-    if (!mainToggle) {
-      island.hidden = true;
-      return;
-    }
-    let cardVisible = true;
-    let islandBottom = window.innerHeight - 10;
-    let lastCollision = "";
-    let lastHidden: boolean | null = null;
-    let lastReceiving: boolean | null = null;
-
-    const measureLayout = () => {
-      const rect = card.getBoundingClientRect();
-      const areaRect = scrollArea?.getBoundingClientRect() ?? { bottom: window.innerHeight };
-      islandBottom = areaRect.bottom - 10;
-      island.style.setProperty("--island-left", `${rect.left + rect.width / 2}px`);
-      island.style.setProperty("--island-bottom", `${Math.max(0, window.innerHeight - areaRect.bottom) + 10}px`);
-    };
-    const updatePosition = () => {
-      const toggleRect = mainToggle.getBoundingClientRect();
-      const distanceToIsland = toggleRect.top - islandBottom;
-      const collisionApproachDistance = 96;
-      const collision = Math.min(1, Math.max(0, (collisionApproachDistance - distanceToIsland) / collisionApproachDistance));
-      const crossed = distanceToIsland <= 0;
-      const collisionValue = collision.toFixed(3);
-      const hidden = !cardVisible || crossed;
-      const receiving = collision > 0 && !crossed;
-
-      if (collisionValue !== lastCollision) {
-        island.style.setProperty("--island-collision", collisionValue);
-        mainToggle.style.setProperty("--island-collision", collisionValue);
-        lastCollision = collisionValue;
-      }
-      if (hidden !== lastHidden) {
-        island.hidden = hidden;
-        lastHidden = hidden;
-      }
-      if (receiving !== lastReceiving) {
-        mainToggle.classList.toggle("is-island-receiving", receiving);
-        lastReceiving = receiving;
-      }
-    };
-    let frame = 0;
-    const scheduleUpdate = () => {
-      if (frame) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = 0;
-        updatePosition();
-      });
-    };
-    const measureAndSchedule = () => {
-      measureLayout();
-      scheduleUpdate();
-    };
-    measureAndSchedule();
-    const intersectionObserver = new IntersectionObserver(([entry]) => {
-      cardVisible = entry?.isIntersecting ?? false;
-      scheduleUpdate();
-    }, { root: scrollArea });
-    intersectionObserver.observe(card);
-    const resizeObserver = new ResizeObserver(measureAndSchedule);
-    resizeObserver.observe(card);
-    if (scrollArea) resizeObserver.observe(scrollArea);
-    scrollArea?.addEventListener("scroll", scheduleUpdate, { passive: true });
-    window.addEventListener("resize", measureAndSchedule);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      intersectionObserver.disconnect();
-      resizeObserver.disconnect();
-      scrollArea?.removeEventListener("scroll", scheduleUpdate);
-      window.removeEventListener("resize", measureAndSchedule);
-      mainToggle.classList.remove("is-island-receiving");
-      mainToggle.style.removeProperty("--island-collision");
-    };
-  }, [showFullTranscript, call?.id]);
 
   useEffect(() => { setLocalTranscription(transcription); }, [transcription]);
   useEffect(() => { setRevisions([]); setShowRevisionHistory(false); }, [call?.id]);
@@ -558,6 +477,7 @@ export function CallDetailPanel({
             {formatDate(call.created_at)} · {formatDuration(call.duration_seconds)} ·{" "}
             {contextLabel(call, companies, departments)}
           </small>
+          {call.privacy?.protected && <span className="call-privacy-chip"><ShieldCheck size={14} />Данные защищены{call.privacy.policy_version ? ` · политика v${call.privacy.policy_version}` : ""}</span>}
           {!call.is_test && score.score !== null && (
             <span className="call-score-chip">Оценка {formatScore(score.percent)} / 100</span>
           )}
@@ -606,15 +526,11 @@ export function CallDetailPanel({
               </div>}
             </div>
           )}
-          {showFullTranscript && transcriptExpandable && createPortal(
-            <div ref={transcriptIslandRef} className="transcript-collapse-island">
-              <button type="button" onClick={() => toggleExpandedCard(true, setShowFullTranscript, transcriptCardRef)}>
-                <ChevronUp size={18} />
-                Свернуть расшифровку
-              </button>
-            </div>,
-            document.body
-          )}
+          {showFullTranscript && transcriptExpandable && !loadingDetails && <TranscriptCollapseIsland
+            key={call.id}
+            cardRef={transcriptCardRef}
+            onCollapse={() => toggleExpandedCard(true, setShowFullTranscript, transcriptCardRef)}
+          />}
           <TranscriptPreview
             transcription={localTranscription}
             expanded={showFullTranscript}

@@ -47,6 +47,7 @@ import { OverviewPage } from "./features/overview/OverviewPage";
 import { DevicesPage, ProfileEditPage, ProfilePage } from "./features/profile/ProfilePage";
 import { AiReportsPage } from "./features/reports/AiReportsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
+import { PrivacySettingsPage } from "./features/settings/PrivacySettingsPage";
 import { TariffsPage } from "./features/tariffs/TariffsPage";
 import { IntegrationsPage } from "./features/integrations/IntegrationsPage";
 import { UploadPage } from "./features/upload/UploadPage";
@@ -280,11 +281,16 @@ function App() {
     }));
 
     Promise.allSettled([
+      api.getCall(callId),
       api.getTranscription(callId),
       api.getAnalysis(callId)
     ])
-      .then(([transcriptionResult, analysisResult]) => {
+      .then(([callResult, transcriptionResult, analysisResult]) => {
         if (cancelled) return;
+
+        if (callResult.status === "fulfilled") {
+          setCalls((current) => current.map((item) => item.id === callId ? callResult.value : item));
+        }
 
         if (transcriptionResult.status === "fulfilled") {
           setTranscriptions((current) => ({
@@ -672,8 +678,12 @@ function App() {
           transcription={selectedCall ? transcriptions[selectedCall.id] : undefined}
           loading={selectedCallDetailsLoading}
           onBack={() => selectedCall ? openCallPage(selectedCall.id) : navigate("calls")}
-          onSaved={(transcription) => {
+          onSaved={(transcription, reanalysisRequired) => {
             setTranscriptions((current) => ({ ...current, [transcription.call_uuid]: transcription }));
+            if (reanalysisRequired) {
+              setAnalyses((current) => { const next = { ...current }; delete next[transcription.call_uuid]; return next; });
+              void api.getCall(transcription.call_uuid).then((updatedCall) => setCalls((current) => current.map((item) => item.id === updatedCall.id ? updatedCall : item))).catch(() => undefined);
+            }
             openCallPage(transcription.call_uuid);
           }}
         />
@@ -765,6 +775,7 @@ function App() {
       {page === "admin" && adminCapabilities && <AdminPage capabilities={adminCapabilities} onNavigate={navigate} />}
 
       {page === "settings" && <SettingsPage onNavigate={navigate} />}
+      {page === "settingsPrivacy" && <PrivacySettingsPage companies={companies} departments={departments} onBack={() => navigate("settings")} />}
 
       {page === "settingsInstructions" && (
         <InstructionsPage

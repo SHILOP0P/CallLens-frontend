@@ -1,8 +1,8 @@
-import { ArrowLeft, Check, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, Eye, Plus, RotateCcw, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "../../api";
-import type { CallResponse, TranscriptionResponse, TranscriptionSpeakerAssignment, TranscriptionSpeakerRole, TranscriptionWordResponse, UserResponse } from "../../types";
+import type { CallResponse, PrivacyCorrectionPreview, PrivacyCorrectionRequest, PrivacyEntityType, TranscriptionResponse, TranscriptionSpeakerAssignment, TranscriptionSpeakerRole, TranscriptionWordResponse, UserResponse } from "../../types";
 import { formatSegmentTimeRange, speakerLabel } from "../../shared/lib/formatters";
 import { SelectControl } from "../../shared/ui/primitives";
 
@@ -19,7 +19,7 @@ export function TranscriptionEditPage({
   transcription?: TranscriptionResponse;
   loading?: boolean;
   onBack: () => void;
-  onSaved: (transcription: TranscriptionResponse) => void;
+  onSaved: (transcription: TranscriptionResponse, reanalysisRequired?: boolean) => void;
 }) {
   const words = transcription?.words ?? [];
   const [draft, setDraft] = useState<DraftWord[]>(() => createDraft(words));
@@ -29,6 +29,12 @@ export function TranscriptionEditPage({
   const [assignments, setAssignments] = useState<TranscriptionSpeakerAssignment[]>([]);
   const [savedAssignments, setSavedAssignments] = useState("");
   const [removingSpeaker, setRemovingSpeaker] = useState<string>();
+  const [privacyOperation, setPrivacyOperation] = useState<"add_mask">();
+  const [maskSelection, setMaskSelection] = useState<number[]>([]);
+  const [privacyEntity, setPrivacyEntity] = useState<PrivacyEntityType>("person_name");
+  const [privacyReason, setPrivacyReason] = useState("");
+  const [privacyPreview, setPrivacyPreview] = useState<PrivacyCorrectionPreview>();
+  const [privacyBusy, setPrivacyBusy] = useState(false);
 
   useEffect(() => {
     setDraft(createDraft(words));
@@ -61,7 +67,7 @@ export function TranscriptionEditPage({
   }
 
   function updateGroupSpeaker(startIndex: number, length: number, speaker: string) {
-    setDraft((current) => current.map((word, index) => index >= startIndex && index < startIndex + length ? { ...word, speaker } : word));
+    setDraft((current) => current.map((word, index) => index >= startIndex && index < startIndex + length && !words[index]?.redaction ? { ...word, speaker } : word));
   }
 
   function addSpeaker() {
@@ -75,6 +81,10 @@ export function TranscriptionEditPage({
   }
 
   function requestRemoveSpeaker(speakerKey: string) {
+    if (words.some(word => word.redaction && word.speaker === speakerKey)) {
+      setError("Нельзя удалить спикера со скрытыми словами. Можно изменить его имя и роль.");
+      return;
+    }
     const hasWords = draft.some((word) => word.speaker === speakerKey);
     if (!hasWords) {
       setAssignments((current) => current.filter((item) => item.speaker_key !== speakerKey));
@@ -90,7 +100,7 @@ export function TranscriptionEditPage({
 
   function removeSpeaker(speakerKey: string, replacementKey: string) {
     if (!replacementKey || replacementKey === speakerKey) return;
-    setDraft((current) => current.map((word) => word.speaker === speakerKey ? { ...word, speaker: replacementKey } : word));
+    setDraft((current) => current.map((word, index) => word.speaker === speakerKey && !words[index]?.redaction ? { ...word, speaker: replacementKey } : word));
     setAssignments((current) => current.filter((item) => item.speaker_key !== speakerKey));
     setRemovingSpeaker(undefined);
   }
@@ -101,6 +111,17 @@ export function TranscriptionEditPage({
     setRemovingSpeaker(undefined);
     setError("");
   }
+
+  function closePrivacyReview() { setPrivacyOperation(undefined); setMaskSelection([]); setPrivacyReason(""); setPrivacyPreview(undefined); }
+  function selectMaskWord(index: number) { setMaskSelection((current) => current.length === 0 || current.length >= 2 ? [index] : [Math.min(current[0], index), Math.max(current[0], index)]); setPrivacyPreview(undefined); }
+  function correctionRequest(): PrivacyCorrectionRequest | null {
+    if (!transcription || !privacyOperation) return null;
+    const request: PrivacyCorrectionRequest = { schema_version: 1, operation: privacyOperation, expected_revision: transcription.revision ?? 1, reason: privacyReason.trim() };
+    if (privacyOperation === "add_mask") { if (maskSelection.length === 0) return null; request.word_start_index = maskSelection[0]; request.word_end_index = maskSelection.at(-1); request.entity_type = privacyEntity; }
+    return request;
+  }
+  async function previewCorrection() { if (!call) return; const request = correctionRequest(); if (!request) return; setPrivacyBusy(true); setError(""); try { setPrivacyPreview(await api.previewPrivacyCorrection(call.id, request)); } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось проверить исправление маски"); } finally { setPrivacyBusy(false); } }
+  async function applyCorrection() { if (!call) return; const request = correctionRequest(); if (!request) return; setPrivacyBusy(true); setError(""); try { await api.applyPrivacyCorrection(call.id, request); const updated = await api.getTranscription(call.id); closePrivacyReview(); onSaved(updated, true); } catch (cause) { setError(cause instanceof Error ? cause.message : "Не удалось исправить маску"); } finally { setPrivacyBusy(false); } }
 
   async function save() {
     if (!call || !transcription || (changedIndexes.length === 0 && !participantsChanged) || saving) return;
@@ -145,6 +166,17 @@ export function TranscriptionEditPage({
       <div className="transcription-edit-counter"><Check size={17} /><strong>{changedIndexes.length}</strong><span>изменено</span></div>
     </section>
 
+    {call.privacy?.protected && call.privacy.capabilities.can_review_redactions && <section className="transcription-privacy-review glass-panel">
+      <header><div><ShieldCheck size={20} /><span><strong>Проверка маски</strong><small>Существующие маски нельзя изменить или снять. Можно скрыть дополнительные слова; это создаст новую версию.</small></span></div>{privacyOperation ? <button className="ghost-button small" type="button" onClick={closePrivacyReview}><X size={16} />Закрыть</button> : <button className="ghost-button small" type="button" onClick={() => setPrivacyOperation("add_mask")}>Добавить маску</button>}</header>
+      {privacyOperation && <div className="transcription-privacy-form">
+        <p>{maskSelection.length === 0 ? "Нажмите первое слово диапазона ниже." : maskSelection.length === 1 ? "Теперь нажмите последнее слово диапазона." : `Выбраны слова ${maskSelection[0] + 1}–${maskSelection[1] + 1}.`}</p>
+        <label><span>Категория</span><SelectControl value={privacyEntity} onChange={(event) => { setPrivacyEntity(event.target.value as PrivacyEntityType); setPrivacyPreview(undefined); }}>{privacyCategoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectControl></label>
+        <label><span>Причина (минимум 10 символов)</span><textarea value={privacyReason} onChange={(event) => { setPrivacyReason(event.target.value); setPrivacyPreview(undefined); }} placeholder="Почему нужно скрыть эти слова" /></label>
+        <div className="transcription-privacy-actions"><button className="ghost-button small" type="button" disabled={privacyBusy || privacyReason.trim().length < 10 || !correctionRequest()} onClick={() => void previewCorrection()}><Eye size={16} />Предпросмотр</button><button className="primary-button small" type="button" disabled={privacyBusy || !privacyPreview} onClick={() => void applyCorrection()}>Сохранить маску</button></div>
+        {privacyPreview && <div className="transcription-privacy-preview"><span>После добавления маски</span><p>{privacyPreview.after}</p><small>Текущий анализ будет помечен для повторного запуска.</small></div>}
+      </div>}
+    </section>}
+
     {error && <div className="form-error">{error}</div>}
     {words.length > 0 && <section className="transcription-participants">
       <div className="compare-section-heading"><div><span className="eyebrow">Участники разговора</span><h2>Роли и контакты</h2></div><button className="ghost-button small" type="button" onClick={addSpeaker}><Plus size={17} />Добавить спикера</button></div>
@@ -172,7 +204,7 @@ export function TranscriptionEditPage({
           {group.words.map((word, offset) => {
             const index = group.startIndex + offset;
             const value = draft[index]?.text ?? word.text;
-            return <input
+            return word.redaction ? <span className="transcription-redaction-chip" key={`${index}-${word.start_seconds}`}>{word.redaction.marker}</span> : privacyOperation === "add_mask" ? <button type="button" className={`transcription-mask-word${maskSelection.length > 0 && index >= maskSelection[0] && index <= (maskSelection.at(-1) ?? maskSelection[0]) ? " selected" : ""}`} key={`${index}-${word.start_seconds}`} onClick={() => selectMaskWord(index)}>{value}</button> : <input
               className={changed.has(index) ? "is-changed" : ""}
               aria-label={`Слово ${index + 1}`}
               value={value}
@@ -194,6 +226,10 @@ export function TranscriptionEditPage({
     </footer>
   </div>;
 }
+
+const privacyCategoryOptions: Array<[PrivacyEntityType, string]> = [
+  ["person_name", "Имя"], ["phone_number", "Телефон"], ["email_address", "Электронная почта"], ["address", "Адрес"], ["date_of_birth", "Дата рождения"], ["passport_number", "Номер паспорта"], ["drivers_license", "Водительское удостоверение"], ["account_number", "Номер счёта"], ["banking_information", "Банковские данные"], ["credit_card_number", "Номер карты"], ["credit_card_cvv", "Код карты"], ["credit_card_expiration", "Срок действия карты"], ["password", "Секрет"], ["ip_address", "Сетевой адрес"], ["username", "Имя пользователя"], ["medical_condition", "Медицинские данные"], ["money_amount", "Денежная сумма"], ["organization", "Организация"]
+];
 
 function createDraft(words: TranscriptionWordResponse[]): DraftWord[] {
   return words.map((word) => ({ text: word.text, speaker: word.speaker ?? "" }));

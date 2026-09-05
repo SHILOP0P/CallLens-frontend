@@ -20,6 +20,7 @@ import {
   formatScore
 } from "../../shared/lib/analysis";
 import { formatDuration } from "../../shared/lib/formatters";
+import { sparklineCoordinates, SPARKLINE_HEIGHT, SPARKLINE_WIDTH } from "./sparkline-geometry";
 
 export function OverviewPage({ calls, callsVersion }: { calls: CallResponse[]; callsVersion: string }) {
   const [analyticsOverview, setAnalyticsOverview] = useState<AnalyticsOverviewResponse | null>(null);
@@ -307,36 +308,19 @@ type ChartPoint = {
   detail?: string;
 };
 
-function MiniSparkline({ points, tone }: { points: ChartPoint[]; tone: "accent" | "success" | "warning"; }) {
+export function MiniSparkline({ points, tone }: { points: ChartPoint[]; tone: "accent" | "success" | "warning"; }) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const prepared = points.length > 0 ? points : [{ label: "Нет данных", value: 0, display: "0" }];
   const animationKey = prepared.map((point) => `${point.label}:${point.value}:${point.display}`).join("|");
-  const drawProgress = useDrawProgress(animationKey, 1900);
-  const max = Math.max(...prepared.map((point) => point.value), 1);
-  const min = Math.min(...prepared.map((point) => point.value), 0);
-  const range = Math.max(1, max - min);
-  const step = prepared.length > 1 ? 138 / (prepared.length - 1) : 138;
-  const coordinates = prepared.map((point, index) => {
-    const x = 10 + index * step;
-    const y = 44 - ((point.value - min) / range) * 34;
-    return {
-      ...point,
-      x,
-      y: Math.max(8, Math.min(46, y))
-    };
-  });
+  const coordinates = sparklineCoordinates(prepared);
   const path = smoothPath(coordinates);
 
   return (
-    <div className={`mini-chart ${tone}`}>
-      <svg className="mini-sparkline" viewBox="0 0 160 52" role="img" aria-label="График значения">
+    <div className={`mini-chart ${tone}${coordinates.length === 1 ? " is-single-point" : ""}`}>
+      <svg key={animationKey} className="mini-sparkline" viewBox={`0 0 ${SPARKLINE_WIDTH} ${SPARKLINE_HEIGHT}`} preserveAspectRatio="none" role="img" aria-label="График значения">
         <path
           d={path}
-          pathLength={100}
-          style={{
-            strokeDashoffset: 100 - drawProgress * 100,
-            opacity: 0.18 + drawProgress * 0.82
-          } as React.CSSProperties}
+          vectorEffect="non-scaling-stroke"
         />
         {coordinates.map((point, index) => (
           <circle
@@ -351,8 +335,8 @@ function MiniSparkline({ points, tone }: { points: ChartPoint[]; tone: "accent" 
         <span
           className={`chart-hit ${activeIndex === index ? "active" : ""} ${index <= 1 ? "edge-start" : ""} ${index >= coordinates.length - 2 ? "edge-end" : ""}`}
           style={{
-            left: `${Math.max(10, Math.min(90, (point.x / 160) * 100))}%`,
-            top: `${Math.max(12, Math.min(88, (point.y / 52) * 100))}%`
+            left: `${point.left}%`,
+            top: `${point.top}%`
           } as React.CSSProperties}
           tabIndex={0}
           aria-label={`${point.label}: ${point.display}`}

@@ -55,6 +55,7 @@ type SelectControlOption = {
 
 type SelectControlProps = Omit<SelectHTMLAttributes<HTMLSelectElement>, "children" | "size"> & {
   children: ReactNode;
+  menuClassName?: string;
 };
 
 export function SelectControl({
@@ -63,6 +64,7 @@ export function SelectControl({
   defaultValue,
   disabled,
   id,
+  menuClassName,
   name,
   onChange,
   value,
@@ -181,7 +183,7 @@ export function SelectControl({
       {name && <input type="hidden" name={name} value={currentValue} />}
       {open && portalRoot && createPortal(
         <span
-          className="select-menu select-menu-portal"
+          className={`select-menu select-menu-portal ${menuClassName ?? ""}`}
           role="listbox"
           aria-labelledby={controlId}
           ref={menuRef}

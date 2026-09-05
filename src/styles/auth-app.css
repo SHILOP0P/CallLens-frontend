@@ -1604,6 +1604,7 @@ button.sidebar-plan-card:focus-visible {
 }
 
 .mini-chart {
+  --mini-chart-colour: var(--app-accent);
   position: absolute;
   right: 28px;
   bottom: 22px;
@@ -1633,10 +1634,16 @@ button.sidebar-plan-card:focus-visible {
 }
 
 .mini-sparkline {
+  display: block;
   width: 100%;
   height: 100%;
   overflow: visible;
+  animation: mini-sparkline-enter 240ms ease-out;
 }
+
+/* Keep the entire line present while its matching hit targets are interactive. */
+@keyframes mini-sparkline-enter { from { opacity: .35; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .mini-sparkline { animation: none; } }
 
 .mini-sparkline path {
   fill: none;
@@ -1644,7 +1651,6 @@ button.sidebar-plan-card:focus-visible {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 3.2;
-  stroke-dasharray: 100;
 }
 
 .mini-sparkline circle {
@@ -1659,7 +1665,7 @@ button.sidebar-plan-card:focus-visible {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  cursor: help;
+  cursor: default;
   outline: 0;
   transform: translate(-50%, -50%);
 }
@@ -1671,6 +1677,11 @@ button.sidebar-plan-card:focus-visible {
 .mini-chart.warning .mini-sparkline path {
   stroke: var(--app-warning);
 }
+
+.mini-chart.success { --mini-chart-colour: var(--app-success); }
+.mini-chart.warning { --mini-chart-colour: var(--app-warning); }
+.chart-hit::before { content:""; position:absolute; left:50%; top:50%; width:6px; height:6px; border-radius:50%; background:var(--mini-chart-colour); transform:translate(-50%,-50%); opacity:0; pointer-events:none; }
+.chart-hit:is(:hover,:focus,.active)::before,.is-single-point .chart-hit::before { opacity:1; }
 
 .chart-tooltip {
   position: absolute;
@@ -1742,13 +1753,13 @@ button.sidebar-plan-card:focus-visible {
 }
 
 .chart-hit.edge-start .chart-tooltip::after {
-  left: 14px;
+  left: 11px;
 }
 
 .chart-hit.edge-end .chart-tooltip::after {
-  right: 14px;
+  right: 11px;
   left: auto;
-  transform: rotate(45deg);
+  transform: translateX(50%) rotate(45deg);
 }
 
 .chart-tooltip strong {
@@ -7958,7 +7969,13 @@ html[data-theme="dark"] .app-shell .call-row.selected {
 .credit-limit-values { display: flex; align-items: baseline; flex-wrap: wrap; gap: 5px 8px; margin: 9px 0 0; }
 .credit-limit-values strong { color: #82c6ff; font-size: 1.18rem; }
 .credit-limit-values span { color: var(--muted); }
-.credit-limit-ring { --remaining: 0deg; display: grid; flex: 0 0 112px; place-content: center; width: 112px; aspect-ratio: 1; text-align: center; border-radius: 50%; background: radial-gradient(circle closest-side, var(--panel, #211d1a) 77%, transparent 79% 99%), conic-gradient(#76b5ef var(--remaining), rgba(118,181,239,.14) 0); }
+.credit-limit-ring { --ring-colour:#76b5ef; --ring-track:rgba(118,181,239,.14); position:relative; display:grid; flex:0 0 112px; place-content:center; width:112px; aspect-ratio:1; text-align:center; border-radius:50%; contain:layout paint style; }
+.credit-limit-ring svg { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.credit-limit-ring circle { fill:none; stroke-width:12; }
+.credit-ring-track { stroke:var(--ring-track); }
+.credit-ring-value { stroke:var(--ring-colour); stroke-dashoffset:var(--credit-ring-offset); transform:rotate(-90deg); transform-origin:56px 56px; animation:credit-ring-reveal 650ms cubic-bezier(.22,1,.36,1) backwards; transition:stroke-dashoffset 400ms ease-out; }
+@keyframes credit-ring-reveal { from { stroke-dashoffset:100; } }
+@media(prefers-reduced-motion:reduce) { .credit-ring-value { animation:none; transition:none; } }
 .credit-limit-ring strong { font-size: 1.45rem; line-height: 1; }
 .credit-limit-ring span { margin-top: 4px; color: var(--muted); font-size: .75rem; }
 .credit-mock-purchase { justify-self:start; margin-top:10px; }
@@ -8002,20 +8019,40 @@ html[data-theme="dark"] .app-shell .call-row.selected {
 .credit-wallet-entry small { min-width:0; overflow:visible; color:var(--muted); line-height:1.35; overflow-wrap:anywhere; white-space:normal; }
 .credit-wallet-history .credit-history-empty { margin:0; padding:14px 16px; color:var(--muted); border:1px dashed var(--border); border-radius:11px; }
 @media(max-width:700px){.credit-wallet-history > header{align-items:flex-start; flex-direction:column; gap:6px}.credit-wallet-entry{grid-template-columns:32px minmax(0,1fr) auto}.credit-wallet-entry time{grid-column:2}.credit-wallet-entry strong{grid-column:3;grid-row:1}.credit-wallet-entry small{grid-column:2/-1}}
-.credit-activity-block { width:fit-content; max-width:100%; margin-inline:auto; }
+.credit-activity-block { width:100%; max-width:904px; min-width:0; margin-inline:auto; }
 .credit-activity-toolbar { display:flex; align-items:center; justify-content:space-between; width:100%; gap:24px; margin-bottom:20px; }
 .credit-activity-toolbar > div { display:flex; gap:20px; padding:0; }
 .credit-activity-toolbar button { min-height:34px; padding:5px 0; color:color-mix(in srgb,var(--muted) 72%,transparent); border:0; border-radius:0; background:transparent; font-weight:700; }
 .credit-activity-toolbar button:hover { color:color-mix(in srgb,var(--text) 76%,var(--muted)); }
 .credit-activity-toolbar button.active { color:var(--text); background:transparent; }
-.credit-heatmap-scroll { width:fit-content; max-width:100%; margin-inline:auto; padding:4px 0 2px; overflow-x:auto; scrollbar-width:none; }
-.credit-heatmap-scroll::-webkit-scrollbar { display:none; width:0; height:0; }
+.credit-activity-description { max-width:900px; margin:0 0 12px; color:var(--app-muted); font-size:12px; line-height:1.5; }
+.credit-activity-toolbar button:focus-visible { outline:2px solid var(--app-accent); outline-offset:4px; border-radius:4px; }
+.credit-heatmap-scroll { width:100%; max-width:100%; min-width:0; box-sizing:border-box; margin-inline:auto; padding:4px 2px 8px; overflow-x:auto; scrollbar-width:thin; scrollbar-color:var(--app-border) transparent; }
+.credit-heatmap-canvas { width:max-content; }
 .credit-heatmap { display:grid; grid-template-rows:repeat(7,13px); grid-auto-flow:column; grid-auto-columns:13px; align-content:start; width:max-content; min-height:115px; gap:4px; }
-.credit-heatmap span { width:13px; height:13px; border-radius:4px; background:rgb(105 174 235 / var(--intensity)); box-shadow:inset 0 0 0 1px rgba(148,196,238,.08); opacity:0; transform:scale(.62); animation:credit-cell-wave 420ms cubic-bezier(.2,.78,.24,1) forwards; animation-delay:calc(var(--cell-index) * 4ms); }
-.credit-heatmap span.is-empty { background:rgba(255,255,255,.025); box-shadow:inset 0 0 0 1px rgba(255,255,255,.08); }
-.credit-heatmap span.is-placeholder { visibility:hidden; animation:none; }
-.credit-heatmap-months { display:grid; width:max-content; column-gap:4px; min-height:24px; margin-top:10px; color:color-mix(in srgb,var(--muted) 82%,transparent); font-size:.78rem; }
-.credit-heatmap-months span { overflow:visible; white-space:nowrap; }
+.credit-activity-block { --credit-level-0:#302b27; --credit-level-1:#293c4a; --credit-level-2:#304f67; --credit-level-3:#36698c; --credit-level-4:#3e84b1; --credit-level-5:#52a1d3; --credit-level-6:#83c9f4; }
+.credit-activity-cell { --cell-color:var(--credit-level-0); }
+.credit-activity-cell[data-level="1"] { --cell-color:var(--credit-level-1); }
+.credit-activity-cell[data-level="2"] { --cell-color:var(--credit-level-2); }
+.credit-activity-cell[data-level="3"] { --cell-color:var(--credit-level-3); }
+.credit-activity-cell[data-level="4"] { --cell-color:var(--credit-level-4); }
+.credit-activity-cell[data-level="5"] { --cell-color:var(--credit-level-5); }
+.credit-activity-cell[data-level="6"] { --cell-color:var(--credit-level-6); }
+.credit-heatmap .credit-activity-cell,.credit-activity-legend .credit-activity-cell { display:block; box-sizing:border-box; width:13px; height:13px; min-width:0; min-height:0; padding:0; margin:0; border:1px solid color-mix(in srgb,var(--cell-color) 75%,var(--app-border)); border-radius:4px; background:var(--cell-color); box-shadow:none; }
+.credit-heatmap .credit-activity-cell { cursor:default; animation:credit-cell-wave 280ms ease-out both; animation-delay:var(--wave-delay,0ms); }
+.credit-activity-legend .credit-activity-cell { cursor:default; }
+.credit-activity-legend .credit-activity-cell:focus-visible { outline:2px solid var(--app-text); outline-offset:2px; }
+@media(prefers-reduced-motion:reduce) { .credit-heatmap .credit-activity-cell { animation:none; } }
+.credit-heatmap .credit-activity-cell:is(:hover,:focus-visible) { outline:2px solid var(--app-text); outline-offset:1px; }
+.credit-heatmap .credit-activity-cell.is-placeholder { visibility:hidden; }
+.credit-heatmap-months { display:grid; grid-template-columns:repeat(var(--calendar-columns),13px); column-gap:4px; min-height:24px; margin-top:10px; color:var(--app-muted); font-size:.78rem; }
+.credit-heatmap-months span { min-width:0; overflow:visible; white-space:nowrap; }
+.credit-heatmap-months span.is-last { justify-self:end; }
+.credit-activity-legend { display:flex; justify-content:flex-end; align-items:center; gap:4px; margin-top:6px; color:var(--app-muted); font-size:11px; }
+.credit-activity-legend > span { margin-inline:4px; }
+.credit-activity-tooltip { position:fixed; z-index:12000; transform:translateX(-50%); max-width:calc(100vw - 16px); box-sizing:border-box; padding:8px 12px; color:#fffaf5; background:#241a15; border:1px solid #796255; border-radius:9px; box-shadow:0 6px 20px rgba(0,0,0,.24); font-size:13px; font-weight:600; line-height:20px; white-space:nowrap; pointer-events:none; }
+html[data-theme="light"] .credit-activity-block { --credit-level-0:#f1ece7; --credit-level-1:#d5e8f6; --credit-level-2:#aacfea; --credit-level-3:#7fb7dd; --credit-level-4:#529dce; --credit-level-5:#297fb9; --credit-level-6:#126095; }
+html[data-theme="light"] .credit-activity-tooltip { color:#302219; background:#fffaf6; border-color:#c7b5a7; box-shadow:0 6px 20px rgba(80,50,30,.15); }
 @keyframes credit-cell-wave { 0%{opacity:0;transform:scale(.62) translateY(4px)} 70%{opacity:1;transform:scale(1.08) translateY(0)} 100%{opacity:1;transform:scale(1) translateY(0)} }
 .credit-heatmap p { margin: auto; color: var(--muted); }
 .credit-heatmap.empty { display: grid; grid-template: 1fr / 1fr; place-items: center; }
@@ -8037,7 +8074,7 @@ html[data-theme="light"] .credit-dashboard-skeleton :is(.credit-dashboard-skelet
 html[data-theme="light"] .credit-limit-row { background: rgba(45,104,160,.035); }
 html[data-theme="light"] .credit-usage-icon { color:#227fc5; border-color:rgba(34,127,197,.32); background:rgba(49,132,202,.12); }
 html[data-theme="light"] .credit-limit-row { border-color:rgba(49,132,202,.16); background:rgba(49,132,202,.055); }
-html[data-theme="light"] .credit-limit-ring { background: radial-gradient(circle closest-side, #fff 77%, transparent 79% 99%), conic-gradient(#2587d3 var(--remaining), rgba(49,132,202,.20) 0); box-shadow:inset 0 0 0 1px rgba(49,132,202,.08); }
+html[data-theme="light"] .credit-limit-ring { --ring-colour:#2587d3; --ring-track:rgba(49,132,202,.20); }
 html[data-theme="light"] .wallet-balance { color: #176eae; }
 html[data-theme="light"] .credit-limit-values strong { color:#176eae; }
 html[data-theme="light"] .credit-main-wallet { border-color:rgba(34,127,197,.34); background:rgba(49,132,202,.14); box-shadow:inset 0 0 0 1px rgba(255,255,255,.44),0 8px 24px rgba(31,111,174,.07); }
@@ -8048,8 +8085,6 @@ html[data-theme="light"] .credit-forecast header > span { color:#176eae; backgro
 html[data-theme="light"] .credit-sandbox-wallet { border-color:rgba(132,72,190,.22); background:rgba(151,92,207,.075); }
 html[data-theme="light"] .credit-sandbox-wallet header > span { color:#7540a8; background:rgba(151,92,207,.13); }
 html[data-theme="light"] .credit-sandbox-wallet > p strong { color:#7540a8; }
-html[data-theme="light"] .credit-heatmap span { background:rgb(38 132 207 / max(.18,var(--intensity))); box-shadow:inset 0 0 0 1px rgba(31,111,174,.18); }
-html[data-theme="light"] .credit-heatmap span.is-empty { background:rgba(49,132,202,.075); box-shadow:inset 0 0 0 1px rgba(38,117,180,.24); }
 .credit-usage-skeleton { min-height:600px; align-content:start; }
 .credit-skeleton-heading { display:grid; grid-template-columns:42px minmax(0,340px); align-items:center; gap:12px; }
 .credit-skeleton-heading > .skeleton-line { width:42px; height:42px; border-radius:13px; }
@@ -8271,11 +8306,12 @@ html[data-theme="light"] .app-shell .bitrix-backfill-fields input { color-scheme
   cursor: pointer;
 }
 .integration-checkbox input[type="checkbox"]:checked {
-  border-color: #5aa9e6;
-  background: #5aa9e6 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.2' d='m3.5 8 3 3 6-6'/%3E%3C/svg%3E") center / 14px no-repeat;
+  border-color: var(--app-accent, #ff5a2f);
+  background: var(--app-accent, #ff5a2f) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fffaf5' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.8' d='m3.25 8 3.05 3.05 6.45-6.45'/%3E%3C/svg%3E") center / 15px no-repeat;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent, #ff5a2f) 18%, transparent), inset 0 1px 0 rgba(255, 255, 255, .24);
 }
 .integration-checkbox input[type="checkbox"]:focus-visible {
-  outline: 3px solid rgba(90, 169, 230, .24);
+  outline: 3px solid color-mix(in srgb, var(--app-accent, #ff5a2f) 28%, transparent);
   outline-offset: 2px;
 }
 .integration-checkbox > span { display: grid; gap: 4px; line-height: 1.35; }
